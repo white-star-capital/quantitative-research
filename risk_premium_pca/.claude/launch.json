@@ -5,7 +5,7 @@
       "name": "streamlit",
       "runtimeExecutable": "streamlit",
       "runtimeArgs": ["run", "rp_pca/app.py"],
-      "port": 8501
+      "port": 8502
     }
   ]
 }

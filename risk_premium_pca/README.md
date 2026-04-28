@@ -50,7 +50,7 @@ pip install -r rp_pca/requirements.txt
 streamlit run rp_pca/app.py
 ```
 
-Navigate to `http://localhost:8501`.
+Navigate to `http://localhost:8502`.
 
 ---
 

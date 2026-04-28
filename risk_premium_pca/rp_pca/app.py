@@ -500,7 +500,7 @@ def tab_data(cfg: Config):
             return
 
         st.subheader("Return matrix preview")
-        st.dataframe(returns.tail(10).style.format("{:.4f}"), width="stretch")
+        st.dataframe(returns.tail(10).style.format("{:.4f}"), use_container_width=True)
 
         col_a, col_b, col_c = st.columns(3)
         col_a.metric("Trading days", len(returns))
@@ -584,10 +584,10 @@ def tab_insample(cfg: Config):
     col_pca, col_rp = st.columns(2)
     with col_pca:
         st.write("**Standard PCA (γ=1)**")
-        st.dataframe(pca.variance_table().style.format("{:.2f}"), width="stretch")
+        st.dataframe(pca.variance_table().style.format("{:.2f}"), use_container_width=True)
     with col_rp:
         st.write(f"**RP-PCA (γ={rppca.gamma_used_:.1f})**")
-        st.dataframe(rppca.variance_table().style.format("{:.2f}"), width="stretch")
+        st.dataframe(rppca.variance_table().style.format("{:.2f}"), use_container_width=True)
 
     st.plotly_chart(
         plot_explained_variance(
@@ -605,10 +605,10 @@ def tab_insample(cfg: Config):
     col1, col2 = st.columns(2)
     with col1:
         st.write("**PCA Factors**")
-        st.dataframe(pca_fs.style.format("{:.3f}"), width="stretch")
+        st.dataframe(pca_fs.style.format("{:.3f}"), use_container_width=True)
     with col2:
         st.write("**RP-PCA Factors**")
-        st.dataframe(rp_fs.style.format("{:.3f}"), width="stretch")
+        st.dataframe(rp_fs.style.format("{:.3f}"), use_container_width=True)
 
     st.plotly_chart(
         plot_factor_sharpe(
@@ -678,7 +678,7 @@ def tab_portfolio(cfg: Config):
         risk_free_rate=rf,
         trading_days=td,
     )
-    st.dataframe(_metrics_performance_styler(metrics), width="stretch")
+    st.dataframe(_metrics_performance_styler(metrics), use_container_width=True)
 
     # ── Cumulative returns ────────────────────────────────────────────
     st.subheader("Cumulative Returns")
@@ -778,7 +778,7 @@ def tab_backtest(cfg: Config):
     # ── OOS metrics table ─────────────────────────────────────────────
     st.subheader("OOS Performance Metrics")
     m = results.metrics(cfg.portfolio.risk_free_rate, cfg.portfolio.trading_days)
-    st.dataframe(_metrics_performance_styler(m), width="stretch")
+    st.dataframe(_metrics_performance_styler(m), use_container_width=True)
 
     # ── Cumulative returns ────────────────────────────────────────────
     st.subheader("OOS Cumulative Returns")
@@ -925,7 +925,7 @@ def tab_backtest(cfg: Config):
             f"(e.g. concentrated strategies need **concentrated_top_n** > 0 in config, or the backtest produced no steps)."
         )
     else:
-        st.dataframe(oos_sig_df.head(10), width="stretch")
+        st.dataframe(oos_sig_df.head(10), use_container_width=True)
         st.download_button(
             label="Download rebalance history (asset weights CSV)",
             data=oos_sig_df.to_csv(index=False),
@@ -1076,7 +1076,7 @@ def tab_best_configs(cfg: Config):
             subset=[sort_metric] if ascending else [],
             color="#1a7a4a",
         ),
-        width="stretch",
+        use_container_width=True,
     )
 
     # ── Full sweep download ───────────────────────────────────────────
@@ -1222,7 +1222,7 @@ def tab_best_configs(cfg: Config):
                     signals_path = RESULTS_DIR / "signals.csv"
                     sig_df.to_csv(signals_path, index=False)
                     st.success(f"Signals saved to {signals_path}")
-                    st.dataframe(sig_df.head(10), width="stretch")
+                    st.dataframe(sig_df.head(10), use_container_width=True)
                     st.download_button(
                         label="Download signals CSV",
                         data=sig_df.to_csv(index=False),
@@ -1327,7 +1327,7 @@ def tab_best_configs(cfg: Config):
                         _asty = _asty.background_gradient(
                             subset=_grad, cmap="RdYlGn", axis=None,
                         )
-                    st.dataframe(_asty, width="stretch")
+                    st.dataframe(_asty, use_container_width=True)
 
                     st.download_button(
                         label="Download dollar allocations CSV",
@@ -2038,12 +2038,12 @@ def tab_fama_macbeth(cfg: Config):
     with col_rp:
         st.write(f"**RP-PCA** (γ={rppca.gamma_used_:.0f})")
         rp_df = rp_res.summary_df()
-        st.dataframe(rp_df, width="stretch")
+        st.dataframe(rp_df, use_container_width=True)
         st.metric("Mean cross-sectional R²", f"{rp_res.mean_r2:.4f}")
     with col_pca:
         st.write("**PCA** (γ=1)")
         pca_df = pca_res.summary_df()
-        st.dataframe(pca_df, width="stretch")
+        st.dataframe(pca_df, use_container_width=True)
         st.metric("Mean cross-sectional R²", f"{pca_res.mean_r2:.4f}")
 
     # ── Risk premia comparison chart ───────────────────────────────

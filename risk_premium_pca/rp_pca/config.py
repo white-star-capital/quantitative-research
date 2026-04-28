@@ -171,7 +171,8 @@ class BacktestConfig:
 
     # Grid search: covariance windows to try
     cov_window_grid: List[int] = field(
-        default_factory=lambda: [63, 126, 252, 504]
+        # default_factory=lambda: [63, 126, 252, 504]
+        default_factory=lambda: [63, 126]
     )
 
     # Grid search: mean windows to try
