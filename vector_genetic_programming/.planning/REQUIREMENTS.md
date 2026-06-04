@@ -112,52 +112,52 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | — | Pending |
-| FOUND-02 | — | Pending |
-| FOUND-03 | — | Pending |
-| FOUND-04 | — | Pending |
-| DATA-01 | — | Pending |
-| DATA-02 | — | Pending |
-| DATA-03 | — | Pending |
-| DATA-04 | — | Pending |
-| GP-01 | — | Pending |
-| GP-02 | — | Pending |
-| GP-03 | — | Pending |
-| GP-04 | — | Pending |
-| GP-05 | — | Pending |
-| GP-06 | — | Pending |
-| GP-07 | — | Pending |
-| GP-08 | — | Pending |
-| EVAL-01 | — | Pending |
-| EVAL-02 | — | Pending |
-| EVAL-03 | — | Pending |
-| EVAL-04 | — | Pending |
-| EVO-01 | — | Pending |
-| EVO-02 | — | Pending |
-| EVO-03 | — | Pending |
-| EVO-04 | — | Pending |
-| EVO-05 | — | Pending |
-| EVO-06 | — | Pending |
-| EVO-07 | — | Pending |
-| EXP-01 | — | Pending |
-| EXP-02 | — | Pending |
-| EXP-03 | — | Pending |
-| VAL-01 | — | Pending |
-| VAL-02 | — | Pending |
-| VAL-03 | — | Pending |
-| VAL-04 | — | Pending |
-| VAL-05 | — | Pending |
-| VAL-06 | — | Pending |
-| VAL-07 | — | Pending |
-| COMM-01 | — | Pending |
-| COMM-02 | — | Pending |
-| COMM-03 | — | Pending |
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Pending |
+| COMM-02 | Phase 1 | Pending |
+| DATA-01 | Phase 2 | Pending |
+| DATA-02 | Phase 2 | Pending |
+| DATA-03 | Phase 2 | Pending |
+| DATA-04 | Phase 2 | Pending |
+| COMM-01 | Phase 2 | Pending |
+| COMM-03 | Phase 2 | Pending |
+| GP-01 | Phase 3 | Pending |
+| GP-02 | Phase 3 | Pending |
+| GP-03 | Phase 3 | Pending |
+| GP-04 | Phase 3 | Pending |
+| GP-05 | Phase 3 | Pending |
+| GP-06 | Phase 3 | Pending |
+| GP-07 | Phase 3 | Pending |
+| GP-08 | Phase 3 | Pending |
+| EVAL-01 | Phase 3 | Pending |
+| EVAL-02 | Phase 3 | Pending |
+| EVAL-03 | Phase 3 | Pending |
+| EVAL-04 | Phase 3 | Pending |
+| EVO-01 | Phase 4 | Pending |
+| EVO-02 | Phase 4 | Pending |
+| EVO-03 | Phase 4 | Pending |
+| EVO-04 | Phase 4 | Pending |
+| EVO-05 | Phase 4 | Pending |
+| EVO-06 | Phase 4 | Pending |
+| EVO-07 | Phase 4 | Pending |
+| EXP-01 | Phase 4 | Pending |
+| EXP-02 | Phase 4 | Pending |
+| EXP-03 | Phase 4 | Pending |
+| VAL-01 | Phase 5 | Pending |
+| VAL-02 | Phase 5 | Pending |
+| VAL-03 | Phase 5 | Pending |
+| VAL-04 | Phase 5 | Pending |
+| VAL-05 | Phase 5 | Pending |
+| VAL-06 | Phase 5 | Pending |
+| VAL-07 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 40 total
-- Mapped to phases: 0 (populated by roadmapper)
-- Unmapped: 40 ⚠️
+- Mapped to phases: 40 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-03*
-*Last updated: 2026-06-03 after initial definition*
+*Last updated: 2026-06-03 after roadmap initialization — all 40 requirements mapped to phases*
