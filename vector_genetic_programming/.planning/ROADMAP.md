@@ -35,7 +35,11 @@ The build follows a strict dependency order: environment first, then data, then 
   3. GitHub Actions workflow runs the import smoke test and reports pass/fail on every commit to main
   4. `python-version` file and requirements-lock.txt are committed; a second developer can reproduce the environment from these files alone
   5. MIT LICENSE file is present at repo root
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — pyproject.toml with pinned deps, vgp package skeleton, .python-version, MIT LICENSE
+- [ ] 01-02-PLAN.md — smoke test (tests/test_smoke.py) and GitHub Actions CI workflow
 
 ### Phase 2: Data Pipeline
 **Goal**: A validated multi-asset feature matrix is produced from parquet files, the train/validation/test split is structurally enforced before any evolution code is written, and the package module layout is established.
@@ -94,7 +98,7 @@ The build follows a strict dependency order: environment first, then data, then 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Environment | 0/? | Not started | - |
+| 1. Foundation & Environment | 0/2 | Planning done | - |
 | 2. Data Pipeline | 0/? | Not started | - |
 | 3. GP Core & Evaluation | 0/? | Not started | - |
 | 4. Evolution Engine | 0/? | Not started | - |
@@ -103,4 +107,4 @@ The build follows a strict dependency order: environment first, then data, then 
 ---
 
 *Roadmap created: 2026-06-03*
-*Last updated: 2026-06-03 after initialization*
+*Last updated: 2026-06-03 — Phase 1 plans written (01-01, 01-02)*
