@@ -12,7 +12,10 @@ The system must evolve strategies that demonstrate positive out-of-sample Sharpe
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] Reproducible Python 3.12 environment with all pinned deps (`numpy>=2.0.0,<2.3`, `deap==1.4.4`, `vectorbt==1.0.0`) — Validated in Phase 1
+- [x] numba/numpy compatibility gate: smoke test asserts `numpy<2.3` on every push — Validated in Phase 1
+- [x] CI pipeline runs smoke tests on all branches — Validated in Phase 1
+- [x] MIT license committed — Validated in Phase 1
 
 ### Active
 
@@ -62,7 +65,8 @@ The system must evolve strategies that demonstrate positive out-of-sample Sharpe
 | NSGA-II multi-objective | Balances return vs. complexity vs. risk simultaneously; avoids single-objective overfitting | — Pending |
 | Parquet-first data pipeline | Eliminates API complexity from v1 scope; user controls data quality upstream | — Pending |
 | Research-only output | No live trading infrastructure — keeps scope bounded and failure modes tractable | — Pending |
-| MIT license | Community release; permissive for academic and commercial reuse | — Pending |
+| MIT license | Community release; permissive for academic and commercial reuse | ✓ LICENSE committed (Phase 1) |
+| mlflow deferred to optional extra | mlflow requires pandas<3, conflicts with pandas>=3.0.0 core dep; experiment tracking strategy to be decided in Phase 4 | Moved to [tracking] optional extra (Phase 1) |
 
 ## Evolution
 
@@ -82,4 +86,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-03 after initialization*
+*Last updated: 2026-06-08 — Phase 1 complete (Foundation & Environment verified)*
