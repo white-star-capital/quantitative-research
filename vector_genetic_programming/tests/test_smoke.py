@@ -12,6 +12,7 @@ import numpy as np
 import numba
 import pandas as pd
 import pytest
+from packaging.version import Version
 
 
 def test_numpy_version_below_2_3():
@@ -21,9 +22,12 @@ def test_numpy_version_below_2_3():
     numba>=0.61.2 supports numpy 2.0, 2.1, 2.2 — but NOT 2.3+.
     If this test fails, downgrade numpy or wait for a numba release that
     supports the newer numpy version.
+
+    Uses packaging.version.Version for correct semantic comparison — string
+    comparison fails for numpy 2.10+ ("2.10" < "2.3" is True lexicographically).
     """
     version = np.__version__
-    assert version < "2.3", (
+    assert Version(version) < Version("2.3"), (
         f"numpy {version} is installed but numpy<2.3 is required for numba compatibility. "
         f"Run: pip install 'numpy>=2.0.0,<2.3'"
     )
@@ -79,6 +83,10 @@ def test_vectorbt_from_signals():
     total_return = pf.total_return()
 
     assert sharpe is not None, "sharpe_ratio() returned None — is freq='1D' set?"
+    assert not np.isnan(float(sharpe)), (
+        "sharpe_ratio() returned NaN — this is the silent failure mode when freq= is missing. "
+        "Check that freq='1D' is passed to Portfolio.from_signals."
+    )
     assert total_return is not None, "total_return() returned None"
 
 
