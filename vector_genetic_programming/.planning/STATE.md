@@ -67,5 +67,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-06-08
-Stopped at: Phase 1 complete. Phase 2 (Data Pipeline) not yet planned.
-Resume file: None
+Stopped at: Phase 2 context gathered. Ready for planning.
+Resume file: .planning/phases/02-data-pipeline/02-CONTEXT.md
