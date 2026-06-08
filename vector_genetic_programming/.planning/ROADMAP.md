@@ -39,7 +39,7 @@ The build follows a strict dependency order: environment first, then data, then 
 
 Plans:
 - [x] 01-01-PLAN.md — pyproject.toml with pinned deps, vgp package skeleton, .python-version, MIT LICENSE (complete 2026-06-08)
-- [ ] 01-02-PLAN.md — smoke test (tests/test_smoke.py) and GitHub Actions CI workflow
+- [x] 01-02-PLAN.md — smoke test (tests/test_smoke.py) and GitHub Actions CI workflow (complete 2026-06-08)
 
 ### Phase 2: Data Pipeline
 **Goal**: A validated multi-asset feature matrix is produced from parquet files, the train/validation/test split is structurally enforced before any evolution code is written, and the package module layout is established.
@@ -107,4 +107,4 @@ Plans:
 ---
 
 *Roadmap created: 2026-06-03*
-*Last updated: 2026-06-08 — Phase 1 plan 01-01 complete (package skeleton)*
+*Last updated: 2026-06-08 — Phase 1 all plans complete (01-01, 01-02); awaiting verification*
