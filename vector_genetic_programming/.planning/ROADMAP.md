@@ -51,7 +51,12 @@ Plans:
   3. `WalkForwardSplitter` raises an assertion error if `test_start <= train_end`, confirming temporal ordering is structurally enforced rather than advisory
   4. A known-good parquet fixture runs through the full pipeline (load → features → split) and produces the expected output schema with zero NaNs
   5. The `vgp/` package is importable with sub-modules `data`, `gp`, `evolution`, `backtest`, `analysis`; CONTRIBUTING.md documents how to add a primitive and run an experiment
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — universe.py (UNIVERSE_30), config.py (DataConfig), fetcher.py (BinanceFetcher with fetch_ohlcv)
+- [ ] 02-02-PLAN.md — feature_engine.py (FeatureEngine: [T×F×A] float32, 12 features, NaN guard), splitter.py (WalkForwardSplitter with AssertionError enforcement)
+- [ ] 02-03-PLAN.md — vgp/data/__init__.py (public exports), tests/test_data_pipeline.py (DATA-04 fixture test), CONTRIBUTING.md (COMM-03)
 
 ### Phase 3: GP Core & Evaluation
 **Goal**: A single evolved GP tree can be compiled, executed over a full multi-asset feature matrix without Python loops, and evaluated to a three-objective fitness tuple via vectorbt — with lookahead structurally prevented and all edge cases handled.
@@ -98,8 +103,8 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Environment | 0/2 | Planning done | - |
-| 2. Data Pipeline | 0/? | Not started | - |
+| 1. Foundation & Environment | 2/2 | Complete | 2026-06-08 |
+| 2. Data Pipeline | 0/3 | Planning done | - |
 | 3. GP Core & Evaluation | 0/? | Not started | - |
 | 4. Evolution Engine | 0/? | Not started | - |
 | 5. Validation & Publication | 0/? | Not started | - |
@@ -107,4 +112,4 @@ Plans:
 ---
 
 *Roadmap created: 2026-06-03*
-*Last updated: 2026-06-08 — Phase 1 complete (verified 5/5); proceeding to Phase 2*
+*Last updated: 2026-06-08 — Phase 2 planned (3 plans, 3 waves)*
