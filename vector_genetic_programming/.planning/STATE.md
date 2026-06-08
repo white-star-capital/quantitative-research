@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 ## Current Position
 
 Phase: 1 of 5 (Foundation & Environment)
-Plan: 0 of 2 in current phase
-Status: Ready to execute
-Last activity: 2026-06-03 — Phase 1 planned (2 plans, 2 waves); ready for execution
+Plan: 1 of 2 in current phase
+Status: Executing — Wave 2 in progress
+Last activity: 2026-06-08 — Plan 01-01 complete (package skeleton, pyproject.toml, vgp/ stubs)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -52,7 +52,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- numpy<2.3 pin must be in pyproject.toml before any other work begins (day-one blocker)
+- ✓ numpy<2.3 pin is in pyproject.toml — day-one blocker resolved
 - vectorbt 1.0.0 has no official migration guide from 0.x — all API calls must be verified against 1.0 docs directly
 - On-chain data availability in parquet files unknown; if absent, defer on-chain terminals and constrain to price/volume primitives
 
@@ -64,6 +64,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-03
-Stopped at: Phase 1 planned — 2 plans in 2 waves. Execute with /gsd-execute-phase 1.
+Last session: 2026-06-08
+Stopped at: Phase 1 Wave 2 in progress — Plan 01-02 (smoke tests + CI) is next.
 Resume file: None

@@ -38,7 +38,7 @@ The build follows a strict dependency order: environment first, then data, then 
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — pyproject.toml with pinned deps, vgp package skeleton, .python-version, MIT LICENSE
+- [x] 01-01-PLAN.md — pyproject.toml with pinned deps, vgp package skeleton, .python-version, MIT LICENSE (complete 2026-06-08)
 - [ ] 01-02-PLAN.md — smoke test (tests/test_smoke.py) and GitHub Actions CI workflow
 
 ### Phase 2: Data Pipeline
@@ -107,4 +107,4 @@ Plans:
 ---
 
 *Roadmap created: 2026-06-03*
-*Last updated: 2026-06-03 — Phase 1 plans written (01-01, 01-02)*
+*Last updated: 2026-06-08 — Phase 1 plan 01-01 complete (package skeleton)*
