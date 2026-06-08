@@ -7,10 +7,10 @@
 
 ### Foundation
 
-- [ ] **FOUND-01**: pyproject.toml installs cleanly on Python 3.11+ with pinned deps (deap==1.4.4, vectorbt==1.0.0, numpy<2.3)
-- [ ] **FOUND-02**: GitHub Actions CI runs import smoke tests on every push to main
-- [ ] **FOUND-03**: numba/numpy compatibility verified by smoke test that must pass before any backtest code is added
-- [ ] **FOUND-04**: `.python-version` file pins Python 3.12; requirements-lock.txt committed for reproducible installs
+- [x] **FOUND-01**: pyproject.toml installs cleanly on Python 3.11+ with pinned deps (deap==1.4.4, vectorbt==1.0.0, numpy<2.3)
+- [x] **FOUND-02**: GitHub Actions CI runs import smoke tests on every push to main
+- [x] **FOUND-03**: numba/numpy compatibility verified by smoke test that must pass before any backtest code is added
+- [x] **FOUND-04**: `.python-version` file pins Python 3.12; requirements-lock.txt committed for reproducible installs
 
 ### Data Pipeline
 
@@ -66,7 +66,7 @@
 ### Community & Repository
 
 - [ ] **COMM-01**: Package organized under vgp/ with sub-modules: data, gp, evolution, backtest, analysis
-- [ ] **COMM-02**: MIT license file present at repo root
+- [x] **COMM-02**: MIT license file present at repo root
 - [ ] **COMM-03**: CONTRIBUTING.md documents: how to add a primitive, how to run an experiment, how to update the lock file
 
 ## v2 Requirements
@@ -112,11 +112,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
-| FOUND-02 | Phase 1 | Pending |
-| FOUND-03 | Phase 1 | Pending |
-| FOUND-04 | Phase 1 | Pending |
-| COMM-02 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | ✓ Complete (2026-06-08) |
+| FOUND-02 | Phase 1 | ✓ Complete (2026-06-08) |
+| FOUND-03 | Phase 1 | ✓ Complete (2026-06-08) |
+| FOUND-04 | Phase 1 | ✓ Complete (2026-06-08) |
+| COMM-02 | Phase 1 | ✓ Complete (2026-06-08) |
 | DATA-01 | Phase 2 | Pending |
 | DATA-02 | Phase 2 | Pending |
 | DATA-03 | Phase 2 | Pending |

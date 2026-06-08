@@ -15,7 +15,7 @@ The build follows a strict dependency order: environment first, then data, then 
 
 ## Phases
 
-- [ ] **Phase 1: Foundation & Environment** - Reproducible Python environment with verified numba/numpy/vectorbt compatibility
+- [x] **Phase 1: Foundation & Environment** - Reproducible Python environment with verified numba/numpy/vectorbt compatibility (complete 2026-06-08)
 - [ ] **Phase 2: Data Pipeline** - Validated multi-asset feature matrix with enforced train/OOS split
 - [ ] **Phase 3: GP Core & Evaluation** - Single-tree compile, execute, and backtest working end-to-end
 - [ ] **Phase 4: Evolution Engine** - Complete multi-generation NSGA-II evolution with parallel evaluation and experiment tracking
@@ -107,4 +107,4 @@ Plans:
 ---
 
 *Roadmap created: 2026-06-03*
-*Last updated: 2026-06-08 — Phase 1 all plans complete (01-01, 01-02); awaiting verification*
+*Last updated: 2026-06-08 — Phase 1 complete (verified 5/5); proceeding to Phase 2*

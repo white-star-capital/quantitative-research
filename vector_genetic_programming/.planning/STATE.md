@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-06-03)
 
 **Core value:** Evolve strategies with demonstrable positive out-of-sample Sharpe ratio
-**Current focus:** Phase 1 — Foundation & Environment
+**Current focus:** Phase 2 — Data Pipeline
 
 ## Current Position
 
-Phase: 1 of 5 (Foundation & Environment)
-Plan: 2 of 2 in current phase
-Status: Verifying — all plans complete
-Last activity: 2026-06-08 — Plan 01-02 complete (smoke tests + CI); verification in progress
+Phase: 2 of 5 (Data Pipeline)
+Plan: 0 of TBD in current phase
+Status: Phase 1 complete — Phase 2 not yet planned
+Last activity: 2026-06-08 — Phase 1 complete (verified 5/5, all requirements satisfied)
 
-Progress: [██████████] 100% (phase execution complete)
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
@@ -27,11 +27,11 @@ Progress: [██████████] 100% (phase execution complete)
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 1 — Foundation & Environment | 2 | ~3h | 1.5h |
 
 **Recent Trend:**
-- Last 5 plans: —
-- Trend: —
+- Last 5 plans: 01-01 (~1min), 01-02 (~2min)
+- Trend: Fast (structure-only phase)
 
 *Updated after each plan completion*
 
@@ -53,7 +53,9 @@ None yet.
 ### Blockers/Concerns
 
 - ✓ numpy<2.3 pin is in pyproject.toml — day-one blocker resolved
+- ✓ requirements-lock.txt committed — reproducibility confirmed
 - vectorbt 1.0.0 has no official migration guide from 0.x — all API calls must be verified against 1.0 docs directly
+- mlflow requires pandas<3 (incompatible with pandas>=3.0.0); moved to [tracking] optional extra — resolve tracking strategy in Phase 4
 - On-chain data availability in parquet files unknown; if absent, defer on-chain terminals and constrain to price/volume primitives
 
 ## Deferred Items
@@ -65,5 +67,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-06-08
-Stopped at: Phase 1 Wave 2 in progress — Plan 01-02 (smoke tests + CI) is next.
+Stopped at: Phase 1 complete. Phase 2 (Data Pipeline) not yet planned.
 Resume file: None
