@@ -43,8 +43,6 @@ dependencies = [
   "networkx>=3.3",
   "plotly>=5.22",
   "seaborn>=0.13",
-  # Experiment tracking
-  "mlflow>=2.14",
   # Serialization — dill handles closures that pickle cannot (needed for DEAP checkpoints)
   "dill>=0.3.8",
 ]
@@ -56,8 +54,15 @@ dev = [
   "black>=24.0",
   "ruff>=0.5",
   "mypy>=1.10",
-  "jupyter>=7.0",
+  "jupyterlab>=4.0",
   "nbstripout>=0.7",
+]
+# mlflow requires pandas<3, which conflicts with our pandas>=3.0.0 core requirement.
+# Install this extra only when you need MLflow tracking and are OK running it against
+# a pandas<3 environment (e.g., a separate venv or a service-mode tracking server).
+# Phase 4 will determine the final experiment tracking approach.
+tracking = [
+  "mlflow>=2.14",
 ]
 
 [tool.setuptools.packages.find]
