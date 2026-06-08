@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=70.0", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "vector-genetic-programming"
+version = "0.1.0"
+description = "GP-evolved trading strategies from multi-asset crypto data using DEAP + vectorbt"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+authors = [
+  { name = "VGP Contributors" },
+]
+keywords = ["genetic-programming", "trading", "crypto", "deap", "vectorbt", "nsga2"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+  # GP framework
+  "deap==1.4.4",
+  # Backtesting — vectorbt 1.0.0 is a major rewrite from 0.x; do not use 0.x docs
+  "vectorbt==1.0.0",
+  # CRITICAL: numpy<2.3 is required for numba compatibility.
+  # NumPy 2.3 (mid-2026) hard-breaks numba. Pin strictly.
+  "numpy>=2.0.0,<2.3",
+  # numba>=0.61.2 adds explicit NumPy 2.2 support (see release notes)
+  "numba>=0.61.2",
+  # Data
+  "pandas>=3.0.0,<4.0",
+  "pyarrow>=18.0",
+  "scipy>=1.13",
+  # ML utilities
+  "scikit-learn>=1.7.0,<2.0",
+  "joblib>=1.4.0,<2.0",
+  # Visualization
+  "matplotlib>=3.9.0,<4.0",
+  "networkx>=3.3",
+  "plotly>=5.22",
+  "seaborn>=0.13",
+  # Experiment tracking
+  "mlflow>=2.14",
+  # Serialization — dill handles closures that pickle cannot (needed for DEAP checkpoints)
+  "dill>=0.3.8",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+  "pytest-benchmark>=4.0",
+  "black>=24.0",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "jupyter>=7.0",
+  "nbstripout>=0.7",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vgp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true
