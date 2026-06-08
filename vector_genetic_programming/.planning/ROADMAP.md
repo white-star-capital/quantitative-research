@@ -16,7 +16,7 @@ The build follows a strict dependency order: environment first, then data, then 
 ## Phases
 
 - [x] **Phase 1: Foundation & Environment** - Reproducible Python environment with verified numba/numpy/vectorbt compatibility (complete 2026-06-08)
-- [ ] **Phase 2: Data Pipeline** - Validated multi-asset feature matrix with enforced train/OOS split
+- [x] **Phase 2: Data Pipeline** - Validated multi-asset feature matrix with enforced train/OOS split (complete 2026-06-08)
 - [ ] **Phase 3: GP Core & Evaluation** - Single-tree compile, execute, and backtest working end-to-end
 - [ ] **Phase 4: Evolution Engine** - Complete multi-generation NSGA-II evolution with parallel evaluation and experiment tracking
 - [ ] **Phase 5: Validation & Publication** - Walk-forward OOS results, DSR reporting, and community-ready repository
@@ -54,9 +54,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — universe.py (UNIVERSE_30), config.py (DataConfig), fetcher.py (BinanceFetcher with fetch_ohlcv)
-- [ ] 02-02-PLAN.md — feature_engine.py (FeatureEngine: [T×F×A] float32, 12 features, NaN guard), splitter.py (WalkForwardSplitter with AssertionError enforcement)
-- [ ] 02-03-PLAN.md — vgp/data/__init__.py (public exports), tests/test_data_pipeline.py (DATA-04 fixture test), CONTRIBUTING.md (COMM-03)
+- [x] 02-01-PLAN.md — universe.py (UNIVERSE_30), config.py (DataConfig), fetcher.py (BinanceFetcher with fetch_ohlcv) (complete 2026-06-08)
+- [x] 02-02-PLAN.md — feature_engine.py (FeatureEngine: [T×F×A] float32, 12 features, NaN guard), splitter.py (WalkForwardSplitter with AssertionError enforcement) (complete 2026-06-08)
+- [x] 02-03-PLAN.md — vgp/data/__init__.py (public exports), tests/test_data_pipeline.py (DATA-04 fixture test), CONTRIBUTING.md (COMM-03) (complete 2026-06-08)
 
 ### Phase 3: GP Core & Evaluation
 **Goal**: A single evolved GP tree can be compiled, executed over a full multi-asset feature matrix without Python loops, and evaluated to a three-objective fitness tuple via vectorbt — with lookahead structurally prevented and all edge cases handled.
