@@ -16,6 +16,12 @@ The system must evolve strategies that demonstrate positive out-of-sample Sharpe
 - [x] numba/numpy compatibility gate: smoke test asserts `numpy<2.3` on every push — Validated in Phase 1
 - [x] CI pipeline runs smoke tests on all branches — Validated in Phase 1
 - [x] MIT license committed — Validated in Phase 1
+- [x] Multi-asset OHLCV DataLoader (`BinanceFetcher`) reads cached parquets and returns dict[str, pd.DataFrame] with DatetimeIndex — Validated in Phase 2
+- [x] FeatureEngine produces float32 [T×F×A] array (T=610, F=12, A=21) with zero NaN from fixture cache — Validated in Phase 2
+- [x] WalkForwardSplitter enforces train/val/test temporal ordering structurally (AssertionError, not advisory) — Validated in Phase 2
+- [x] Full pipeline fixture test (DATA-04): load → features → split runs without network access — Validated in Phase 2
+- [x] All 5 vgp sub-modules importable; DataLoader alias and public API wired in vgp.data — Validated in Phase 2
+- [x] CONTRIBUTING.md documents how to add a GP primitive, run an experiment, and update the lock file — Validated in Phase 2
 
 ### Active
 
@@ -86,4 +92,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-08 — Phase 1 complete (Foundation & Environment verified)*
+*Last updated: 2026-06-08 — Phase 2 complete (Data Pipeline verified — 21-asset [T×F×A] feature matrix, structural OOS split, 7 pipeline tests passing)*
