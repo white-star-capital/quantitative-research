@@ -77,8 +77,13 @@ class TreeEvaluator:
         # per-bar loop. The compiled function applies numpy ops over [T].
         raw_output = func(*[feature_matrix[:, f] for f in range(F)])
 
-        # Coerce to float32 (tree output type depends on which primitives fire)
+        # Coerce to float32 [T] array.
+        # When a tree evaluates to an ephemeral constant scalar (Python float or
+        # 0-D array), np.asarray produces a 0-D array. Broadcast it to [T] via
+        # np.broadcast_to so downstream roll/sign operations have a consistent shape.
         raw_output = np.asarray(raw_output, dtype=np.float32)
+        if raw_output.ndim == 0:
+            raw_output = np.broadcast_to(raw_output, (T,)).copy()
 
         # Structural fshift(1): shift output forward by 1 timestep.
         # Signal at time t = tree output from t-1.
