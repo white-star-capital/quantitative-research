@@ -23,6 +23,12 @@ The system must evolve strategies that demonstrate positive out-of-sample Sharpe
 - [x] All 5 vgp sub-modules importable; DataLoader alias and public API wired in vgp.data — Validated in Phase 2
 - [x] CONTRIBUTING.md documents how to add a GP primitive, run an experiment, and update the lock file — Validated in Phase 2
 
+### Validated (continued)
+
+- [x] GP PrimitiveSetTyped with Vector/Scalar type tokens; 1,000 random trees all compile and execute without error — Validated in Phase 3
+- [x] TreeEvaluator.execute() applies structural fshift(1) (np.roll + zero index 0); GP-07 lookahead detection test passes — Validated in Phase 3
+- [x] evaluate() returns (Sharpe, total_return, -tree_size); fees baked in; <50 trades → (-inf, -inf, -size); no DEAP import in vgp.backtest — Validated in Phase 3
+
 ### Active
 
 - [ ] Evolve GP trees that operate on vector inputs (rolling windows) as first-class primitives
@@ -77,6 +83,8 @@ The system must evolve strategies that demonstrate positive out-of-sample Sharpe
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
+
+Last updated: 2026-06-09 — Phase 3 complete (GP Core & Evaluation)
 
 **After each phase transition** (via `/gsd-transition`):
 1. Requirements invalidated? → Move to Out of Scope with reason
