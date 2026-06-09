@@ -68,12 +68,12 @@ Plans:
   3. A deliberately injected future-leak primitive produces a fitness that is not better than a randomly-initialized individual, confirming the lookahead detection test catches the exploit
   4. `evaluate(individual)` returns a `(sharpe, total_return, -tree_size)` tuple with transaction costs baked in; an individual with fewer than 50 trades receives the worst-possible fitness tuple rather than a NaN or exception
   5. The `BacktestRunner` and `EvolutionLoop` modules have no cross-imports (confirmed by import audit); their interface is a numpy array in, fitness tuple out
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 **UI hint**: no
 
 Plans:
 - [x] 03-01-PLAN.md — vgp/gp/gp_types.py (creator.FitnessMulti/Individual at module level, build_pset() factory), vgp/gp/primitives.py (Vector/Scalar tokens, 11 arithmetic+rolling primitives), vgp/gp/__init__.py (re-exports)
-- [ ] 03-02-PLAN.md — vgp/gp/tree_evaluator.py (TreeEvaluator with structural fshift), tests/test_gp_primitives.py (GP-08: 1000-tree validation), tests/test_tree_evaluator.py (GP-05 vectorized exec, GP-06 fshift, GP-07 lookahead detection)
+- [x] 03-02-PLAN.md — vgp/gp/tree_evaluator.py (TreeEvaluator with structural fshift), tests/test_gp_primitives.py (GP-08: 1000-tree validation), tests/test_tree_evaluator.py (GP-05 vectorized exec, GP-06 fshift, GP-07 lookahead detection) (complete 2026-06-09)
 - [ ] 03-03-PLAN.md — vgp/backtest/runner.py (EvalConfig, BacktestRunner, evaluate()), vgp/backtest/__init__.py (re-exports), tests/test_evaluate.py (EVAL-01 through EVAL-04 + import audit)
 
 ### Phase 4: Evolution Engine
@@ -109,12 +109,12 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Environment | 2/2 | Complete | 2026-06-08 |
-| 2. Data Pipeline | 0/3 | Planning done | - |
-| 3. GP Core & Evaluation | 1/3 | In Progress|  |
+| 2. Data Pipeline | 3/3 | Complete | 2026-06-08 |
+| 3. GP Core & Evaluation | 2/3 | In Progress | - |
 | 4. Evolution Engine | 0/? | Not started | - |
 | 5. Validation & Publication | 0/? | Not started | - |
 
 ---
 
 *Roadmap created: 2026-06-03*
-*Last updated: 2026-06-09 — Phase 3 planned (3 plans, 3 waves)*
+*Last updated: 2026-06-09 — Phase 3 Plan 02 complete: TreeEvaluator + GP tests (GP-05, GP-06, GP-07, GP-08 all green)*

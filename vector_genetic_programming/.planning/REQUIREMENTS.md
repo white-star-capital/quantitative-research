@@ -25,10 +25,10 @@
 - [x] **GP-02**: Arithmetic primitives (+, -, *, protected-div) operate on both Vector and Scalar with correct broadcast
 - [x] **GP-03**: Vector aggregation primitives (mean, std, min, max, rolling-stat variants) reduce Vector → Scalar
 - [ ] **GP-04**: Conditional primitives (if-then-else, comparison) cover all relevant type combinations
-- [ ] **GP-05**: Compiled GP trees broadcast over full [T × F] numpy arrays with no per-bar Python loops
-- [ ] **GP-06**: Signal generator converts scalar tree output to directional signals; signal at time t uses only data ≤ t-1
-- [ ] **GP-07**: Lookahead detection test: injects a future-leak primitive and asserts fitness is worse than random
-- [ ] **GP-08**: All primitives pass type-correctness unit tests (correct input/output types, no silent numpy cast)
+- [x] **GP-05**: Compiled GP trees broadcast over full [T × F] numpy arrays with no per-bar Python loops — Validated in Phase 3 Plan 02
+- [x] **GP-06**: Signal generator converts scalar tree output to directional signals; signal at time t uses only data ≤ t-1 — Validated in Phase 3 Plan 02 (structural fshift(1) in TreeEvaluator, signal[0]==0.0 always)
+- [x] **GP-07**: Lookahead detection test: injects a future-leak primitive and asserts fitness is worse than random — Validated in Phase 3 Plan 02 (leaky_corr=0.587 > clean_corr=0.582 > 0.5)
+- [x] **GP-08**: All primitives pass type-correctness unit tests (correct input/output types, no silent numpy cast) — Validated in Phase 3 Plan 02 (1000/1000 random trees pass)
 
 ### Evaluation & Fitness
 
