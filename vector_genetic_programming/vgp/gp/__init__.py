@@ -7,11 +7,7 @@ All primitives accept and return np.ndarray — no pandas objects inside primiti
 
 from .primitives import Vector, Scalar
 from .gp_types import build_pset
-
-try:
-    from .tree_evaluator import TreeEvaluator
-except ImportError:
-    TreeEvaluator = None  # type: ignore[assignment,misc]
+from .tree_evaluator import TreeEvaluator
 
 __all__ = [
     "Vector",
