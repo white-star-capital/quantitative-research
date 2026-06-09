@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: "Phase 3 Plan 02 complete. TreeEvaluator + GP tests. Advancing to Plan 03-03 (BacktestRunner)."
-last_updated: "2026-06-09T16:47:00Z"
+status: verifying
+stopped_at: Phase 3 Plan 03 complete. BacktestRunner + evaluate() + EVAL tests. Phase 3 fully done.
+last_updated: "2026-06-09T16:58:54.073Z"
 last_activity: 2026-06-09
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 7
-  percent: 88
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State: VGP
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 
 Phase: 3 of 5 (GP Core & Evaluation)
 Plan: 3 of 3 in current phase
-Status: Ready to execute Plan 03-03
+Status: Phase complete — ready for verification
 Last activity: 2026-06-09
 
 Progress: [████████░░] 75%
@@ -56,6 +56,7 @@ Progress: [████████░░] 75%
 *Updated after each plan completion*
 | Phase 3 P1 | 4min | 2 tasks | 4 files |
 | Phase 3 P2 | 5min | 2 tasks | 5 files |
+| Phase 03 P03 | 5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - [Phase 3 P2]: _to_f32() returns 0-D array (not 1-D via atleast_1d) to preserve numpy broadcast semantics; arithmetic ops work naturally, rolling ops guard ndim==0 and return early
 - [Phase 3 P2]: TreeEvaluator broadcasts 0-D scalar output to [T] via np.broadcast_to after compile() result check
 - [Phase 3 P2]: GP-07 lookahead detection uses correlation proxy (no vectorbt) — leaky_corr=0.587 > clean_corr=0.582 > 0.5, confirming future-leak primitive inflates IS fitness
+- [Phase ?]: Deferred GP imports inside evaluate() body preserves D-15 (no deap in backtest layer)
+- [Phase ?]: fee_per_side = (fee_bps / 2.0) / 10_000.0 — round-trip bps to per-side decimal for vectorbt fees parameter
+- [Phase ?]: upon_opposite_entry='close' required with size_type='percent' to prevent double-position accumulation on long-to-short reversals
 
 ### Pending Todos
 
@@ -97,6 +101,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-09T16:47:00Z
-Stopped at: Phase 3 Plan 02 complete. TreeEvaluator + GP tests. Advancing to Plan 03-03 (BacktestRunner).
+Last session: 2026-06-09T16:58:50.646Z
+Stopped at: Phase 3 Plan 03 complete. BacktestRunner + evaluate() + EVAL tests. Phase 3 fully done.
 Resume file: None

@@ -32,10 +32,10 @@
 
 ### Evaluation & Fitness
 
-- [ ] **EVAL-01**: evaluate(individual) compiles the tree, generates signals, and calls vectorbt Portfolio.from_signals
-- [ ] **EVAL-02**: Transaction costs (configurable bps) applied inside evaluate(), not post-hoc
-- [ ] **EVAL-03**: Individuals generating fewer than 50 trades receive worst-possible fitness (not disqualified, ranked last)
-- [ ] **EVAL-04**: Fitness tuple is (Sharpe, total_return, -tree_size) — three objectives for NSGA-II
+- [x] **EVAL-01**: evaluate(individual) compiles the tree, generates signals, and calls vectorbt Portfolio.from_signals
+- [x] **EVAL-02**: Transaction costs (configurable bps) applied inside evaluate(), not post-hoc
+- [x] **EVAL-03**: Individuals generating fewer than 50 trades receive worst-possible fitness (not disqualified, ranked last)
+- [x] **EVAL-04**: Fitness tuple is (Sharpe, total_return, -tree_size) — three objectives for NSGA-II
 
 ### Evolution Engine
 
@@ -131,10 +131,10 @@
 | GP-06 | Phase 3 | Pending |
 | GP-07 | Phase 3 | Pending |
 | GP-08 | Phase 3 | Pending |
-| EVAL-01 | Phase 3 | Pending |
-| EVAL-02 | Phase 3 | Pending |
-| EVAL-03 | Phase 3 | Pending |
-| EVAL-04 | Phase 3 | Pending |
+| EVAL-01 | Phase 3 | Complete |
+| EVAL-02 | Phase 3 | Complete |
+| EVAL-03 | Phase 3 | Complete |
+| EVAL-04 | Phase 3 | Complete |
 | EVO-01 | Phase 4 | Pending |
 | EVO-02 | Phase 4 | Pending |
 | EVO-03 | Phase 4 | Pending |
