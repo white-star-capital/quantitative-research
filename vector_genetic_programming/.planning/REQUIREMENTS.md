@@ -21,9 +21,9 @@
 
 ### GP Primitives & Representation
 
-- [ ] **GP-01**: PrimitiveSetTyped declares Vector and Scalar as distinct Python type tokens
-- [ ] **GP-02**: Arithmetic primitives (+, -, *, protected-div) operate on both Vector and Scalar with correct broadcast
-- [ ] **GP-03**: Vector aggregation primitives (mean, std, min, max, rolling-stat variants) reduce Vector → Scalar
+- [x] **GP-01**: PrimitiveSetTyped declares Vector and Scalar as distinct Python type tokens
+- [x] **GP-02**: Arithmetic primitives (+, -, *, protected-div) operate on both Vector and Scalar with correct broadcast
+- [x] **GP-03**: Vector aggregation primitives (mean, std, min, max, rolling-stat variants) reduce Vector → Scalar
 - [ ] **GP-04**: Conditional primitives (if-then-else, comparison) cover all relevant type combinations
 - [ ] **GP-05**: Compiled GP trees broadcast over full [T × F] numpy arrays with no per-bar Python loops
 - [ ] **GP-06**: Signal generator converts scalar tree output to directional signals; signal at time t uses only data ≤ t-1
@@ -123,9 +123,9 @@
 | DATA-04 | Phase 2 | Pending |
 | COMM-01 | Phase 2 | Pending |
 | COMM-03 | Phase 2 | Pending |
-| GP-01 | Phase 3 | Pending |
-| GP-02 | Phase 3 | Pending |
-| GP-03 | Phase 3 | Pending |
+| GP-01 | Phase 3 | Complete |
+| GP-02 | Phase 3 | Complete |
+| GP-03 | Phase 3 | Complete |
 | GP-04 | Phase 3 | Pending |
 | GP-05 | Phase 3 | Pending |
 | GP-06 | Phase 3 | Pending |
