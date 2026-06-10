@@ -28,6 +28,11 @@ The system must evolve strategies that demonstrate positive out-of-sample Sharpe
 - [x] GP PrimitiveSetTyped with Vector/Scalar type tokens; 1,000 random trees all compile and execute without error — Validated in Phase 3
 - [x] TreeEvaluator.execute() applies structural fshift(1) (np.roll + zero index 0); GP-07 lookahead detection test passes — Validated in Phase 3
 - [x] evaluate() returns (Sharpe, total_return, -tree_size); fees baked in; <50 trades → (-inf, -inf, -size); no DEAP import in vgp.backtest — Validated in Phase 3
+- [x] NSGA-II evolution loop (varOr, selNSGA2, staticLimit depth≤8, ParetoFront HoF) runs end-to-end and terminates without error — Validated in Phase 4
+- [x] Parallel evaluation via spawn Pool with _jit_warmup in initializer; n_jobs=2 confirmed working (make approve) — Validated in Phase 4
+- [x] Checkpoint round-trip: save at gen N, resume produces identical HoF as continuous run — Validated in Phase 4
+- [x] Seed reproducibility: two runs with seed=42 produce identical Pareto fronts — Validated in Phase 4
+- [x] Conditional primitives (gt, lt, if_then_else) registered in pset; 44 tests pass — Validated in Phase 4
 
 ### Active
 

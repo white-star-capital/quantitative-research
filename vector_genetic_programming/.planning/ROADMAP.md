@@ -89,9 +89,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Conditional primitives (gt/lt/if_then_else), EvolutionConfig dataclass, duck-typed tracker (NoOpTracker/MLflowTracker)
-- [ ] 04-02-PLAN.md — NSGA-II evolution loop (varOr-based), checkpoint save/load, spawn Pool with JIT warmup
-- [ ] 04-03-PLAN.md — vgp/evolution/__init__.py public exports, tests/test_evolution.py (EVO-01 through EVO-07, EXP-01 through EXP-03)
+- [x] 04-01-PLAN.md — Conditional primitives (gt/lt/if_then_else), EvolutionConfig dataclass, duck-typed tracker (NoOpTracker/MLflowTracker)
+- [x] 04-02-PLAN.md — NSGA-II evolution loop (varOr-based), checkpoint save/load, spawn Pool with JIT warmup
+- [x] 04-03-PLAN.md — vgp/evolution/__init__.py public exports, tests/test_evolution.py (EVO-01 through EVO-07, EXP-01 through EXP-03)
 
 ### Phase 5: Validation & Publication
 **Goal**: Walk-forward OOS results are computed across multiple windows and seeds with DSR reported, publication-quality visualizations are exported, and the repository is ready for community release.
@@ -116,10 +116,10 @@ Plans:
 | 1. Foundation & Environment | 2/2 | Complete | 2026-06-08 |
 | 2. Data Pipeline | 3/3 | Complete | 2026-06-08 |
 | 3. GP Core & Evaluation | 3/3 | Complete   | 2026-06-09 |
-| 4. Evolution Engine | 0/3 | Not started | - |
+| 4. Evolution Engine | 3/3 | Complete | 2026-06-10 |
 | 5. Validation & Publication | 0/? | Not started | - |
 
 ---
 
 *Roadmap created: 2026-06-03*
-*Last updated: 2026-06-09 — Phase 3 complete; Phase 4 Evolution Engine planned: 3 plans in 3 waves*
+*Last updated: 2026-06-10 — Phase 4 complete; Phase 5 Validation & Publication ready to plan*

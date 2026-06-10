@@ -14,17 +14,17 @@
 
 ### Data Pipeline
 
-- [ ] **DATA-01**: DataLoader ingests multi-asset parquet files into a standardized DataFrame with DatetimeIndex
-- [ ] **DATA-02**: FeatureEngine computes rolling window features (returns, volatility, normalized OHLCV, on-chain metrics)
-- [ ] **DATA-03**: Time-based train / validation / test split is defined before first evolution run and enforced structurally
-- [ ] **DATA-04**: Data pipeline validated with a known-good parquet fixture (correct schema, no NaNs in output)
+- [x] **DATA-01**: DataLoader ingests multi-asset parquet files into a standardized DataFrame with DatetimeIndex — Validated in Phase 2
+- [x] **DATA-02**: FeatureEngine computes rolling window features (returns, volatility, normalized OHLCV, on-chain metrics) — Validated in Phase 2
+- [x] **DATA-03**: Time-based train / validation / test split is defined before first evolution run and enforced structurally — Validated in Phase 2
+- [x] **DATA-04**: Data pipeline validated with a known-good parquet fixture (correct schema, no NaNs in output) — Validated in Phase 2
 
 ### GP Primitives & Representation
 
 - [x] **GP-01**: PrimitiveSetTyped declares Vector and Scalar as distinct Python type tokens
 - [x] **GP-02**: Arithmetic primitives (+, -, *, protected-div) operate on both Vector and Scalar with correct broadcast
 - [x] **GP-03**: Vector aggregation primitives (mean, std, min, max, rolling-stat variants) reduce Vector → Scalar
-- [ ] **GP-04**: Conditional primitives (if-then-else, comparison) cover all relevant type combinations
+- [x] **GP-04**: Conditional primitives (if-then-else, comparison) cover all relevant type combinations — Validated in Phase 4 Plan 01 (gt, lt, if_then_else added to pset)
 - [x] **GP-05**: Compiled GP trees broadcast over full [T × F] numpy arrays with no per-bar Python loops — Validated in Phase 3 Plan 02
 - [x] **GP-06**: Signal generator converts scalar tree output to directional signals; signal at time t uses only data ≤ t-1 — Validated in Phase 3 Plan 02 (structural fshift(1) in TreeEvaluator, signal[0]==0.0 always)
 - [x] **GP-07**: Lookahead detection test: injects a future-leak primitive and asserts fitness is worse than random — Validated in Phase 3 Plan 02 (leaky_corr=0.587 > clean_corr=0.582 > 0.5)
@@ -39,19 +39,19 @@
 
 ### Evolution Engine
 
-- [ ] **EVO-01**: DEAP toolbox wires selNSGA2, cxOnePoint crossover, mutUniform mutation with configurable probabilities
-- [ ] **EVO-02**: eaMuPlusLambda runs a complete evolution loop; population size and generation count are configurable
-- [ ] **EVO-03**: GP tree depth hard-limited to 8 via DEAP staticLimit decorator
-- [ ] **EVO-04**: Hall-of-fame tracks the top-N non-dominated individuals across all generations
-- [ ] **EVO-05**: Generation-level checkpoints written to disk (pickle: population + rng state); resumable from any checkpoint
-- [ ] **EVO-06**: DEAP Statistics and Logbook capture per-generation metrics (mean/max/min Sharpe, mean tree size)
-- [ ] **EVO-07**: Parallel evaluation via multiprocessing.Pool (toolbox.register("map", pool.map)) with vectorbt JIT warmup in worker initializer
+- [x] **EVO-01**: DEAP toolbox wires selNSGA2, cxOnePoint crossover, mutUniform mutation with configurable probabilities — Validated in Phase 4 Plan 02
+- [x] **EVO-02**: eaMuPlusLambda runs a complete evolution loop; population size and generation count are configurable — Validated in Phase 4 Plan 02
+- [x] **EVO-03**: GP tree depth hard-limited to 8 via DEAP staticLimit decorator — Validated in Phase 4 Plan 02 (staticLimit on both mate and mutate)
+- [x] **EVO-04**: Hall-of-fame tracks the top-N non-dominated individuals across all generations — Validated in Phase 4 Plan 02
+- [x] **EVO-05**: Generation-level checkpoints written to disk (dill: population + rng state); resumable from any checkpoint — Validated in Phase 4 Plan 02
+- [x] **EVO-06**: DEAP Statistics and Logbook capture per-generation metrics (mean/max/min Sharpe, mean tree size) — Validated in Phase 4 Plan 03 (logbook.chapters['fitness'/'size'])
+- [x] **EVO-07**: Parallel evaluation via multiprocessing.Pool with vectorbt JIT warmup in worker initializer — Validated in Phase 4 Plan 02 (spawn context + _jit_warmup)
 
 ### Experiment Tracking
 
-- [ ] **EXP-01**: MLflow experiment run logs all hyperparameters (pop size, generations, mutation rate, depth limit, fitness weights)
-- [ ] **EXP-02**: MLflow logs per-generation statistics from Logbook
-- [ ] **EXP-03**: Experiment is reproducible: given the same seed, two runs produce identical Pareto fronts
+- [x] **EXP-01**: MLflow experiment run logs all hyperparameters (pop size, generations, mutation rate, depth limit, fitness weights) — Validated in Phase 4 Plan 03 (MLflowTracker, skipped if mlflow not installed)
+- [x] **EXP-02**: MLflow logs per-generation statistics from Logbook — Validated in Phase 4 Plan 03
+- [x] **EXP-03**: Experiment is reproducible: given the same seed, two runs produce identical Pareto fronts — Validated in Phase 4 Plan 03 (EXP-03 test passes)
 
 ### Validation & Analysis
 
