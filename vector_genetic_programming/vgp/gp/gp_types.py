@@ -35,6 +35,10 @@ from vgp.gp.primitives import (
     rolling_std_20,
     rolling_max_20,
     rolling_min_20,
+    # Phase 4 additions (D-10):
+    gt,
+    lt,
+    if_then_else,
 )
 
 # ---------------------------------------------------------------------------
@@ -72,8 +76,7 @@ def build_pset() -> gp.PrimitiveSetTyped:
     as inputs to arithmetic ops would be type-invalid and DEAP would dead-end
     during tree generation.
 
-    NOTE on GP-04: Conditional/comparison primitives are deferred per D-07.
-    They are NOT registered in this primitive set.
+    NOTE on Phase 4 (D-10): gt, lt, if_then_else added as conditional/comparison primitives.
 
     Returns
     -------
@@ -103,6 +106,11 @@ def build_pset() -> gp.PrimitiveSetTyped:
     pset.addPrimitive(rolling_std_20, [Vector], Scalar, name="rstd20")
     pset.addPrimitive(rolling_max_20, [Vector], Scalar, name="rmax20")
     pset.addPrimitive(rolling_min_20, [Vector], Scalar, name="rmin20")
+
+    # Conditional/comparison primitives: Phase 4 additions (D-10)
+    pset.addPrimitive(gt, [Vector, Vector], Vector, name="gt")
+    pset.addPrimitive(lt, [Vector, Vector], Vector, name="lt")
+    pset.addPrimitive(if_then_else, [Vector, Vector, Vector], Vector, name="if_then_else")
 
     # Scalar terminal: ephemeral integer constant in [-5, 5]
     # _rand_scalar_int is module-level (not a lambda) so multiprocessing.Pool

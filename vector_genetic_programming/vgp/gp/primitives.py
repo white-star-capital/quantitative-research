@@ -197,3 +197,27 @@ def rolling_min_20(x: np.ndarray) -> np.ndarray:
     result[:19] = x32[:19]
     result[19:] = window.min(axis=-1)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Conditional/comparison primitives: [Vector, Vector] -> Vector  [D-10]
+# Added in Phase 4. Returns 0.0/1.0 float32 arrays — compose naturally
+# with arithmetic primitives without needing a boolean type in the type system.
+# ---------------------------------------------------------------------------
+
+def gt(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Element-wise greater-than. Returns 0.0/1.0 float32 array (D-10)."""
+    return (np.asarray(a, dtype=np.float32) > np.asarray(b, dtype=np.float32)).astype(np.float32)
+
+
+def lt(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Element-wise less-than. Returns 0.0/1.0 float32 array (D-10)."""
+    return (np.asarray(a, dtype=np.float32) < np.asarray(b, dtype=np.float32)).astype(np.float32)
+
+
+def if_then_else(cond: np.ndarray, true_val: np.ndarray, false_val: np.ndarray) -> np.ndarray:
+    """Element-wise conditional. Selects true_val where cond > 0, else false_val (D-10)."""
+    c = np.asarray(cond, dtype=np.float32)
+    t = np.asarray(true_val, dtype=np.float32)
+    f = np.asarray(false_val, dtype=np.float32)
+    return np.where(c > 0, t, f).astype(np.float32)
