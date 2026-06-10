@@ -60,9 +60,9 @@ dev = [
 # mlflow requires pandas<3, which conflicts with our pandas>=3.0.0 core requirement.
 # Install this extra only when you need MLflow tracking and are OK running it against
 # a pandas<3 environment (e.g., a separate venv or a service-mode tracking server).
-# Phase 4 will determine the final experiment tracking approach.
+# Phase 4 tracking approach: NoOpTracker (default) + optional MLflowTracker (D-02/D-03).
 tracking = [
-  "mlflow>=2.14",
+  "mlflow>=3.0",
 ]
 
 [tool.setuptools.packages.find]
