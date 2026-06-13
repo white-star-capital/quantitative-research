@@ -18,15 +18,103 @@ See `vgp/gp/primitives.py` for examples (added in Phase 3).
 
 ## Running an Experiment
 
-The experiment entry point will be documented here once Phase 4 (Evolution Engine) is complete. The planned interface is:
+`WalkForwardRunner` is the high-level entry point for running a full multi-seed, walk-forward experiment. It handles window generation, per-seed evolution, OOS evaluation, and DSR computation.
 
+```python
+from vgp.analysis import generate_windows, WalkForwardRunner
+from vgp.backtest.runner import EvalConfig
+from vgp.evolution.config import EvolutionConfig
+
+# Generate 4 walk-forward windows from available data
+windows = generate_windows("2024-01-01", "2026-04-01")
+
+# Configure evolution (small config for testing)
+evo_kwargs = dict(
+    pop_size=50, n_generations=10, cxpb=0.7, mutpb=0.2,
+    n_jobs=1, tree_height_limit=8, checkpoint_freq=5,
+    checkpoint_dir="checkpoints",
+)
+
+# EvalConfig controls backtest parameters (fees, min trades)
+eval_cfg = EvalConfig(
+    fee_pct=0.001,        # 0.1% per trade (taker fee)
+    min_trades=50,        # individuals with fewer trades get worst fitness
+    periods_per_year=252,
+)
+
+# Run experiment across 3 seeds and all windows
+runner = WalkForwardRunner(
+    feature_matrix=fm,    # float32 [T×F×A] from FeatureEngine
+    windows=windows,
+    eval_cfg=eval_cfg,
+    evo_kwargs=evo_kwargs,
+    seeds=[0, 1, 2],
+    output_dir="results",
+)
+all_results = runner.run()
 ```
-python -m vgp.evolution.run --config config.yaml
+
+Results are saved to `results/results.csv` automatically. Each row is one (window, seed) combination. To load a pre-existing feature matrix, use `DataLoader` and `FeatureEngine`:
+
+```python
+from vgp.data import DataLoader, FeatureEngine, WalkForwardSplitter
+
+loader = DataLoader(cache_dir="data/cache")
+ohlcv = loader.load()                     # dict[str, pd.DataFrame]
+fe = FeatureEngine()
+fm = fe.transform(ohlcv)                  # float32 [T×F×A]
 ```
 
-Note: the full CLI including config schema, population size, and NSGA-II parameters is added in Phase 4.
+See `vgp/evolution/` for the NSGA-II loop and `vgp/evolution/config.py` for all `EvolutionConfig` parameters.
 
-See `vgp/evolution/` for the NSGA-II loop (added in Phase 4).
+## Interpreting Results
+
+After a run, `results/results.csv` contains one row per (window, seed) combination with these columns:
+
+| Column | Description |
+|--------|-------------|
+| `window_id` | Integer index of the walk-forward window (0-indexed) |
+| `seed` | Random seed used for this evolution run |
+| `is_sharpe` | In-sample Sharpe ratio of the best individual (annualized, with fees) |
+| `oos_sharpe` | Out-of-sample Sharpe ratio on the held-out test split |
+| `dsr` | Deflated Sharpe Ratio — significance probability after correcting for multiple testing |
+
+**Key interpretation rules:**
+
+- **DSR > 0.95** means the strategy is statistically significant at the 5% level after correcting for the number of strategies tested (Bailey & Lopez de Prado, 2014). Prioritize DSR over raw OOS Sharpe.
+- **`median_oos_sharpe` across seeds** is more reliable than any single-seed OOS Sharpe. Aggregate results with `aggregate_seeds()` from `vgp.analysis`.
+- **IS Sharpe >> OOS Sharpe** indicates overfitting. Remedies: reduce `n_generations`, increase `min_trades` threshold, or increase the `tree_height_limit` penalty weight.
+- **Negative OOS Sharpe** is a valid result — the strategy found no edge on held-out data. Run more seeds before concluding (3-5 minimum).
+
+Aggregate across seeds programmatically:
+
+```python
+from vgp.analysis import aggregate_seeds
+
+# all_results is list of dicts from runner.run()
+window_0_results = [r for r in all_results if r["window_id"] == 0]
+summary = aggregate_seeds(window_0_results)
+# summary keys: median_oos_sharpe, iqr_oos_sharpe, median_dsr, n_seeds_positive_oos
+```
+
+## Visualizations
+
+Three plots are generated automatically in `results/` when using `WalkForwardRunner`. To regenerate them manually:
+
+```python
+from vgp.analysis import plot_pareto_front, plot_equity_curves, plot_tree_graph
+
+# Pareto front scatter (3D: Sharpe vs total_return vs tree_size)
+plot_pareto_front(hof, "results/pareto_front.png")
+
+# IS/OOS equity curves with train/test boundary overlay
+# plot_equity_curves(individuals, fm, eval_cfg, train_end, "results/equity_curves.png")
+
+# GP tree graph (networkx, no graphviz required)
+plot_tree_graph(hof[0], "results/tree_graph.png", title="Best Individual")
+```
+
+All three functions write PNG files and return `None`. They use the `Agg` matplotlib backend (headless-safe — no display required). Plots are saved at 150 dpi.
 
 ## Updating the Dependency Lock File
 
