@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 4 complete — NSGA-II evolution engine, parallel eval, checkpointing, MLflow tracking all done. 44 tests pass. Ready to plan Phase 5.
+status: planned
+stopped_at: Phase 5 planned — 3 plans in 3 waves. Validation & Publication (walk-forward runner, DSR, visualizations, community release). Ready to execute.
 last_updated: "2026-06-10T00:00:00.000Z"
 last_activity: 2026-06-10
 progress:
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-10)
 ## Current Position
 
 Phase: 5 of 5 (Validation & Publication)
-Plan: 0 of TBD in current phase
-Status: Ready to plan — run /gsd-plan-phase 5
+Plan: 0 of 3 in current phase
+Status: Ready to execute — 3 plans in 3 waves
 Last activity: 2026-06-10
 
 Progress: [██████████░░] 80%
