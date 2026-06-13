@@ -103,7 +103,12 @@ Plans:
   3. Pareto front scatter plot (Sharpe vs. return vs. tree size) is exported as an image for the top generation of a completed run
   4. Equity curves for the top-3 individuals are plotted with in-sample and OOS periods overlaid and visually distinguishable
   5. GP tree structure for top individuals is exported as a graph (NetworkX + matplotlib); a human can read the tree and verify it contains no obvious lookahead patterns
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — vgp/analysis/runner.py (WalkForwardRunner, generate_windows), vgp/analysis/dsr.py (compute_dsr, aggregate_seeds, save_results_csv), tests/test_validation.py (VAL-01 through VAL-04)
+- [ ] 05-02-PLAN.md — vgp/analysis/plots.py (plot_pareto_front, plot_equity_curves, plot_tree_graph), tests/test_plots.py (VAL-05 through VAL-07)
+- [ ] 05-03-PLAN.md — README.md (create), CONTRIBUTING.md (update Phase 4/5 sections), full test suite gate, human visual checkpoint
 
 ---
 
@@ -117,9 +122,9 @@ Plans:
 | 2. Data Pipeline | 3/3 | Complete | 2026-06-08 |
 | 3. GP Core & Evaluation | 3/3 | Complete   | 2026-06-09 |
 | 4. Evolution Engine | 3/3 | Complete | 2026-06-10 |
-| 5. Validation & Publication | 0/? | Not started | - |
+| 5. Validation & Publication | 0/3 | Not started | - |
 
 ---
 
 *Roadmap created: 2026-06-03*
-*Last updated: 2026-06-10 — Phase 4 complete; Phase 5 Validation & Publication ready to plan*
+*Last updated: 2026-06-13 — Phase 5 planned; 3 plans in 2 waves*
