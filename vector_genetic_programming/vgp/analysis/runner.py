@@ -183,6 +183,7 @@ class WalkForwardRunner:
         base_eval_config: EvalConfig,
         seeds: list[int],
         evo_config_kwargs: dict,
+        n_trials: int | None = None,
     ) -> list[dict]:
         """Run evolution for all seeds on one window. Returns one dict per seed.
 
@@ -205,6 +206,11 @@ class WalkForwardRunner:
             Seeds to iterate over. Length = n_seeds.
         evo_config_kwargs : dict
             Keyword args for EvolutionConfig (excluding seed, which is set per iteration).
+        n_trials : int | None
+            Total independent trials for DSR multiple-testing correction
+            (seeds × windows across the full experiment). Defaults to len(seeds).
+            Pass the true total when calling run_window() in a multi-window loop:
+            ``n_trials=len(seeds) * n_windows``.
         """
         logger.info(
             "Window %d: train_end=%s test_start=%s test_end=%s n_seeds=%d",
@@ -262,8 +268,11 @@ class WalkForwardRunner:
 
             best_ind = hof[0]
 
-            # IS Sharpe: last generation's max from logbook
-            is_sharpe = float(logbook.chapters["fitness"][-1]["sharpe_max"])
+            # IS Sharpe: read from the individual's fitness tuple (index 0 = Sharpe).
+            # Using hof[0].fitness.values[0] rather than the logbook population-max
+            # because hof[0] is the specific individual evaluated OOS — the two can
+            # diverge under multi-objective (NSGA-II) selection.
+            is_sharpe = float(best_ind.fitness.values[0])
 
             # --- OOS evaluate: called EXACTLY ONCE per (window, seed) --- #
             oos_fitness = evaluate(best_ind, test_fm, test_eval_cfg)
@@ -274,10 +283,12 @@ class WalkForwardRunner:
             # Uses train data only (no OOS leakage). _get_is_returns() is
             # a separate helper so tests can patch it without requiring
             # actual GP tree execution.
-            n_trials = max(1, len(seeds))
+            # n_trials should be seeds × windows for the full experiment;
+            # defaults to len(seeds) when called without n_trials.
+            n_trials_actual = max(1, n_trials if n_trials is not None else len(seeds))
             try:
                 is_returns = _get_is_returns(best_ind, train_fm, train_eval_cfg)
-                dsr = compute_dsr(is_returns, sr_hat=is_sharpe, n_trials=n_trials)
+                dsr = compute_dsr(is_returns, sr_hat=is_sharpe, n_trials=n_trials_actual)
             except Exception as exc:  # pragma: no cover — only fires if vbt/eval fails
                 logger.warning(
                     "Window %d seed %d: DSR computation failed (%s) — defaulting to 0.0",

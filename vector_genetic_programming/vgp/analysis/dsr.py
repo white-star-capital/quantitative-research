@@ -65,21 +65,25 @@ def compute_dsr(
         + _EULER_GAMMA * norm.ppf(1 - 1 / (n_trials * np.e))
     )
 
+    # De-annualize: formula requires per-period SR (Bailey & Lopez de Prado 2014, eq. 5)
+    # sr_hat from vectorbt is annualized (daily × sqrt(252)); undo the scaling.
+    sr_hat_pp = sr_hat / np.sqrt(periods_per_year)
+
     # Return distribution moments
     ret_skew = float(skew(returns))
     # kurtosis(fisher=True) returns EXCESS kurtosis — matches DSR formula
     ret_kurt = float(kurtosis(returns, fisher=True))
 
-    # Variance of SR estimate (non-normality adjustment)
+    # Variance of SR estimate (non-normality adjustment, per-period units)
     sr_var = (
-        1 + (0.5 * sr_hat**2) - ret_skew * sr_hat + ((ret_kurt / 4) * sr_hat**2)
+        1 + (0.5 * sr_hat_pp**2) - ret_skew * sr_hat_pp + ((ret_kurt / 4) * sr_hat_pp**2)
     ) / (T - 1)
 
     if sr_var <= 0.0:
         logger.debug("compute_dsr: non-positive sr_var (%f) — returning 0.0", sr_var)
         return 0.0
 
-    dsr = float(norm.cdf((sr_hat - expected_max_sr) / np.sqrt(sr_var)))
+    dsr = float(norm.cdf((sr_hat_pp - expected_max_sr) / np.sqrt(sr_var)))
     return float(np.clip(dsr, 0.0, 1.0))
 
 

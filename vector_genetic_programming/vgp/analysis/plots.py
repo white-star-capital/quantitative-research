@@ -22,8 +22,6 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 — required for projectio
 import networkx as nx
 import numpy as np
 import pandas as pd
-import vectorbt as vbt
-from deap import gp as deap_gp
 
 from vgp.backtest.runner import EvalConfig
 from vgp.gp.gp_types import build_pset
@@ -101,6 +99,8 @@ def plot_equity_curves(
     if not individuals:
         logger.warning("plot_equity_curves: no individuals provided — skipping")
         return
+
+    import vectorbt as vbt  # noqa: PLC0415 — deferred (avoid loading vbt on vgp.analysis import)
 
     T, F, A = feature_matrix.shape
     pset = build_pset()
@@ -181,6 +181,8 @@ def plot_tree_graph(
     title : str
         Figure title prefix.
     """
+    from deap import gp as deap_gp  # noqa: PLC0415 — deferred (avoid loading deap on vgp.analysis import)
+
     nodes, edges, labels = deap_gp.graph(individual)
 
     G = nx.DiGraph()

@@ -37,21 +37,22 @@ evo_kwargs = dict(
 
 # EvalConfig controls backtest parameters (fees, min trades)
 eval_cfg = EvalConfig(
-    fee_pct=0.001,        # 0.1% per trade (taker fee)
+    fee_bps=10.0,         # 10 bps round-trip taker fee (default)
     min_trades=50,        # individuals with fewer trades get worst fitness
-    periods_per_year=252,
 )
 
-# Run experiment across 3 seeds and all windows
-runner = WalkForwardRunner(
-    feature_matrix=fm,    # float32 [T×F×A] from FeatureEngine
-    windows=windows,
-    eval_cfg=eval_cfg,
-    evo_kwargs=evo_kwargs,
+# Run one walk-forward window across 3 seeds
+# WalkForwardRunner takes the DatetimeIndex from FeatureEngine.dates_
+runner = WalkForwardRunner(dates=fe.dates_)
+window_results = runner.run_window(
+    window=windows[0],
+    feature_matrix=fm,          # float32 [T×F×A] from FeatureEngine
+    close_prices=close_prices,  # pd.DataFrame [T×A] with DatetimeIndex
+    base_eval_config=eval_cfg,
     seeds=[0, 1, 2],
-    output_dir="results",
+    evo_config_kwargs=evo_kwargs,
 )
-all_results = runner.run()
+all_results = window_results  # list of dicts, one per seed
 ```
 
 Results are saved to `results/results.csv` automatically. Each row is one (window, seed) combination. To load a pre-existing feature matrix, use `DataLoader` and `FeatureEngine`:
@@ -75,9 +76,13 @@ After a run, `results/results.csv` contains one row per (window, seed) combinati
 |--------|-------------|
 | `window_id` | Integer index of the walk-forward window (0-indexed) |
 | `seed` | Random seed used for this evolution run |
+| `train_end` | Last date of in-sample training period (ISO format) |
+| `test_start` | First date of out-of-sample test period (ISO format) |
+| `test_end` | Last date of out-of-sample test period (ISO format) |
 | `is_sharpe` | In-sample Sharpe ratio of the best individual (annualized, with fees) |
 | `oos_sharpe` | Out-of-sample Sharpe ratio on the held-out test split |
 | `dsr` | Deflated Sharpe Ratio — significance probability after correcting for multiple testing |
+| `n_nodes_best` | Node count of the best individual's GP tree |
 
 **Key interpretation rules:**
 
