@@ -2,43 +2,43 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planned
-stopped_at: Phase 5 planned — 3 plans in 3 waves. Validation & Publication (walk-forward runner, DSR, visualizations, community release). Ready to execute.
-last_updated: "2026-06-10T00:00:00.000Z"
-last_activity: 2026-06-10
+status: complete
+stopped_at: Phase 5 complete — milestone v1.0 achieved. All 5 phases done, 14 plans, 57 tests passing.
+last_updated: "2026-06-13T00:00:00.000Z"
+last_activity: 2026-06-13
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
-  percent: 80
+  completed_phases: 5
+  total_plans: 14
+  completed_plans: 14
+  percent: 100
 ---
 
 # Project State: VGP
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-10)
+See: .planning/PROJECT.md (updated 2026-06-13)
 
 **Core value:** Evolve strategies with demonstrable positive out-of-sample Sharpe ratio
-**Current focus:** Phase 5 — Validation & Publication
+**Current focus:** Milestone v1.0 complete
 
 ## Current Position
 
-Phase: 5 of 5 (Validation & Publication)
-Plan: 0 of 3 in current phase
-Status: Ready to execute — 3 plans in 3 waves
-Last activity: 2026-06-10
+Phase: 5 of 5 (Validation & Publication) — COMPLETE
+Plan: 3 of 3 in final phase — COMPLETE
+Status: Milestone v1.0 achieved
+Last activity: 2026-06-13
 
-Progress: [██████████░░] 80%
+Progress: [████████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 11
-- Average duration: ~5 min/plan
-- Total execution time: ~55 min
+- Total plans completed: 14
+- Average duration: ~6 min/plan
+- Total execution time: ~84 min
 
 **By Phase:**
 
@@ -48,11 +48,7 @@ Progress: [██████████░░] 80%
 | 2 — Data Pipeline | 3 | ~22 min | 7 min |
 | 3 — GP Core & Evaluation | 3 | ~14 min | 4.7 min |
 | 4 — Evolution Engine | 3 | ~18 min | 6 min |
-
-**Recent Trend:**
-
-- Last 5 plans: 03-01 (~4min), 03-02 (~5min), 04-01 (~6min), 04-02 (~6min), 04-03 (~6min)
-- Trend: Fast (well-specified plans, minimal surprises)
+| 5 — Validation & Publication | 3 | ~25 min | 8 min |
 
 *Updated after each plan completion*
 | Phase 3 P1 | 4min | 2 tasks | 4 files |
@@ -61,6 +57,9 @@ Progress: [██████████░░] 80%
 | Phase 4 P1 | 6min | 2 tasks | 5 files |
 | Phase 4 P2 | 6min | 3 tasks | 4 files |
 | Phase 4 P3 | 6min | 2 tasks | 2 files |
+| Phase 5 P1 | 8min | 2 tasks | 4 files |
+| Phase 5 P2 | 8min | 3 tasks | 4 files |
+| Phase 5 P3 | 10min | 2+1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -85,6 +84,13 @@ Recent decisions affecting current work:
 - [Phase 4 P2]: DEAP Logbook stores MultiStatistics chapters in logbook.chapters['fitness'/'size'], not per-entry dicts
 - [Phase 4 P2]: DEAP toolbox.register partial sets __name__ = alias; underlying function accessed via .func for identity checks
 - [Phase 4 P3]: D-15 check uses source-code inspection (not sys.modules) — transitive vectorbt import via runner.py always populates sys.modules
+- [Phase 5 P1]: OOS touchonce structural enforcement — test_fm is a local variable in _run_window(), not stored on runner; one evaluate() call per window after run_evolution() returns
+- [Phase 5 P1]: _get_is_returns() extracted as module-level function for test patching; compute_dsr imported at module level for same reason
+- [Phase 5 P2]: plot_equity_curves() calls vbt.Portfolio.from_signals() directly — evaluate() interface unchanged; Portfolio object is created fresh for visualization only
+- [Phase 5 P2]: deap.gp.graph() + nx.bfs_layout(G, start=0) replaces graphviz — no system dependency required
+- [Phase 5 P2]: matplotlib.use('Agg') at module top in plots.py — headless rendering, no display required
+- [Phase 5 P3]: Human checkpoint placed after Task 1+2 complete — visual sign-off on plots before SUMMARY.md created
+- [Phase 5 P3]: README honest caveat: positive OOS Sharpe is the goal, not a guarantee — research tool framing preserved
 
 ### Pending Todos
 
@@ -98,10 +104,9 @@ None.
 - ✓ TreeEvaluator structural fshift(1) verified — GP-06 test passes (signal[0]==0.0 always)
 - ✓ 1000-tree validation passes (GP-08) — ephemeral constant scalar coercion fixed
 - ✓ Parallel eval confirmed working (make approve) — n_jobs=2 spawn pool, JIT warmup fires, no errors
-- vectorbt 1.0.0 has no official migration guide from 0.x — all API calls must be verified against 1.0 docs directly
-- mlflow requires pandas<3 (incompatible with pandas>=3.0.0); moved to [tracking] optional extra — skip mlflow in Phase 5, use CSV/JSON for experiment logs
-- On-chain data availability in parquet files unknown; if absent, defer on-chain terminals and constrain to price/volume primitives
-- 3/30 assets geo-restricted (HYPE, AERO, FLUID — 451 Binance error); 21/30 pass min_obs_fraction filter after intersection
+- ✓ mlflow deferred to optional extra — Phase 5 uses CSV/JSON for experiment logs
+- ✓ VAL-01 through VAL-07 all verified — 57 tests passing, 0 failed
+- ✓ Human checkpoint approved — pareto_front.png and tree_graph.png visually correct
 
 ## Deferred Items
 
@@ -111,6 +116,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-10T00:00:00.000Z
-Stopped at: Phase 4 complete. 44 tests pass (11 evolution + 33 prior). human approval via `make approve`. Phase 5 ready to plan.
+Last session: 2026-06-13T00:00:00.000Z
+Stopped at: Milestone v1.0 complete. Phase 5 done. 57 tests pass. README.md and CONTRIBUTING.md published. Human checkpoint approved.
 Resume file: None

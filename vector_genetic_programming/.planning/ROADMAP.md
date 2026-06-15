@@ -1,7 +1,7 @@
 # Roadmap: Vector Genetic Programming (VGP)
 
 **Milestone:** v1.0 — Research-grade VGP system with positive OOS Sharpe
-**Status:** Not started
+**Status:** Complete
 **Phases:** 5
 **Requirements mapped:** 40/40
 
@@ -18,8 +18,8 @@ The build follows a strict dependency order: environment first, then data, then 
 - [x] **Phase 1: Foundation & Environment** - Reproducible Python environment with verified numba/numpy/vectorbt compatibility (complete 2026-06-08)
 - [x] **Phase 2: Data Pipeline** - Validated multi-asset feature matrix with enforced train/OOS split (complete 2026-06-08)
 - [x] **Phase 3: GP Core & Evaluation** - Single-tree compile, execute, and backtest working end-to-end (completed 2026-06-09)
-- [ ] **Phase 4: Evolution Engine** - Complete multi-generation NSGA-II evolution with parallel evaluation and experiment tracking
-- [ ] **Phase 5: Validation & Publication** - Walk-forward OOS results, DSR reporting, and community-ready repository
+- [x] **Phase 4: Evolution Engine** - Complete multi-generation NSGA-II evolution with parallel evaluation and experiment tracking (complete 2026-06-10)
+- [x] **Phase 5: Validation & Publication** - Walk-forward OOS results, DSR reporting, and community-ready repository (complete 2026-06-13)
 
 ---
 
@@ -106,9 +106,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — vgp/analysis/runner.py (WalkForwardRunner, generate_windows), vgp/analysis/dsr.py (compute_dsr, aggregate_seeds, save_results_csv), tests/test_validation.py (VAL-01 through VAL-04)
-- [ ] 05-02-PLAN.md — vgp/analysis/plots.py (plot_pareto_front, plot_equity_curves, plot_tree_graph), tests/test_plots.py (VAL-05 through VAL-07)
-- [ ] 05-03-PLAN.md — README.md (create), CONTRIBUTING.md (update Phase 4/5 sections), full test suite gate, human visual checkpoint
+- [x] 05-01-PLAN.md — vgp/analysis/runner.py (WalkForwardRunner, generate_windows), vgp/analysis/dsr.py (compute_dsr, aggregate_seeds, save_results_csv), tests/test_validation.py (VAL-01 through VAL-04)
+- [x] 05-02-PLAN.md — vgp/analysis/plots.py (plot_pareto_front, plot_equity_curves, plot_tree_graph), tests/test_plots.py (VAL-05 through VAL-07)
+- [x] 05-03-PLAN.md — README.md (create), CONTRIBUTING.md (update Phase 4/5 sections), full test suite gate, human visual checkpoint
 
 ---
 
@@ -122,9 +122,9 @@ Plans:
 | 2. Data Pipeline | 3/3 | Complete | 2026-06-08 |
 | 3. GP Core & Evaluation | 3/3 | Complete   | 2026-06-09 |
 | 4. Evolution Engine | 3/3 | Complete | 2026-06-10 |
-| 5. Validation & Publication | 0/3 | Not started | - |
+| 5. Validation & Publication | 3/3 | Complete | 2026-06-13 |
 
 ---
 
 *Roadmap created: 2026-06-03*
-*Last updated: 2026-06-13 — Phase 5 planned; 3 plans in 2 waves*
+*Last updated: 2026-06-13 — Phase 5 complete; milestone v1.0 achieved*
