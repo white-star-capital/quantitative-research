@@ -1,0 +1,6 @@
+.venv/
+agent.pid
+agent.log
+dashboard.pid
+dashboard.log
+__pycache__/

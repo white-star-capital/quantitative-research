@@ -1,0 +1,7 @@
+httpx
+numpy
+scipy
+requests
+python-dotenv
+streamlit
+pandas

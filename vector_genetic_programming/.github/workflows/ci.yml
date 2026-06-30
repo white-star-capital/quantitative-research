@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]   # run on every push so the smoke gate fires during development, not just at merge
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-test:
+    name: Smoke Test (Python 3.12)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install package and dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run smoke tests
+        run: pytest tests/test_smoke.py -v
+
+      - name: Verify numpy version constraint
+        run: |
+          python -c "
+          import numpy as np
+          from packaging.version import Version
+          version = np.__version__
+          assert Version(version) < Version('2.3'), f'numpy {version} violates <2.3 constraint required for numba'
+          print(f'numpy {version} — OK (< 2.3)')
+          "
