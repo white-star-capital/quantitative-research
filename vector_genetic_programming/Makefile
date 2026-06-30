@@ -1,6 +1,9 @@
 PYTHON := .venv/bin/python
 
-.PHONY: test smoke lint approve
+.PHONY: start test smoke lint approve
+
+start:
+	$(PYTHON) scripts/run.py
 
 test:
 	$(PYTHON) -m pytest tests/ -v --tb=short

@@ -25,6 +25,7 @@ from datetime import datetime
 
 import numpy as np
 from deap import algorithms, base, gp, tools
+from tqdm import tqdm
 
 from vgp.backtest.runner import EvalConfig, evaluate
 from vgp.evolution.checkpoint import load_checkpoint, save_checkpoint
@@ -201,6 +202,7 @@ def run_evolution(
     eval_config: EvalConfig,
     tracker=None,
     resume_checkpoint: str | None = None,
+    desc: str | None = None,
 ) -> tuple:
     """Run NSGA-II GP evolution and return (population, hof, logbook).
 
@@ -217,6 +219,8 @@ def run_evolution(
         Duck-typed experiment tracker (D-03). If None, uses NoOpTracker (no-op).
     resume_checkpoint : str | None
         Path to a checkpoint file to resume from. If None, starts fresh.
+    desc : str | None
+        Label for the tqdm generation progress bar. Defaults to "seed{seed}".
 
     Returns
     -------
@@ -318,51 +322,58 @@ def run_evolution(
             )
 
         # Main evolution loop — varOr replicates eaMuPlusLambda internals with checkpoint hook
-        for gen in range(start_gen, config.n_generations + 1):
-            # varOr: each offspring is CX OR mutation (not both) of a random parent
-            # Clones individuals and deletes fitness.values on modified ones
-            offspring = algorithms.varOr(
-                population, toolbox, config.pop_size, config.cxpb, config.mutpb
-            )
-
-            # Evaluate only individuals with invalidated fitness
-            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-            fitnesses = list(toolbox.map(toolbox.evaluate, invalid_ind))
-            for ind, fit in zip(invalid_ind, fitnesses):
-                ind.fitness.values = fit
-
-            # Update ParetoFront with new offspring (EVO-04)
-            hof.update(offspring)
-
-            # NSGA-II selection: mu individuals from combined parent + offspring pool
-            population[:] = toolbox.select(population + offspring, config.pop_size)
-
-            # Statistics and logging (EVO-06, EXP-02)
-            record = mstats.compile(population)
-            logbook.record(gen=gen, nevals=len(invalid_ind), **record)
-            tracker.log_metrics(_flatten_record(record), step=gen)
-
-            logger.info(
-                "Gen %d/%d | nevals=%d | sharpe_max=%.4f | size_mean=%.1f",
-                gen,
-                config.n_generations,
-                len(invalid_ind),
-                record.get("fitness", {}).get("sharpe_max", float("nan")),
-                record.get("size", {}).get("size_mean", float("nan")),
-            )
-
-            # Checkpoint every checkpoint_freq generations (EVO-05, D-08)
-            if gen % config.checkpoint_freq == 0:
-                ckpt_path = f"{config.checkpoint_dir}/{run_id}/gen_{gen:04d}.pkl"
-                save_checkpoint(
-                    ckpt_path,
-                    population=population,
-                    halloffame=hof,
-                    logbook=logbook,
-                    generation=gen,
-                    seed=config.seed,
+        pbar_desc = desc if desc is not None else f"seed{config.seed}"
+        with tqdm(
+            range(start_gen, config.n_generations + 1),
+            desc=pbar_desc,
+            unit="gen",
+            leave=True,
+            dynamic_ncols=True,
+        ) as pbar:
+            for gen in pbar:
+                # varOr: each offspring is CX OR mutation (not both) of a random parent
+                # Clones individuals and deletes fitness.values on modified ones
+                offspring = algorithms.varOr(
+                    population, toolbox, config.pop_size, config.cxpb, config.mutpb
                 )
-                logger.info("Checkpoint saved: %s", ckpt_path)
+
+                # Evaluate only individuals with invalidated fitness
+                invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+                fitnesses = list(toolbox.map(toolbox.evaluate, invalid_ind))
+                for ind, fit in zip(invalid_ind, fitnesses):
+                    ind.fitness.values = fit
+
+                # Update ParetoFront with new offspring (EVO-04)
+                hof.update(offspring)
+
+                # NSGA-II selection: mu individuals from combined parent + offspring pool
+                population[:] = toolbox.select(population + offspring, config.pop_size)
+
+                # Statistics and logging (EVO-06, EXP-02)
+                record = mstats.compile(population)
+                logbook.record(gen=gen, nevals=len(invalid_ind), **record)
+                tracker.log_metrics(_flatten_record(record), step=gen)
+
+                sharpe_max = record.get("fitness", {}).get("sharpe_max", float("nan"))
+                size_mean  = record.get("size", {}).get("size_mean", float("nan"))
+                pbar.set_postfix(SR=f"{sharpe_max:+.3f}", nodes=f"{size_mean:.1f}")
+                logger.debug(
+                    "Gen %d/%d | nevals=%d | sharpe_max=%.4f | size_mean=%.1f",
+                    gen, config.n_generations, len(invalid_ind), sharpe_max, size_mean,
+                )
+
+                # Checkpoint every checkpoint_freq generations (EVO-05, D-08)
+                if gen % config.checkpoint_freq == 0:
+                    ckpt_path = f"{config.checkpoint_dir}/{run_id}/gen_{gen:04d}.pkl"
+                    save_checkpoint(
+                        ckpt_path,
+                        population=population,
+                        halloffame=hof,
+                        logbook=logbook,
+                        generation=gen,
+                        seed=config.seed,
+                    )
+                    logger.debug("Checkpoint saved: %s", ckpt_path)
 
     finally:
         if pool is not None:

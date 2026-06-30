@@ -644,17 +644,19 @@ total_return = float(pf.total_return()) # float after group_by=True
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Scalar type token semantics (A1)**
    - What we know: Rolling aggregation functions (rolling_mean_5 etc.) are declared as `Vector → Scalar` in the primitive set
    - What's unclear: If `Scalar` is a separate class from `Vector`, arithmetic primitives typed as `[Vector, Vector] → Vector` cannot accept the output of a rolling primitive. Trees would dead-end at Scalar leaves with no way to feed back into Vector operations.
    - Recommendation: Define `Scalar` as an alias or subtype of `Vector` (or simply use the same `Vector` type token for both), and rely on rolling primitives being Vector-returning in practice. Alternatively, add a `scalar_broadcast(Scalar) → Vector` primitive. The planner should resolve this before implementing the primitive set.
+   - **RESOLVED:** `class Scalar(Vector)` — Scalar is defined as a subclass of Vector in `vgp/gp/gp_types.py`. DEAP's `issubclass()` type check accepts Scalar wherever Vector is expected, preventing dead-ends at rolling aggregation outputs. (Plan 03-01)
 
 2. **Close price DataFrame in EvalConfig**
    - What we know: `Portfolio.from_signals` requires close prices as a DataFrame with DatetimeIndex
    - What's unclear: Should `EvalConfig` carry the close prices, or should `evaluate()` derive them from the feature matrix (feature index 3 is `log_close`, not raw close)?
    - Recommendation: Pass the raw close prices separately from the feature matrix to `evaluate()`. The feature matrix is for tree execution; vectorbt needs actual prices for PnL calculation. Add `close_prices: pd.DataFrame` to `EvalConfig` or as an additional parameter to `evaluate()`.
+   - **RESOLVED:** `EvalConfig.close_prices: pd.DataFrame` field added. Feature index 3 is `log_close` (not suitable for PnL); raw close prices are passed separately. (Plan 03-03)
 
 ---
 
