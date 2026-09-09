@@ -43,6 +43,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import kurtosis, norm, skew
 
+from vgp.trials import TrialAccumulator, TrialSet
+
 logger = logging.getLogger(__name__)
 
 # Euler-Mascheroni constant
@@ -51,6 +53,11 @@ _EULER_GAMMA = 0.5772156649
 # Key under which run_window() stashes per-period IS returns on each result row.
 # attach_dsr() consumes and removes it; save_results_csv() drops any leftovers.
 IS_RETURNS_KEY = "_is_returns"
+
+# Key under which run_window() stashes that seed's TrialAccumulator (every
+# individual the GP evaluated). attach_dsr() merges these across rows to size
+# the multiple-testing correction, then removes the key.
+TRIALS_KEY = "_trial_accumulator"
 
 
 def _expected_max_sr_multiplier(n_trials: int) -> float:
@@ -71,7 +78,7 @@ def _expected_max_sr_multiplier(n_trials: int) -> float:
 def compute_dsr(
     returns: np.ndarray,
     sr_hat: float,
-    trial_sharpes: np.ndarray | list[float],
+    trial_sharpes: TrialSet | np.ndarray | list[float],
     periods_per_year: int = 252,
 ) -> float:
     """Deflated Sharpe Ratio — probability that SR_hat exceeds E[max SR under H0].
@@ -85,11 +92,17 @@ def compute_dsr(
         Annualized IS Sharpe ratio of this trial (from the fitness tuple or
         pf.sharpe_ratio()). Must be finite — a worst-fitness sentinel (-inf)
         is not a measurement and yields NaN.
-    trial_sharpes : np.ndarray | list[float]
-        Annualized IS Sharpe ratios of ALL trials in the experiment
-        (seeds x windows), including this one. Non-finite entries — e.g. the
-        (-inf, -inf, -size) worst-fitness sentinel — are dropped before
-        sigma_SR is estimated. At least 2 finite entries are required.
+    trial_sharpes : TrialSet | np.ndarray | list[float]
+        The trial set this Sharpe is being deflated against. Either a
+        `vgp.trials.TrialSet` (n_trials + annualized sr_std, as produced by the
+        streaming accumulator over every evaluated individual) or a raw array of
+        annualized trial Sharpe ratios, from which both are derived.
+        Non-finite entries — e.g. the (-inf, -inf, -size) worst-fitness
+        sentinel — are dropped; at least 2 finite trials are required.
+
+        A GP evaluates thousands of individuals, and each is a trial. Passing
+        only the per-seed winners understates N by orders of magnitude and
+        leaves the correction nearly inert — see vgp/trials.py.
     periods_per_year : int
         252 for daily data. Used to de-annualize sr_hat and trial_sharpes.
 
@@ -117,28 +130,28 @@ def compute_dsr(
         return float("nan")
 
     # --- sigma_SR: cross-sectional spread of trial Sharpes (per-period) --- #
-    trials = np.asarray(trial_sharpes, dtype=np.float64).ravel()
-    trials = trials[np.isfinite(trials)]
-    n_trials = int(trials.size)
-    if n_trials < 2:
+    trial_set = (
+        trial_sharpes
+        if isinstance(trial_sharpes, TrialSet)
+        else TrialSet.from_sharpes(trial_sharpes)
+    )
+    if not trial_set.is_usable:
         logger.debug(
-            "compute_dsr: %d finite trial Sharpe(s) — sigma_SR undefined, returning NaN",
-            n_trials,
+            "compute_dsr: unusable trial set (n=%d, sr_std=%s, label=%s) — "
+            "returning NaN",
+            trial_set.n_trials, trial_set.sr_std, trial_set.label,
         )
         return float("nan")
 
     sqrt_ppy = np.sqrt(periods_per_year)
-    sigma_sr_pp = float(np.std(trials / sqrt_ppy, ddof=1))
-    if not np.isfinite(sigma_sr_pp) or sigma_sr_pp <= 0.0:
-        logger.debug(
-            "compute_dsr: degenerate sigma_SR (%s) across %d trials — returning NaN",
-            sigma_sr_pp, n_trials,
-        )
-        return float("nan")
+    sigma_sr_pp = trial_set.sr_std / sqrt_ppy
 
-    multiplier = _expected_max_sr_multiplier(n_trials)
+    multiplier = _expected_max_sr_multiplier(trial_set.n_trials)
     if not np.isfinite(multiplier):
-        logger.debug("compute_dsr: bad E[SR_max] multiplier for n_trials=%d", n_trials)
+        logger.debug(
+            "compute_dsr: bad E[SR_max] multiplier for n_trials=%d",
+            trial_set.n_trials,
+        )
         return float("nan")
 
     # E[SR_max] under H0, in per-period units (Proposition 3)
@@ -170,22 +183,36 @@ def attach_dsr(
     results: list[dict],
     periods_per_year: int = 252,
 ) -> list[dict]:
-    """Fill in the ``dsr`` field on every result row, in place.
+    """Fill in the DSR fields on every result row, in place.
 
-    DSR needs sigma_SR across the whole trial set, so it cannot be computed
-    inside the per-seed loop — run_window() leaves ``dsr`` as NaN and stashes
-    per-period IS returns under ``IS_RETURNS_KEY``. Call this once after all
-    windows and seeds have run.
+    DSR needs the trial set across the whole experiment, so it cannot be
+    computed inside the per-seed loop — run_window() leaves ``dsr`` as NaN and
+    stashes both the per-period IS returns (``IS_RETURNS_KEY``) and that seed's
+    trial accumulator (``TRIALS_KEY``). Call this once after all windows and
+    seeds have run.
 
-    Rows whose IS Sharpe is non-finite (worst-fitness sentinel) are excluded
-    from the sigma_SR estimate and receive ``dsr = NaN``.
+    TWO BOUNDS ARE REPORTED, because the honest answer is an interval:
+
+    ``dsr`` deflates against every individual the GP evaluated — thousands of
+    trials. This is the primary figure. It is conservative, because
+    Proposition 3 assumes independent trials while GP individuals are
+    correlated by descent, so the effective N is below the raw count.
+
+    ``dsr_bests_only`` deflates against just the per-seed winners that appear in
+    the results table — as many trials as there are rows. This is an upper bound
+    and on its own it is close to meaningless: with a handful of trials the
+    hurdle multiplier is small, so this figure flatters the strategy. It is
+    reported so the gap between the two is visible rather than hidden by the
+    choice of one convention.
+
+    If the two bracket 0.95, the experiment has not settled the question.
 
     Parameters
     ----------
     results : list[dict]
         All result rows from every run_window() call in the experiment.
-        Mutated in place: ``dsr`` and ``dsr_n_trials`` are set, and
-        ``IS_RETURNS_KEY`` is removed.
+        Mutated in place: the ``dsr*`` fields are set, and ``IS_RETURNS_KEY``
+        and ``TRIALS_KEY`` are removed.
     periods_per_year : int
         252 for daily data.
 
@@ -197,42 +224,92 @@ def attach_dsr(
     if not results:
         return results
 
-    trial_sharpes = np.array(
+    # --- trial set 1: every individual evaluated, merged across seeds/windows ---
+    evaluated = TrialAccumulator()
+    n_rows_with_trials = 0
+    for row in results:
+        acc = row.pop(TRIALS_KEY, None)
+        if acc is not None:
+            evaluated.merge(acc)
+            n_rows_with_trials += 1
+
+    # --- trial set 2: the reported winners only ---
+    winner_sharpes = np.array(
         [float(r.get("is_sharpe", np.nan)) for r in results], dtype=np.float64
     )
-    n_finite = int(np.sum(np.isfinite(trial_sharpes)))
+    bests_set = TrialSet.from_sharpes(winner_sharpes, label="reported_bests")
 
-    finite = trial_sharpes[np.isfinite(trial_sharpes)]
-    trial_sr_std = float(np.std(finite, ddof=1)) if n_finite >= 2 else float("nan")
+    if n_rows_with_trials:
+        evaluated_set = evaluated.to_trial_set(label="all_evaluations")
+    else:
+        # No accumulator reached us (a mocked run, or checkpoints predating
+        # trial accounting). Fall back to the winners and say so, rather than
+        # silently reporting a correction sized to the wrong trial population.
+        evaluated_set = bests_set
+        logger.warning(
+            "attach_dsr: no trial accumulators found on %d row(s) — falling back "
+            "to the %d reported best(s) as the trial set. The multiple-testing "
+            "correction is then sized to the winners, not to the search, and "
+            "understates N by orders of magnitude",
+            len(results), bests_set.n_trials,
+        )
 
     for row in results:
         is_returns = row.pop(IS_RETURNS_KEY, None)
-        row["dsr_n_trials"] = n_finite
-        # Annualized spread of trial Sharpes — the scale of the DSR hurdle.
-        # A tiny value with few trials means a low hurdle and a DSR that should
-        # not be read as strong evidence (see module docstring).
-        row["dsr_trial_sr_std"] = trial_sr_std
+        sr_hat = float(row.get("is_sharpe", np.nan))
+
+        row["dsr_n_trials"] = evaluated_set.n_trials
+        row["dsr_trial_sr_std"] = evaluated_set.sr_std
+        row["dsr_trial_source"] = evaluated_set.label
+        row["dsr_n_evaluations"] = evaluated.n_evaluations if n_rows_with_trials else 0
+        row["dsr_n_trials_bests"] = bests_set.n_trials
+        row["dsr_trial_sr_std_bests"] = bests_set.sr_std
+
         if is_returns is None:
             row["dsr"] = float("nan")
+            row["dsr_bests_only"] = float("nan")
             continue
+
         row["dsr"] = compute_dsr(
-            is_returns,
-            sr_hat=float(row.get("is_sharpe", np.nan)),
-            trial_sharpes=trial_sharpes,
-            periods_per_year=periods_per_year,
+            is_returns, sr_hat=sr_hat,
+            trial_sharpes=evaluated_set, periods_per_year=periods_per_year,
+        )
+        row["dsr_bests_only"] = compute_dsr(
+            is_returns, sr_hat=sr_hat,
+            trial_sharpes=bests_set, periods_per_year=periods_per_year,
         )
 
     logger.info(
-        "attach_dsr: computed DSR for %d rows using %d finite trial Sharpe(s) "
-        "(annualized trial SR std = %s)",
-        len(results), n_finite, trial_sr_std,
+        "attach_dsr: %d rows | primary trial set '%s' n=%d sr_std=%.4f "
+        "(%d evaluations) | bests-only n=%d sr_std=%.4f",
+        len(results), evaluated_set.label, evaluated_set.n_trials,
+        evaluated_set.sr_std, evaluated.n_evaluations,
+        bests_set.n_trials, bests_set.sr_std,
     )
-    if n_finite < 10:
+
+    finite_primary = [r["dsr"] for r in results if np.isfinite(r.get("dsr", np.nan))]
+    finite_bests = [
+        r["dsr_bests_only"] for r in results
+        if np.isfinite(r.get("dsr_bests_only", np.nan))
+    ]
+    if finite_primary and finite_bests:
+        lo, hi = max(finite_primary), max(finite_bests)
+        if lo < 0.95 <= hi:
+            logger.warning(
+                "attach_dsr: the two trial-set conventions straddle 0.95 "
+                "(best dsr=%.4f, best dsr_bests_only=%.4f) — significance is "
+                "an artifact of how trials are counted, not a result",
+                lo, hi,
+            )
+
+    if evaluated_set.n_trials < 100:
         logger.warning(
-            "attach_dsr: only %d finite trial(s) — the multiple-testing correction "
-            "is weak at this sample size; DSR should not be read as strong evidence",
-            n_finite,
+            "attach_dsr: only %d finite trial(s) in the primary set — the "
+            "multiple-testing correction is weak at this sample size; DSR "
+            "should not be read as strong evidence",
+            evaluated_set.n_trials,
         )
+
     return results
 
 
@@ -310,7 +387,8 @@ def save_results_csv(results: list[dict], path: str) -> None:
         Each dict is one (window_id, seed) pair with keys:
         window_id, seed, train_end, test_start, test_end,
         is_sharpe, oos_sharpe, oos_status, oos_n_trades, oos_min_trades,
-        dsr, dsr_n_trials, dsr_trial_sr_std, n_nodes_best
+        dsr, dsr_bests_only, dsr_n_trials, dsr_trial_sr_std, dsr_trial_source,
+        dsr_n_evaluations, n_evaluations, n_nodes_best
     path : str
         Output file path. Parent directory must exist.
     """

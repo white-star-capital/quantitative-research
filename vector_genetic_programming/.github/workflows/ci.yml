@@ -34,12 +34,9 @@ jobs:
       - name: Run smoke tests
         run: pytest tests/test_smoke.py -v
 
-      - name: Verify numpy version constraint
-        run: |
-          python -c "
-          import numpy as np
-          from packaging.version import Version
-          version = np.__version__
-          assert Version(version) < Version('2.3'), f'numpy {version} violates <2.3 constraint required for numba'
-          print(f'numpy {version} — OK (< 2.3)')
-          "
+      # The numpy/numba bound is asserted inside tests/test_smoke.py, read from
+      # numba's installed metadata. It is deliberately NOT duplicated as a
+      # hardcoded literal here — the previous `numpy<2.3` step was numba 0.61's
+      # ceiling and went stale when numba 0.67 raised it to <2.6.
+      - name: Verify dependency set resolves and is self-consistent
+        run: pip check

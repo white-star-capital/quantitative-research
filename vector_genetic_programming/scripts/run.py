@@ -40,6 +40,20 @@ N_JOBS        = max(1, (os.cpu_count() or 2) - 1)
 FEE_BPS       = 10.0
 MIN_TRADES    = 50
 
+# Null control (see vgp/analysis/null_control.py). DSR cannot detect bias shared
+# by every trial — a lookahead, a reused training window, a survivor-biased
+# universe — so the pipeline is also run on signal-free surrogates to check it
+# reports nothing there. This is the falsification test for the headline result.
+#
+# Cost is N_NULL_RUNS full experiments, which is why the null runs use fewer
+# seeds: the statistic is the best Sharpe the SEARCH finds, so the null only has
+# to represent the same procedure, not the same compute budget.
+# A p-value cannot resolve below 1/(1+N_NULL_RUNS); 20 runs buys p >= 0.048.
+# Set N_NULL_RUNS = 0 to skip, and then do not describe the result as validated.
+N_NULL_RUNS   = 20
+NULL_SEEDS    = [0]
+NULL_BLOCK    = 20        # bootstrap block length in bars
+
 # ---------------------------------------------------------------------------
 # Logging — INFO for setup steps, suppressed during evolution (tqdm handles it)
 # ---------------------------------------------------------------------------
@@ -87,7 +101,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 1. Load data
     # ------------------------------------------------------------------
-    _banner("1 / 5  Loading OHLCV data")
+    _banner("1 / 6  Loading OHLCV data")
     print(f"  Cache: {CACHE_DIR.resolve()}")
 
     from vgp.data import DataLoader, FeatureEngine
@@ -97,7 +111,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 2. Build feature matrix
     # ------------------------------------------------------------------
-    _banner("2 / 5  Building feature matrix")
+    _banner("2 / 6  Building feature matrix")
     fe = FeatureEngine()
     fm = fe.fit_transform(ohlcv)
 
@@ -115,7 +129,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 3. Generate walk-forward windows
     # ------------------------------------------------------------------
-    _banner("3 / 5  Walk-forward windows")
+    _banner("3 / 6  Walk-forward windows")
     from vgp.analysis import generate_windows
 
     total_start = str(fe.dates_.min().date())
@@ -136,7 +150,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 4. Run walk-forward evolution
     # ------------------------------------------------------------------
-    _banner(f"4 / 5  Evolution  ({len(windows)} windows × {len(SEEDS)} seeds × {N_GENERATIONS} gen)")
+    _banner(f"4 / 6  Evolution  ({len(windows)} windows × {len(SEEDS)} seeds × {N_GENERATIONS} gen)")
     print(
         f"  pop={POP_SIZE}  jobs={N_JOBS}  fee={FEE_BPS}bps  min_trades={MIN_TRADES}\n"
     )
@@ -192,14 +206,76 @@ def main() -> None:
     attach_dsr(all_results)
 
     # ------------------------------------------------------------------
-    # 5. Save results + plots
+    # 5. Null control — run the same pipeline on signal-free surrogates
     # ------------------------------------------------------------------
-    _banner("5 / 5  Saving results & plots")
+    _banner(f"5 / 6  Null control  ({N_NULL_RUNS} signal-free runs)")
+    null_result = None
+    if N_NULL_RUNS < 1:
+        print("  SKIPPED (N_NULL_RUNS = 0).")
+        print("  Without it, a high DSR cannot distinguish real signal from bias")
+        print("  shared by every trial. Do not report this run as validated.")
+    else:
+        from vgp.analysis import run_null_control
+
+        def _null_experiment(null_fm, null_close, null_dates):
+            """One full experiment on surrogate data — same code path as above."""
+            null_runner = WalkForwardRunner(dates=null_dates)
+            null_windows = generate_windows(
+                str(null_dates.min().date()), str(null_dates.max().date())
+            )
+            rows: list[dict] = []
+            for nw in null_windows:
+                rows += null_runner.run_window(
+                    window=nw,
+                    feature_matrix=null_fm,
+                    close_prices=null_close,
+                    base_eval_config=EvalConfig(fee_bps=FEE_BPS, min_trades=MIN_TRADES),
+                    seeds=NULL_SEEDS,
+                    evo_config_kwargs=evo_kwargs,
+                )
+            return rows
+
+        print(
+            f"  {N_NULL_RUNS} runs x {len(NULL_SEEDS)} seed(s), "
+            f"block={NULL_BLOCK} bars — this is the expensive part\n"
+        )
+        null_result = run_null_control(
+            ohlcv=ohlcv,
+            experiment_fn=_null_experiment,
+            observed_results=all_results,
+            n_runs=N_NULL_RUNS,
+            block_size=NULL_BLOCK,
+            seed=1000,
+        )
+        print(null_result.summary())
+
+    # ------------------------------------------------------------------
+    # 6. Save results + plots
+    # ------------------------------------------------------------------
+    _banner("6 / 6  Saving results & plots")
 
     from vgp.analysis import save_results_csv, aggregate_seeds
     csv_path = str(RESULTS_DIR / "results.csv")
     save_results_csv(all_results, csv_path)
     print(f"  results.csv  →  {csv_path}")
+
+    null_path = RESULTS_DIR / "null_control.txt"
+    if null_result is not None:
+        null_path.write_text(
+            null_result.summary()
+            + "\n\nnull best IS Sharpe per run:  "
+            + ", ".join(f"{v:+.4f}" for v in null_result.null_best_is_sharpe)
+            + "\nnull best OOS Sharpe per run: "
+            + ", ".join(f"{v:+.4f}" for v in null_result.null_best_oos_sharpe)
+            + "\n"
+        )
+    else:
+        null_path.write_text(
+            "Null control SKIPPED (N_NULL_RUNS = 0).\n\n"
+            "No falsification test was run, so this experiment cannot "
+            "distinguish signal from bias shared across all trials.\n"
+        )
+    print(f"  null_control.txt  →  {null_path}")
 
     # Best (window, seed) pair for plots. NaN OOS Sharpe means "not measured" —
     # max() over NaN is undefined, so rank only measurable rows and fall back to
@@ -283,7 +359,35 @@ def main() -> None:
             f"  {agg['n_seeds_positive_oos']}/{agg['n_seeds_valid_oos']} valid positive"
             f"  ({agg['n_seeds_valid_oos']}/{agg['n_seeds']} measurable)"
         )
-    print("\n  NaN / n/a = not measured (see OOS status), not a bad result.\n")
+    print("\n  NaN / n/a = not measured (see OOS status), not a bad result.")
+
+    r0 = all_results[0]
+    print(
+        f"\n  DSR trial set: {r0.get('dsr_n_trials', '?')} trials "
+        f"({r0.get('dsr_trial_source', '?')}, {r0.get('dsr_n_evaluations', '?')} "
+        f"evaluations); bests-only would use {r0.get('dsr_n_trials_bests', '?')}."
+    )
+    best_dsr = max(
+        (r["dsr"] for r in all_results if math.isfinite(r.get("dsr", float("nan")))),
+        default=float("nan"),
+    )
+    best_dsr_bests = max(
+        (r["dsr_bests_only"] for r in all_results
+         if math.isfinite(r.get("dsr_bests_only", float("nan")))),
+        default=float("nan"),
+    )
+    print(
+        f"  Best DSR {_fmt(best_dsr, '.4f')} (all evaluations, conservative)"
+        f"  vs {_fmt(best_dsr_bests, '.4f')} (reported bests, optimistic)."
+    )
+    if (math.isfinite(best_dsr) and math.isfinite(best_dsr_bests)
+            and best_dsr < 0.95 <= best_dsr_bests):
+        print("  These straddle 0.95: significance depends on how trials are counted.")
+
+    if null_result is not None:
+        print()
+        print(null_result.summary())
+    print()
 
 
 if __name__ == "__main__":

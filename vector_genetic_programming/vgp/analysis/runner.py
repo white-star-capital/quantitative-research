@@ -18,7 +18,7 @@ import pandas as pd
 # Available in all environments that have pandas>=3.0.0 installed.
 from dateutil.relativedelta import relativedelta
 
-from vgp.analysis.dsr import IS_RETURNS_KEY
+from vgp.analysis.dsr import IS_RETURNS_KEY, TRIALS_KEY
 from vgp.backtest.runner import EVAL_OK, EvalConfig, evaluate_with_status
 from vgp.data.splitter import WalkForwardSplitter
 from vgp.evolution.config import EvolutionConfig
@@ -299,6 +299,16 @@ class WalkForwardRunner:
             # Using hof[0].fitness.values[0] rather than the logbook population-max
             # because hof[0] is the specific individual evaluated OOS — the two can
             # diverge under multi-objective (NSGA-II) selection.
+            # The trial accumulator rides on the logbook (run_evolution keeps its
+            # 3-tuple signature). Absent only for a mocked or pre-accounting run.
+            trial_acc = getattr(logbook, "trial_accumulator", None)
+            if trial_acc is None:
+                logger.warning(
+                    "Window %d seed %d: no trial accumulator on the logbook — "
+                    "this seed's evaluations will not size the DSR correction",
+                    window.window_id, seed,
+                )
+
             # A non-finite value here is the worst-fitness sentinel, not a
             # measurement — record NaN so it cannot be averaged or plotted.
             is_sharpe = float(best_ind.fitness.values[0])
@@ -356,7 +366,12 @@ class WalkForwardRunner:
                 "oos_min_trades": oos_min_trades,
                 "dsr": float("nan"),   # filled in by attach_dsr()
                 "n_nodes_best": len(best_ind),
+                # Every individual this seed evaluated is a trial for the
+                # multiple-testing correction; attach_dsr() merges these across
+                # seeds and windows. See vgp/trials.py.
+                "n_evaluations": trial_acc.n_evaluations if trial_acc else 0,
                 IS_RETURNS_KEY: is_returns,
+                TRIALS_KEY: trial_acc,
             })
 
         return seed_results

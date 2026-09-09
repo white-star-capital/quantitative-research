@@ -32,6 +32,7 @@ from vgp.evolution.checkpoint import load_checkpoint, save_checkpoint
 from vgp.evolution.config import EvolutionConfig
 from vgp.evolution.tracker import NoOpTracker
 from vgp.gp.gp_types import build_pset, creator  # noqa: F401 — side effect: registers creator.Individual
+from vgp.trials import TrialAccumulator
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +261,11 @@ def run_evolution(
     logbook = tools.Logbook()
     logbook.header = ["gen", "nevals"] + mstats.fields
 
+    # Every individual evaluated is one trial for the multiple-testing
+    # correction (see vgp/trials.py). Accumulated in O(1) memory and attached to
+    # the logbook so it survives checkpointing and reaches the DSR layer.
+    trials = TrialAccumulator()
+
     # Generate run_id from timestamp + seed
     run_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_seed{config.seed}"
 
@@ -274,6 +280,18 @@ def run_evolution(
         population = ckpt["population"]
         hof = ckpt["halloffame"]
         logbook = ckpt["logbook"]
+        # Checkpoints written before trial accounting existed have no
+        # accumulator; resuming one restarts the count rather than failing, and
+        # the resulting n_trials understates the search. Logged, not silent.
+        restored = getattr(logbook, "trial_accumulator", None)
+        if restored is not None:
+            trials = restored
+        else:
+            logger.warning(
+                "Checkpoint %s predates trial accounting — DSR trial count will "
+                "cover only generations run after this resume",
+                resume_checkpoint,
+            )
         start_gen = ckpt["generation"] + 1
         logger.info(
             "Resumed from generation %d — continuing from gen %d",
@@ -311,6 +329,7 @@ def run_evolution(
             fitnesses = list(toolbox.map(toolbox.evaluate, invalid_ind))
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
+            trials.extend(fit[0] for fit in fitnesses)
             hof.update(population)
             record = mstats.compile(population)
             logbook.record(gen=0, nevals=len(invalid_ind), **record)
@@ -342,6 +361,7 @@ def run_evolution(
                 fitnesses = list(toolbox.map(toolbox.evaluate, invalid_ind))
                 for ind, fit in zip(invalid_ind, fitnesses):
                     ind.fitness.values = fit
+                trials.extend(fit[0] for fit in fitnesses)
 
                 # Update ParetoFront with new offspring (EVO-04)
                 hof.update(offspring)
@@ -364,6 +384,7 @@ def run_evolution(
 
                 # Checkpoint every checkpoint_freq generations (EVO-05, D-08)
                 if gen % config.checkpoint_freq == 0:
+                    logbook.trial_accumulator = trials
                     ckpt_path = f"{config.checkpoint_dir}/{run_id}/gen_{gen:04d}.pkl"
                     save_checkpoint(
                         ckpt_path,
@@ -380,5 +401,14 @@ def run_evolution(
             pool.close()
             pool.join()
         tracker.end_run()
+
+    # Attached rather than returned: run_evolution()'s (population, hof, logbook)
+    # signature has callers and tests depending on its arity.
+    logbook.trial_accumulator = trials
+    logger.info(
+        "Evolution complete: %d individuals evaluated, %d with a measurable "
+        "Sharpe (annualized std %.4f)",
+        trials.n_evaluations, trials.n_finite, trials.sr_std,
+    )
 
     return population, hof, logbook

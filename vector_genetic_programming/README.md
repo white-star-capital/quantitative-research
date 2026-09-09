@@ -25,7 +25,7 @@ VGP is a research tool, not a trading system. The primary output is reproducible
 git clone <repo-url>
 cd vector-genetic-programming
 python -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"
 
 # Run full test suite
 python -m pytest tests/ -v
@@ -46,7 +46,8 @@ The test suite covers all five sub-modules (smoke, data pipeline, GP primitives,
 | `vgp/gp` | `PrimitiveSetTyped` with `Vector`/`Scalar` type tokens; 14 typed primitives (arithmetic, rolling stats, conditional); `TreeEvaluator` applies structural `fshift(1)` to prevent lookahead |
 | `vgp/evolution` | `EvolutionConfig`; NSGA-II loop via `varOr` + `selNSGA2`; spawn `Pool` with JIT warmup initializer; `ParetoFront` hall-of-fame; checkpoint/resume via `dill` |
 | `vgp/backtest` | `EvalConfig`; `evaluate()` returns `(sharpe, total_return, -tree_size)` fitness tuple; transaction costs baked in; `< 50 trades` receives worst-possible fitness (rankable by NSGA-II); `evaluate_with_status()` additionally reports whether that tuple is a measurement or the ranking sentinel |
-| `vgp/analysis` | `WalkForwardRunner` orchestrates multi-seed evolution; `compute_dsr()` / `attach_dsr()` (Bailey & Lopez de Prado 2014); `aggregate_seeds()` summarizes measured seeds only; `plot_pareto_front()`, `plot_equity_curves()`, `plot_tree_graph()` |
+| `vgp/analysis` | `WalkForwardRunner` orchestrates multi-seed evolution; `compute_dsr()` / `attach_dsr()` (Bailey & Lopez de Prado 2014); `run_null_control()` re-runs the pipeline on signal-free surrogates; `aggregate_seeds()` summarizes measured seeds only; `plot_pareto_front()`, `plot_equity_curves()`, `plot_tree_graph()` |
+| `vgp/trials` | `TrialAccumulator` (streaming Welford count/spread of every evaluated individual) and `TrialSet`; numpy-only so the evolution layer can record trials without importing vectorbt |
 
 ---
 
@@ -62,7 +63,32 @@ The test suite covers all five sub-modules (smoke, data pipeline, GP primitives,
 
 DSR is a property of the whole trial set, not of one row: the hurdle `E[SR_max]` is proportional to `sigma_SR`, the standard deviation of the Sharpe ratios across trials, so it cannot be computed inside the per-seed loop. `run_window()` leaves `dsr` as NaN and `attach_dsr()` fills it in.
 
-Two things DSR does not do. It does not correct for bias shared by every trial — a common lookahead, one training window reused across seeds, a survivor-biased universe — because such bias moves all trials together and leaves `sigma_SR` unchanged. And its correction is only as large as the trial count it is given: a handful of tightly-clustered trials produces a small hurdle and therefore a high DSR. Read `dsr` alongside `dsr_n_trials` and `dsr_trial_sr_std`, both recorded in `results.csv`; a high DSR over few, similar trials is weak evidence, not strong evidence.
+**What counts as a trial.** N is the number of configurations the search effectively tried, which for a genetic program is every individual *evaluated* — `pop_size × generations × seeds × windows`, typically thousands — not the handful of per-seed winners in the results table. The difference is not cosmetic: with N = 9 the hurdle multiplier is 1.52, with N = 3600 it is 3.24. On signal-free data the winners-only convention certifies noise at DSR > 0.95 while the evaluation-based one rejects the same runs below 0.05. `vgp/trials.py` accumulates every evaluation in O(1) memory (Welford) and rides inside the DEAP logbook so it survives checkpointing.
+
+`attach_dsr()` therefore reports **two bounds**, because the honest answer is an interval:
+
+| Column | Trial set | Reading |
+|--------|-----------|---------|
+| `dsr` | every individual evaluated | **Primary.** Conservative — Proposition 3 assumes independent trials, and GP individuals are correlated by descent, so effective N is below the raw count |
+| `dsr_bests_only` | the per-seed winners only | Upper bound. Flattering and near-meaningless alone |
+
+If the two straddle 0.95, significance is an artifact of how trials were counted and the experiment has not settled the question — `attach_dsr()` logs a warning when this happens.
+
+**What DSR cannot do, at any trial count.** It corrects for selection across trials and nothing else. Bias shared by *every* trial is invisible to it, because such bias shifts all trials together and leaves `sigma_SR` unchanged: a lookahead in a primitive, one training window reused by all seeds, a survivor-biased universe, a fee model that is wrong for all of them. No refinement of the DSR formula detects these. That is what the null control below is for.
+
+---
+
+## Null control
+
+`vgp/analysis/null_control.py` runs the identical pipeline on data where the answer is known to be "nothing here", and checks that it reports nothing. This is the falsification test for the headline result, and the only check here that can catch bias shared across all trials.
+
+Surrogates come from a circular block bootstrap of log returns using the **same block indices for every asset**. Preserved: each asset's return distribution (volatility, fat tails, skew), the cross-asset correlation structure, within-block autocorrelation, and bar geometry — open/high/low/volume ride along as ratios to their own close, so every surrogate bar is a real bar's shape. Destroyed: the ordering that makes returns predictable from signals computed on earlier bars.
+
+The verdict is an empirical p-value in the `(1 + k) / (1 + n)` form, so it never reports exactly zero — with `n` runs the floor is `1/(1+n)`, and `NullControlResult.summary()` says so explicitly when the run count cannot resolve 0.05.
+
+**Block size is not a free parameter.** A block bootstrap severs dependence only at block boundaries, so with L-bar blocks roughly 1 in L transitions breaks and structure shorter than L survives. Concretely: an AR(1) series with lag-1 autocorrelation 0.82 retains 0.67 under 5-bar blocks. **The block must be shorter than the horizon of the effect being tested** — with the default 20 bars, a strategy exploiting 1–5 day momentum survives into the surrogate and the control will not flag it.
+
+The control costs `N_NULL_RUNS` full experiments, which is why the null runs use fewer seeds than the real run: the statistic is the best Sharpe the *search* finds, so the null need only represent the same procedure, not the same compute budget. Setting `N_NULL_RUNS = 0` in `scripts/run.py` skips it — and then the run must not be described as validated.
 
 **Reported metrics vs. ranking sentinels:** `evaluate()` returns `(-inf, -inf, -tree_size)` for an individual that fails the trade filter or produces NaN metrics, so NSGA-II can still rank it. That sentinel is not a performance measurement, and reporting code never writes it out as a Sharpe ratio: `results.csv` carries `NaN` plus an `oos_status` (`ok`, `below_min_trades`, `nan_metrics`) and the observed `oos_n_trades`. `aggregate_seeds()` excludes unmeasured seeds from its median, IQR and positive count, and reports `n_seeds_valid_oos` alongside `n_seeds` so the denominator is visible. **NaN means "not measured", never "bad result".**
 
@@ -71,6 +97,8 @@ The OOS trade threshold is scaled to the OOS window length (`oos_min_trades`, ov
 **OOS holdout:** The test split is defined before the first evolution run via `WalkForwardSplitter` and passed to `evaluate()` exactly once, for final reporting only. The evolution loop never sees OOS data. This is enforced structurally — `WalkForwardRunner` holds `test_fm` as a local variable and does not pass it to `run_evolution()`.
 
 **Honest caveat:** Positive OOS Sharpe is the goal. Results depend on data availability, asset universe, and evolution configuration. VGP is a framework for reproducible research — it does not guarantee profitable strategies.
+
+A result here is only as good as three numbers read together: the OOS Sharpe, the conservative `dsr` against the full evaluation count, and the null control p-value. A high Sharpe with a high `dsr` and a null p-value of 0.7 means the pipeline found the same thing in noise.
 
 ---
 

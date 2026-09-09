@@ -742,3 +742,168 @@ def test_save_results_csv_drops_scratch_keys(tmp_path):
     header = path.read_text().splitlines()[0]
     assert IS_RETURNS_KEY not in header, f"scratch key written to CSV: {header}"
     assert "oos_status" in header, "the status column must be persisted"
+
+
+# ---------------------------------------------------------------------------
+# VAL-04 (regression): the trial count must reflect the SEARCH, not the winners
+#
+# N in Bailey & Lopez de Prado is the number of configurations effectively
+# searched. For a GP that is every individual evaluated — thousands — not the
+# per-seed winners in the results table. With N=9 the hurdle multiplier is 1.52;
+# with N=3600 it is 3.24. On signal-free data the winners-only convention
+# certifies noise at DSR>0.95 while the evaluation-based one rejects it at <0.05.
+# ---------------------------------------------------------------------------
+
+
+def _row(is_sharpe: float, seed: int = 0, acc=None) -> dict:
+    from vgp.analysis.dsr import IS_RETURNS_KEY, TRIALS_KEY
+
+    row = {
+        "window_id": 0, "seed": seed, "is_sharpe": is_sharpe,
+        "oos_sharpe": 0.5, "dsr": float("nan"),
+        IS_RETURNS_KEY: _synthetic_returns(is_sharpe, seed=seed + 1),
+    }
+    if acc is not None:
+        row[TRIALS_KEY] = acc
+    return row
+
+
+def _accumulator(sharpes):
+    from vgp.trials import TrialAccumulator
+
+    acc = TrialAccumulator()
+    acc.extend(sharpes)
+    return acc
+
+
+def test_attach_dsr_sizes_correction_from_all_evaluations():
+    """The primary trial set must be every evaluated individual, merged."""
+    from vgp.analysis import attach_dsr
+    from vgp.analysis.dsr import TRIALS_KEY
+
+    rng = np.random.default_rng(0)
+    rows = [
+        _row(4.0, seed=0, acc=_accumulator(rng.standard_normal(500) * 1.5)),
+        _row(3.7, seed=1, acc=_accumulator(rng.standard_normal(500) * 1.5)),
+        _row(3.9, seed=2, acc=_accumulator(rng.standard_normal(500) * 1.5)),
+    ]
+
+    attach_dsr(rows)
+
+    for r in rows:
+        assert TRIALS_KEY not in r, "accumulator must be popped, not written to CSV"
+        assert r["dsr_trial_source"] == "all_evaluations"
+        assert r["dsr_n_trials"] == 1500, (
+            f"trial count {r['dsr_n_trials']} does not reflect the 1500 evaluations; "
+            f"sizing the correction to the 3 winners would leave it nearly inert"
+        )
+        assert r["dsr_n_trials_bests"] == 3
+        assert r["dsr_n_evaluations"] == 1500
+
+
+def test_attach_dsr_primary_is_conservative_relative_to_bests_only():
+    """More trials means a higher hurdle, so dsr <= dsr_bests_only always."""
+    from vgp.analysis import attach_dsr
+
+    rng = np.random.default_rng(1)
+    rows = [
+        _row(sr, seed=i, acc=_accumulator(rng.standard_normal(400) * 1.2))
+        for i, sr in enumerate([4.0, 3.8, 3.6, 3.9])
+    ]
+
+    attach_dsr(rows)
+
+    for r in rows:
+        assert r["dsr"] <= r["dsr_bests_only"] + 1e-9, (
+            f"primary DSR {r['dsr']:.4f} exceeds the bests-only bound "
+            f"{r['dsr_bests_only']:.4f} — the conservative set must not be laxer"
+        )
+        assert np.isfinite(r["dsr"]) and np.isfinite(r["dsr_bests_only"])
+
+
+def test_attach_dsr_evaluation_count_rejects_what_winners_only_certifies():
+    """The regression that matters: noise certified by one convention, rejected by the other.
+
+    Reproduces the observed situation — nine winners clustered at a modest IS
+    Sharpe drawn from a wide search. Counting only the winners gives a small
+    hurdle and a high DSR; counting the search rejects it.
+    """
+    from vgp.analysis import attach_dsr
+
+    winners = [1.94, 1.72, 1.94, 1.48, 1.30, 1.59, 1.18, 1.02, 1.09]
+    rng = np.random.default_rng(7)
+    rows = [
+        _row(sr, seed=i, acc=_accumulator(rng.standard_normal(190) * 1.0))
+        for i, sr in enumerate(winners)
+    ]
+
+    attach_dsr(rows)
+
+    best_primary = max(r["dsr"] for r in rows)
+    best_bests = max(r["dsr_bests_only"] for r in rows)
+
+    assert rows[0]["dsr_n_trials"] > 1000
+    assert best_bests > best_primary, "the two conventions must differ materially"
+    assert best_primary < 0.95, (
+        f"the evaluation-sized correction still certifies this at {best_primary:.4f}"
+    )
+
+
+def test_attach_dsr_falls_back_to_bests_and_warns(caplog):
+    """With no accumulators the fallback must be explicit, not silent.
+
+    A run whose trial accumulators are missing gets a correction sized to the
+    winners. That is the wrong trial population, so it must be labelled and
+    logged rather than passed off as the primary figure.
+    """
+    import logging
+
+    from vgp.analysis import attach_dsr
+
+    rows = [_row(sr, seed=i) for i, sr in enumerate([4.0, 3.7, 3.9])]
+
+    with caplog.at_level(logging.WARNING, logger="vgp.analysis.dsr"):
+        attach_dsr(rows)
+
+    assert rows[0]["dsr_trial_source"] == "reported_bests"
+    assert rows[0]["dsr_n_trials"] == 3
+    assert rows[0]["dsr_n_evaluations"] == 0
+    assert any("no trial accumulators" in m for m in caplog.messages), (
+        "falling back to the winners must be logged — it changes what DSR means"
+    )
+
+
+def test_run_evolution_records_every_evaluation():
+    """EVO: the logbook must carry an accumulator covering all evaluated individuals."""
+    from vgp.backtest.runner import EvalConfig
+    from vgp.evolution.config import EvolutionConfig
+    from vgp.evolution.loop import run_evolution
+
+    T, F, A = 220, 12, 2
+    rng = np.random.default_rng(3)
+    dates = pd.date_range("2024-01-01", periods=T, freq="D")
+    close = pd.DataFrame(
+        (100.0 * np.exp(np.cumsum(rng.standard_normal((T, A)) * 0.01, axis=0))),
+        index=dates, columns=[f"a{i}" for i in range(A)],
+    )
+    fm = rng.standard_normal((T, F, A)).astype(np.float32)
+
+    cfg = EvolutionConfig(pop_size=12, n_generations=3, seed=0, n_jobs=1, checkpoint_freq=999)
+    _pop, _hof, logbook = run_evolution(
+        cfg, fm, EvalConfig(close_prices=close, min_trades=1)
+    )
+
+    acc = getattr(logbook, "trial_accumulator", None)
+    assert acc is not None, "run_evolution must attach a trial accumulator to the logbook"
+
+    # gen 0 evaluates the whole population; each later generation evaluates the
+    # invalidated offspring, so the total must exceed one population.
+    assert acc.n_evaluations > cfg.pop_size, (
+        f"only {acc.n_evaluations} evaluations recorded for pop_size={cfg.pop_size} "
+        f"over {cfg.n_generations} generations — later generations are not counted"
+    )
+    logged = sum(rec["nevals"] for rec in logbook)
+    assert acc.n_evaluations == logged, (
+        f"accumulator counted {acc.n_evaluations} evaluations but the logbook "
+        f"recorded {logged} — the two must agree"
+    )
