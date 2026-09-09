@@ -100,6 +100,19 @@ The OOS trade threshold is scaled to the OOS window length (`oos_min_trades`, ov
 
 **OOS holdout:** The test split is defined before the first evolution run via `WalkForwardSplitter` and passed to `evaluate()` exactly once, for final reporting only. The evolution loop never sees OOS data. This is enforced structurally — `WalkForwardRunner` holds `test_fm` as a local variable and does not pass it to `run_evolution()`.
 
+## Current result
+
+The pipeline has been run end to end on Binance daily data (2024-01-01 →
+2026-04-01, 21 assets, 3 walk-forward windows, 13,006 evaluations) with a
+19-run null control. **It found no evidence of skill:** every signal-free
+surrogate run produced a higher in-sample Sharpe than the real data
+(p = 1.000), and out-of-sample sat inside the null distribution (p = 0.200).
+The conservative DSR is 0.0095. See `results/README.md` for the full record.
+
+That is a working framework reporting an honest negative, not a broken one. The
+same run also shows why the reporting path matters: sized to the reported
+winners instead of the search, DSR reads 1.0000 on the identical data.
+
 **Honest caveat:** Positive OOS Sharpe is the goal. Results depend on data availability, asset universe, and evolution configuration. VGP is a framework for reproducible research — it does not guarantee profitable strategies.
 
 A result here is only as good as three numbers read together: the OOS Sharpe, the conservative `dsr` against the full evaluation count, and the null control p-value. A high Sharpe with a high `dsr` and a null p-value of 0.7 means the pipeline found the same thing in noise.
