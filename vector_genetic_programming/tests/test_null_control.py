@@ -452,3 +452,163 @@ def test_run_null_control_rejects_zero_runs(ohlcv):
             observed_results=[], n_runs=0,
             feature_builder=lambda o: (None, None, None),
         )
+
+
+# ---------------------------------------------------------------------------
+# Cross-asset co-movement on RAGGED panels
+#
+# The first ragged-panel fix folded the shared block sequence into each shorter
+# asset's own range by modulo. That kept row counts correct but broke
+# co-movement for the short asset even over the window where it DID co-exist
+# with the others, because it was reading from a different position in its own
+# array. The shared sequence is now drawn over the intersection window and
+# mapped through each asset's own dates, so all assets take their return from
+# the same source DATE. These tests pin that.
+# ---------------------------------------------------------------------------
+
+
+def _ragged_panel(seed: int = 3, n_short: int = 200):
+    """Four assets on a common market factor; one lists late."""
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2024-01-01", periods=_T, freq="D")
+    market = rng.standard_normal(_T) * 0.012
+    panel = {}
+    for a in range(4):
+        ret = 0.85 * market + rng.standard_normal(_T) * 0.006
+        close = 100.0 * np.exp(np.cumsum(ret))
+        df = pd.DataFrame(
+            {
+                "open": close,
+                "high": close * 1.004,
+                "low": close * 0.996,
+                "close": close,
+                "volume": np.full(_T, 1e6),
+            },
+            index=idx,
+        )
+        panel[f"A{a}"] = df.iloc[-n_short:] if a == 3 else df
+    return panel
+
+
+def test_ragged_surrogate_preserves_comovement_over_the_overlap():
+    """A late-listing asset must still co-move with the others where it exists.
+
+    Correlation is measured only over the intersection window — the span
+    FeatureEngine actually keeps — between the short asset and a full-history
+    one. Under the modulo fold this collapsed toward zero.
+    """
+    from vgp.analysis import block_bootstrap_ohlcv
+
+    panel = _ragged_panel()
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(0), block_size=20)
+
+    short, long = "A3", "A0"
+    overlap = panel[short].index.intersection(panel[long].index)
+
+    def corr_over(data, i, j):
+        a = np.diff(np.log(data[i].loc[overlap, "close"].to_numpy(dtype=np.float64)))
+        b = np.diff(np.log(data[j].loc[overlap, "close"].to_numpy(dtype=np.float64)))
+        return float(np.corrcoef(a, b)[0, 1])
+
+    real = corr_over(panel, short, long)
+    fake = corr_over(sur, short, long)
+
+    assert real > 0.7, f"fixture is not correlated enough ({real:.3f})"
+    assert fake > 0.7 * real, (
+        f"co-movement over the overlap collapsed for the late-listing asset: "
+        f"real {real:.3f} -> surrogate {fake:.3f}. The shared block sequence is "
+        f"not reaching this asset through its own dates."
+    )
+
+
+def test_ragged_surrogate_draws_the_same_source_date_for_every_asset():
+    """The strongest form of the guarantee, checked directly.
+
+    With identical returns across assets over the overlap, a shared source date
+    means identical surrogate returns over the overlap too. Any per-asset
+    remapping of the sequence would break this exactly.
+    """
+    from vgp.analysis import block_bootstrap_ohlcv
+
+    idx = pd.date_range("2024-01-01", periods=300, freq="D")
+    rng = np.random.default_rng(5)
+    close = 100.0 * np.exp(np.cumsum(rng.standard_normal(300) * 0.01))
+    base = pd.DataFrame(
+        {"open": close, "high": close * 1.002, "low": close * 0.998,
+         "close": close, "volume": np.full(300, 1e6)},
+        index=idx,
+    )
+    panel = {"LONG": base, "SHORT": base.iloc[-120:].copy()}
+
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(1), block_size=15)
+
+    overlap = panel["SHORT"].index
+    long_ret = np.diff(np.log(
+        sur["LONG"].loc[overlap, "close"].to_numpy(dtype=np.float64)))
+    short_ret = np.diff(np.log(
+        sur["SHORT"].loc[overlap, "close"].to_numpy(dtype=np.float64)))
+
+    np.testing.assert_allclose(long_ret, short_ret, atol=1e-9, err_msg=(
+        "assets with identical source returns produced different surrogate "
+        "returns over the overlap — they are not drawing the same source date"
+    ))
+
+
+def test_ragged_surrogate_keeps_pre_overlap_history_out_of_the_overlap():
+    """Warm-up bars must be resampled from warm-up bars, not from the overlap.
+
+    Importing overlap-window returns into the pre-listing warm-up would leak
+    the joint regime into a period that had none.
+    """
+    from vgp.analysis import block_bootstrap_ohlcv
+
+    idx = pd.date_range("2024-01-01", periods=400, freq="D")
+    rng = np.random.default_rng(9)
+    # Deliberately different scales so the two regimes are distinguishable
+    early = rng.standard_normal(200) * 0.001
+    late = rng.standard_normal(200) * 0.05
+    close = 100.0 * np.exp(np.cumsum(np.concatenate([early, late])))
+    long_df = pd.DataFrame(
+        {"open": close, "high": close * 1.002, "low": close * 0.998,
+         "close": close, "volume": np.full(400, 1e6)},
+        index=idx,
+    )
+    panel = {"LONG": long_df, "SHORT": long_df.iloc[-200:].copy()}
+
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(2), block_size=10)
+
+    warmup = sur["LONG"].loc[idx[:200], "close"].to_numpy(dtype=np.float64)
+    warmup_ret = np.diff(np.log(warmup))
+
+    # Warm-up must retain the quiet regime's scale, not the volatile one
+    assert warmup_ret.std() < 0.01, (
+        f"pre-overlap warm-up volatility {warmup_ret.std():.4f} looks like the "
+        f"overlap regime (~0.05) — overlap returns leaked into the warm-up"
+    )
+
+
+def test_ragged_surrogate_retention_decision_matches_real_data():
+    """The null must be computed on the SAME universe as the observed run.
+
+    If a short-history asset came back full-length it would survive
+    min_obs_fraction in the null while being dropped from the real run, and the
+    two would not be comparable.
+    """
+    from vgp.analysis import block_bootstrap_ohlcv
+    from vgp.data import FeatureEngine
+
+    panel = _ragged_panel(n_short=60)   # short enough to be dropped
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(4), block_size=20)
+
+    real_engine, sur_engine = FeatureEngine(), FeatureEngine()
+    real_arr = real_engine.fit_transform(panel)
+    sur_arr = sur_engine.fit_transform(sur)
+
+    assert real_engine.retained_assets_ == sur_engine.retained_assets_, (
+        f"universe differs: real {real_engine.retained_assets_} vs surrogate "
+        f"{sur_engine.retained_assets_}"
+    )
+    assert real_engine.dropped_assets_ == sur_engine.dropped_assets_
+    assert real_arr.shape == sur_arr.shape, (
+        f"panel shape differs: {real_arr.shape} vs {sur_arr.shape}"
+    )

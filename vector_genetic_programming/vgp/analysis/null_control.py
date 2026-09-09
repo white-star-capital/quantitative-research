@@ -20,13 +20,15 @@ clear the null distribution, not merely clear zero.
 
 WHAT THE SURROGATE PRESERVES
 ----------------------------
-`block_bootstrap_ohlcv()` resamples circular blocks of log returns, using the
-SAME block indices for every asset, then rebuilds bars from them. Preserved:
-each asset's return distribution (so volatility, fat tails and skew are
-realistic), the cross-asset correlation structure (so a market factor still
-exists), within-block autocorrelation and volatility clustering, and the bar
-geometry — open/high/low and volume ride along as ratios to their own close, so
-every surrogate bar is a real bar's shape.
+`block_bootstrap_ohlcv()` resamples circular blocks of log returns, drawing one
+shared block sequence over the dates all assets have in common and mapping it
+through each asset's own index, then rebuilds bars from them. Preserved: each
+asset's return distribution (so volatility, fat tails and skew are realistic),
+the cross-asset correlation structure over that common window — every asset
+takes its return from the same source date, so a market factor still exists —
+within-block autocorrelation and volatility clustering, and the bar geometry:
+open/high/low and volume ride along as ratios to their own close, so every
+surrogate bar is a real bar's shape.
 
 Destroyed: the specific ordering that makes returns predictable from any signal
 computed on earlier bars, at horizons longer than the block. That is exactly the
@@ -69,6 +71,25 @@ logger = logging.getLogger(__name__)
 
 _OHLCV_COLUMNS = ("open", "high", "low", "close", "volume")
 
+
+def _circular_block_indices(
+    n: int,
+    block_size: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """`n` source positions drawn as circular blocks of `block_size` from [0, n).
+
+    Wrapping at the end (rather than truncating) keeps every position equally
+    likely to be drawn, which is what makes the surrogate's marginal
+    distribution match the original's.
+    """
+    if n <= 0:
+        return np.empty(0, dtype=np.int64)
+    n_blocks = int(np.ceil(n / block_size))
+    starts = rng.integers(0, n, size=n_blocks)
+    offsets = (starts[:, None] + np.arange(block_size)[None, :]) % n
+    return offsets.reshape(-1)[:n].astype(np.int64)
+
 # One experiment: features + close + dates in, result rows out.
 ExperimentFn = Callable[[np.ndarray, pd.DataFrame, pd.DatetimeIndex], list[dict]]
 
@@ -108,21 +129,27 @@ def block_bootstrap_ohlcv(
     independently would destroy the market factor and produce a null that is
     far too easy to beat.
 
-    RAGGED PANELS. Assets are not required to share an index length — staggered
-    listing dates are the normal case in crypto, and the fetcher returns them
-    as-is. Each asset keeps its OWN index and its own row count in the
+    RAGGED PANELS. Assets are not required to share an index length —
+    staggered listing dates are the normal case in crypto, and the fetcher
+    returns them as-is. Each asset keeps its OWN index and row count in the
     surrogate, which matters because FeatureEngine's min_obs_fraction filter
     then makes the same retention decision on the surrogate as on the real
     data: the null run is computed on the same universe as the observed run,
     which is what makes the comparison meaningful.
 
-    The shared block sequence is drawn over the longest asset and folded into
-    each shorter asset's own range (modulo its length). For equal-length assets
-    — the case the cross-correlation guarantee is stated for — this is exactly a
-    shared draw. For a shorter asset the fold keeps blocks contiguous and keeps
-    its returns drawn from its own history, so its marginal distribution is
-    preserved, but its co-movement with the others is approximate rather than
-    exact over the period where it has no data to co-move with.
+    Co-movement is preserved EXACTLY over the intersection window — the dates
+    every asset has in common. That is the span that reaches the GP, because
+    FeatureEngine intersects to a common date index before stacking, so getting
+    it exact there is what counts. Concretely: one shared block sequence is
+    drawn over the intersection, and every asset maps it through its own date
+    index, so on any given surrogate bar all assets take their return from the
+    same source date.
+
+    Each asset's history BEFORE the intersection (only the longer-listed assets
+    have any) is resampled independently from its own pre-intersection returns.
+    Those bars only feed the rolling-window warm-up that the lookback trim
+    discards, and there is nothing to co-move with there — the shorter assets
+    do not exist yet.
     """
     if block_size < 1:
         raise ValueError(f"block_size must be >= 1, got {block_size}")
@@ -131,18 +158,27 @@ def block_bootstrap_ohlcv(
 
     tickers = list(ohlcv.keys())
     lengths = {t: len(ohlcv[t]) for t in tickers}
-    T_ref = max(lengths.values())
-    if T_ref < 2:
+    if max(lengths.values()) < 2:
         return {t: df.copy() for t, df in ohlcv.items()}
 
-    # Draw circular blocks of source positions over the longest asset, then
-    # fold into each asset's own range. Shared across assets by construction.
-    n_blocks = int(np.ceil((T_ref - 1) / block_size))
-    starts = rng.integers(0, T_ref - 1, size=n_blocks)
-    offsets = (
-        starts[:, None] + np.arange(block_size)[None, :]
-    ) % (T_ref - 1)                          # [n_blocks x block_size]
-    src_shared = offsets.reshape(-1)[: T_ref - 1]
+    # Intersection of all asset dates — the span that survives FeatureEngine.
+    common: pd.DatetimeIndex | None = None
+    for t in tickers:
+        idx = ohlcv[t].index
+        common = idx if common is None else common.intersection(idx)
+    common = common.sort_values() if common is not None else pd.DatetimeIndex([])
+
+    shared_src: np.ndarray | None = None
+    if len(common) >= 2:
+        shared_src = _circular_block_indices(len(common) - 1, block_size, rng)
+    else:
+        logger.warning(
+            "block_bootstrap_ohlcv: assets share %d common date(s) — no joint "
+            "window, so each asset is resampled independently and cross-asset "
+            "co-movement is NOT preserved. The null will be easier to beat "
+            "than it should be; check the universe's date alignment.",
+            len(common),
+        )
 
     out: dict[str, pd.DataFrame] = {}
     for ticker in tickers:
@@ -154,8 +190,28 @@ def block_bootstrap_ohlcv(
             # and the retention decision downstream is unchanged.
             out[ticker] = df.copy()
             continue
-        # Fold the shared sequence into this asset's own return range.
-        src = src_shared[: T - 1] % (T - 1)
+
+        # src[i] is the source return slot for output return slot i, where slot
+        # i is the return arriving at index[i + 1].
+        src = np.full(T - 1, -1, dtype=np.int64)
+
+        if shared_src is not None:
+            # Map the shared sequence through this asset's own dates. Every
+            # common date is present in this asset by construction, so the
+            # lookup cannot miss.
+            pos = index.get_indexer(common)
+            target_slots = pos[1:] - 1                     # arrival at common[j+1]
+            source_slots = pos[shared_src + 1] - 1         # arrival at common[src+1]
+            src[target_slots] = source_slots
+
+        # Slots the shared sequence did not cover: this asset's pre-intersection
+        # history. Resample from among themselves so the returns still come from
+        # the same regime, rather than importing intersection-window returns.
+        uncovered = np.flatnonzero(src < 0)
+        if uncovered.size:
+            local = _circular_block_indices(uncovered.size, block_size, rng)
+            src[uncovered] = uncovered[local]
+
         close = df["close"].to_numpy(dtype=np.float64)
 
         # Log returns, guarded against non-positive prices in the source data.
@@ -172,7 +228,7 @@ def block_bootstrap_ohlcv(
         # bar reuses a real bar's open/high/low/volume RATIOS to its own close,
         # so the surrogate bars remain internally consistent (low <= close <=
         # high) instead of being synthesized.
-        # Return index i came from source return src[i], i.e. source bar src[i]+1.
+        # Return slot i came from source slot src[i], i.e. source bar src[i]+1.
         geom_src = np.empty(T, dtype=np.int64)
         geom_src[0] = 0
         geom_src[1:] = src + 1
@@ -194,8 +250,8 @@ def block_bootstrap_ohlcv(
         )
 
     logger.debug(
-        "block_bootstrap_ohlcv: %d assets, T_ref=%d, block_size=%d, %d blocks drawn",
-        len(tickers), T_ref, block_size, n_blocks,
+        "block_bootstrap_ohlcv: %d assets, %d common dates, block_size=%d",
+        len(tickers), len(common), block_size,
     )
     return out
 

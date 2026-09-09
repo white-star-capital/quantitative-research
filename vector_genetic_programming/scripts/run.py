@@ -32,12 +32,20 @@ from tqdm import tqdm
 # Config — edit these to scale up or point at different data
 # ---------------------------------------------------------------------------
 
-CACHE_DIR     = Path("data_pipeline_example/cache")
+CACHE_DIR     = Path("data_pipeline_example/cache")   # {SYMBOL}_1d.parquet, see results/README.md
 RESULTS_DIR   = Path("results")
 SEEDS         = [0, 1, 2]
-POP_SIZE      = 400       # individuals per generation (raise to 200+ for real runs)
-N_GENERATIONS = 100      # generations per seed (raise to 50+ for real runs)
-N_JOBS        = max(1, (os.cpu_count() or 2) - 1)
+POP_SIZE      = 100       # individuals per generation
+N_GENERATIONS = 15        # generations per seed
+
+# n_jobs=1 deliberately. run_evolution() creates a fresh spawn Pool per
+# (window, seed) and each worker re-pays the numba JIT warmup (~4-5s, more on a
+# cold import). Measured on this dataset a single core sustains ~33 evaluations
+# per second, so for a run of this size the pool spawn overhead — 40s+ times
+# every window/seed pair, and again for every null run — costs far more than
+# the parallelism saves. Raise it only when pop_size x n_generations per seed is
+# large enough that per-seed startup is negligible.
+N_JOBS        = 1
 FEE_BPS       = 10.0
 MIN_TRADES    = 50
 
@@ -60,7 +68,7 @@ MIN_ASSETS    = 10        # below this the run aborts rather than reporting
 # to represent the same procedure, not the same compute budget.
 # A p-value cannot resolve below 1/(1+N_NULL_RUNS); 20 runs buys p >= 0.048.
 # Set N_NULL_RUNS = 0 to skip, and then do not describe the result as validated.
-N_NULL_RUNS   = 20
+N_NULL_RUNS   = 19        # 1/(1+19) = 0.05, the smallest p-value worth claiming
 NULL_SEEDS    = [0]
 NULL_BLOCK    = 20        # bootstrap block length in bars
 
