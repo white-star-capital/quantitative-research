@@ -274,3 +274,75 @@ def test_worst_fitness_is_rankable_eval03(pset, feature_matrix, close_prices):
         _ = r1[0] < r2[0]  # -inf < -inf is False (equal — fine)
     except TypeError as exc:
         pytest.fail(f"Worst-fitness values are not comparable: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# EVAL-03: evaluate_with_status() distinguishes the ranking sentinel
+# from a real measurement
+# ---------------------------------------------------------------------------
+
+def test_evaluate_with_status_flags_below_min_trades(pset, feature_matrix, close_prices):
+    """evaluate_with_status must report WHY fitness is the worst-fitness tuple.
+
+    evaluate() has to keep returning -inf so NSGA-II can rank unusable
+    individuals. Reporting code needs to tell that sentinel apart from a real
+    Sharpe of -inf, which is what evaluate_with_status() is for.
+    """
+    import random
+
+    from deap import creator, gp
+
+    from vgp.backtest.runner import (
+        EVAL_BELOW_MIN_TRADES,
+        EvalConfig,
+        evaluate,
+        evaluate_with_status,
+    )
+    random.seed(2025)
+
+    ind = creator.Individual(gp.genHalfAndHalf(pset, min_=1, max_=3))
+    cfg = EvalConfig(
+        fee_bps=10.0, min_trades=99999, freq="1D",
+        init_cash=10_000.0, close_prices=close_prices,
+    )
+
+    fitness, status, n_trades = evaluate_with_status(ind, feature_matrix, cfg)
+
+    assert status == EVAL_BELOW_MIN_TRADES, (
+        f"status = {status!r}, expected {EVAL_BELOW_MIN_TRADES!r}"
+    )
+    assert fitness[0] == -np.inf, "fitness contract unchanged — still -inf for NSGA-II"
+    assert fitness[2] == float(-len(ind)), "-tree_size preserved"
+    assert n_trades < 99999, f"observed trade count must be reported, got {n_trades}"
+
+    # evaluate() remains a thin wrapper with the original 3-float contract
+    assert evaluate(ind, feature_matrix, cfg) == fitness
+
+
+def test_evaluate_with_status_reports_ok_for_valid_individual(
+    pset, feature_matrix, close_prices
+):
+    """A measurable individual gets EVAL_OK and a finite Sharpe."""
+    import random
+
+    from deap import creator, gp
+
+    from vgp.backtest.runner import EVAL_OK, EvalConfig, evaluate_with_status
+    random.seed(11)
+
+    cfg = EvalConfig(
+        fee_bps=10.0, min_trades=1, freq="1D",
+        init_cash=10_000.0, close_prices=close_prices,
+    )
+
+    # Try a handful of random trees until one is measurable on synthetic data
+    for _ in range(30):
+        ind = creator.Individual(gp.genHalfAndHalf(pset, min_=2, max_=4))
+        fitness, status, n_trades = evaluate_with_status(ind, feature_matrix, cfg)
+        if status == EVAL_OK:
+            assert np.isfinite(fitness[0]), f"EVAL_OK with non-finite Sharpe {fitness[0]}"
+            assert np.isfinite(fitness[1]), f"EVAL_OK with non-finite return {fitness[1]}"
+            assert n_trades >= 1
+            return
+
+    pytest.skip("no randomly generated tree was measurable on this synthetic data")

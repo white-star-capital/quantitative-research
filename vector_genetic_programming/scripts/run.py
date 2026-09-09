@@ -19,7 +19,9 @@ Output
 from __future__ import annotations
 
 import logging
+import math
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -64,6 +66,19 @@ def _banner(text: str) -> None:
 
 def _section(text: str) -> None:
     print(f"\n  ── {text}")
+
+
+def _fmt(value, spec: str) -> str:
+    """Format a metric, rendering NaN/inf as 'n/a' rather than a fake number."""
+    m = re.match(r"^[+\-]?(\d+)", spec)
+    width = int(m.group(1)) if m else 0
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        v = float("nan")
+    if not math.isfinite(v):
+        return f"{'n/a':>{width}}" if width else "n/a"
+    return f"{v:{spec}}"
 
 
 def main() -> None:
@@ -136,83 +151,45 @@ def main() -> None:
         n_jobs=N_JOBS,
         checkpoint_freq=999,
     )
-    n_trials = len(SEEDS) * len(windows)
     runner   = WalkForwardRunner(dates=fe.dates_)
     all_results: list[dict] = []
 
+    # run_window() owns the split, the OOS evaluate and the reporting invariants
+    # (no worst-fitness sentinel written out as a Sharpe). Do not re-implement it
+    # here — a second copy of that logic is how the sentinel leak survived.
     for w_idx, window in enumerate(windows):
         print(
             f"\n  Window {w_idx + 1}/{len(windows)}"
-            f"  train→{window.train_end}"
-            f"  OOS {window.test_start}→{window.test_end}"
+            f"  train\u2192{window.train_end}"
+            f"  OOS {window.test_start}\u2192{window.test_end}"
         )
 
-        window_results: list[dict] = []
-        for seed in SEEDS:
-            from vgp.evolution.config import EvolutionConfig
-            from vgp.evolution.loop import run_evolution
-            from vgp.data.splitter import WalkForwardSplitter
-            from vgp.backtest.runner import EvalConfig as EC
+        window_results = runner.run_window(
+            window=window,
+            feature_matrix=fm,
+            close_prices=close_prices,
+            base_eval_config=eval_cfg,
+            seeds=SEEDS,
+            evo_config_kwargs=evo_kwargs,
+        )
+        all_results.extend(window_results)
 
-            # Split feature matrix for this window
-            splitter = WalkForwardSplitter()
-            train_fm, _val_fm, test_fm = splitter.split(
-                fm,
-                train_end=window.train_end,
-                val_start=window.val_start,
-                val_end=window.val_end,
-                test_start=window.test_start,
-                dates=fe.dates_,
-            )
-            train_close = close_prices.loc[close_prices.index <= window.train_end].copy()
-            test_close  = close_prices.loc[close_prices.index >= window.test_start].copy()
-            train_eval_cfg = EC(fee_bps=FEE_BPS, min_trades=MIN_TRADES, close_prices=train_close)
-            test_eval_cfg  = EC(fee_bps=FEE_BPS, min_trades=MIN_TRADES, close_prices=test_close)
-
-            cfg = EvolutionConfig(seed=seed, **evo_kwargs)
-            _pop, hof, _logbook = run_evolution(
-                cfg, train_fm, train_eval_cfg,
-                desc=f"  W{w_idx} seed{seed}",
-            )
-
-            # OOS evaluate
-            from vgp.backtest.runner import evaluate
-            oos_fitness = evaluate(hof[0], test_fm, test_eval_cfg) if hof else (-999.0, -999.0, 0)
-            oos_sharpe  = float(oos_fitness[0])
-            is_sharpe   = float(hof[0].fitness.values[0]) if hof else float("nan")
-
-            # DSR
-            from vgp.analysis.dsr import compute_dsr
-            from vgp.analysis.runner import _get_is_returns
-            try:
-                is_returns = _get_is_returns(hof[0], train_fm, train_eval_cfg)
-                dsr = compute_dsr(is_returns, sr_hat=is_sharpe, n_trials=n_trials)
-            except Exception:
-                dsr = 0.0
-
-            result = {
-                "window_id": window.window_id,
-                "seed": seed,
-                "train_end": window.train_end,
-                "test_start": window.test_start,
-                "test_end": window.test_end,
-                "is_sharpe": is_sharpe,
-                "oos_sharpe": oos_sharpe,
-                "dsr": dsr,
-                "n_nodes_best": len(hof[0]) if hof else 0,
-            }
-            window_results.append(result)
-            all_results.append(result)
-
-        # Per-window summary line
+        # Per-window summary line (DSR is still NaN here — it needs the full
+        # trial set, so it is filled in by attach_dsr() after every window runs)
         from vgp.analysis import aggregate_seeds
         agg = aggregate_seeds(window_results)
         print(
-            f"    → median OOS SR {agg['median_oos_sharpe']:+.3f}"
-            f"  IQR {agg['iqr_oos_sharpe']:.3f}"
-            f"  DSR {agg['median_dsr']:.3f}"
-            f"  ({agg['n_seeds_positive_oos']}/{len(SEEDS)} seeds positive)"
+            f"    \u2192 median OOS SR {_fmt(agg['median_oos_sharpe'], '+.3f')}"
+            f"  IQR {_fmt(agg['iqr_oos_sharpe'], '.3f')}"
+            f"  ({agg['n_seeds_positive_oos']}/{agg['n_seeds_valid_oos']} valid seeds positive,"
+            f" {agg['n_seeds_valid_oos']}/{agg['n_seeds']} measurable)"
         )
+
+    # DSR must be computed across the WHOLE trial set — the multiple-testing
+    # correction scales with the cross-sectional spread of trial Sharpes, which
+    # is not knowable one row at a time.
+    from vgp.analysis import attach_dsr
+    attach_dsr(all_results)
 
     # ------------------------------------------------------------------
     # 5. Save results + plots
@@ -224,8 +201,17 @@ def main() -> None:
     save_results_csv(all_results, csv_path)
     print(f"  results.csv  →  {csv_path}")
 
-    # Best (window, seed) pair for plots
-    best = max(all_results, key=lambda r: r["oos_sharpe"])
+    # Best (window, seed) pair for plots. NaN OOS Sharpe means "not measured" —
+    # max() over NaN is undefined, so rank only measurable rows and fall back to
+    # the best IS row when no seed produced a valid OOS measurement.
+    measured = [r for r in all_results if math.isfinite(r["oos_sharpe"])]
+    if measured:
+        best = max(measured, key=lambda r: r["oos_sharpe"])
+    else:
+        print("  WARNING: no seed produced a measurable OOS Sharpe — "
+              "plotting the best IS row instead")
+        is_measured = [r for r in all_results if math.isfinite(r["is_sharpe"])]
+        best = max(is_measured, key=lambda r: r["is_sharpe"]) if is_measured else all_results[0]
     best_window = windows[best["window_id"]]
 
     with tqdm(["pareto_front", "tree_graph", "equity_curves"], desc="  Plots", unit="plot", leave=True) as pbar:
@@ -272,25 +258,32 @@ def main() -> None:
     # Final summary table
     # ------------------------------------------------------------------
     _banner("Results")
-    print(f"  {'Win':<4} {'Seed':<5} {'IS SR':>7} {'OOS SR':>8} {'DSR':>6} {'Nodes':>6}")
-    print(f"  {'-'*4} {'-'*5} {'-'*7} {'-'*8} {'-'*6} {'-'*6}")
+    hdr = f"  {'Win':<4} {'Seed':<5} {'IS SR':>7} {'OOS SR':>8} {'DSR':>6} {'Nodes':>6}  OOS status"
+    rule = f"  {'-'*4} {'-'*5} {'-'*7} {'-'*8} {'-'*6} {'-'*6}  {'-'*16}"
+    print(hdr)
+    print(rule)
     for r in all_results:
+        status = r.get("oos_status", "?")
+        if status != "ok":
+            n_tr, min_tr = r.get("oos_n_trades", "?"), r.get("oos_min_trades", "?")
+            status = f"{status} ({n_tr}/{min_tr} trades)"
         print(
             f"  {r['window_id']:<4} {r['seed']:<5}"
-            f" {r['is_sharpe']:>+7.3f} {r['oos_sharpe']:>+8.3f}"
-            f" {r['dsr']:>6.3f} {r['n_nodes_best']:>6}"
+            f" {_fmt(r['is_sharpe'], '+7.3f')} {_fmt(r['oos_sharpe'], '+8.3f')}"
+            f" {_fmt(r['dsr'], '6.3f')} {r['n_nodes_best']:>6}  {status}"
         )
-    print(f"  {'-'*4} {'-'*5} {'-'*7} {'-'*8} {'-'*6} {'-'*6}")
+    print(rule)
     for window in windows:
         w_res = [r for r in all_results if r["window_id"] == window.window_id]
         agg = aggregate_seeds(w_res)
         print(
             f"  W{window.window_id} aggregate"
-            f"  median OOS SR {agg['median_oos_sharpe']:+.3f}"
-            f"  DSR {agg['median_dsr']:.3f}"
-            f"  {agg['n_seeds_positive_oos']}/{len(SEEDS)} positive"
+            f"  median OOS SR {_fmt(agg['median_oos_sharpe'], '+.3f')}"
+            f"  DSR {_fmt(agg['median_dsr'], '.3f')}"
+            f"  {agg['n_seeds_positive_oos']}/{agg['n_seeds_valid_oos']} valid positive"
+            f"  ({agg['n_seeds_valid_oos']}/{agg['n_seeds']} measurable)"
         )
-    print()
+    print("\n  NaN / n/a = not measured (see OOS status), not a bad result.\n")
 
 
 if __name__ == "__main__":

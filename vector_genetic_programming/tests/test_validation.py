@@ -189,7 +189,8 @@ def test_runner_oos_not_passed_to_evolution(feature_matrix, close_prices, dates,
     mock_return = _make_mock_evolution_return()
 
     with patch("vgp.analysis.runner.run_evolution", return_value=mock_return) as mock_run_evo, \
-         patch("vgp.analysis.runner.evaluate", return_value=(0.3, 0.05, -5.0)), \
+         patch("vgp.analysis.runner.evaluate_with_status",
+               return_value=((0.3, 0.05, -5.0), "ok", 120)), \
          patch("vgp.analysis.runner._get_is_returns", return_value=np.random.default_rng(0).standard_normal(250)):
 
         runner.run_window(
@@ -236,7 +237,8 @@ def test_runner_iterates_seeds(feature_matrix, close_prices, dates, eval_cfg, ba
     seeds = [0, 1, 2]
 
     with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
-         patch("vgp.analysis.runner.evaluate", return_value=(0.3, 0.05, -5.0)), \
+         patch("vgp.analysis.runner.evaluate_with_status",
+               return_value=((0.3, 0.05, -5.0), "ok", 120)), \
          patch("vgp.analysis.runner._get_is_returns", return_value=np.random.default_rng(0).standard_normal(250)):
 
         results = runner.run_window(
@@ -260,7 +262,8 @@ def test_runner_iterates_seeds(feature_matrix, close_prices, dates, eval_cfg, ba
     # Verify each result dict has all required keys
     required_keys = {
         "window_id", "seed", "train_end", "test_start", "test_end",
-        "is_sharpe", "oos_sharpe", "dsr", "n_nodes_best",
+        "is_sharpe", "oos_sharpe", "oos_status", "oos_n_trades", "oos_min_trades",
+        "dsr", "n_nodes_best",
     }
     for r in results:
         missing = required_keys - set(r.keys())
@@ -278,7 +281,9 @@ def test_compute_dsr_returns_float_in_range():
 
     rng = np.random.default_rng(0)
     returns = rng.standard_normal(252)
-    result = compute_dsr(returns, sr_hat=1.0, n_trials=10)
+    result = compute_dsr(
+        returns, sr_hat=1.0, trial_sharpes=[0.4, 1.0, 0.7, 1.3, 0.2, 0.9, 1.1, 0.5, 0.8, 0.6]
+    )
 
     assert isinstance(result, float), (
         f"compute_dsr must return float, got {type(result)}"
@@ -292,7 +297,7 @@ def test_compute_dsr_flat_returns_zero():
     """VAL-04: compute_dsr with all-zero returns must return 0.0 (flat portfolio guard)."""
     from vgp.analysis import compute_dsr
 
-    result = compute_dsr(np.zeros(100), sr_hat=0.0, n_trials=1)
+    result = compute_dsr(np.zeros(100), sr_hat=0.0, trial_sharpes=[0.0, 1.0, 2.0])
     assert result == 0.0, (
         f"compute_dsr with flat returns (std=0) must return 0.0, got {result}"
     )
@@ -319,3 +324,421 @@ def test_aggregate_seeds_positive_count():
     assert abs(agg["median_oos_sharpe"] - 0.25) < 1e-9, (
         f"Expected median_oos_sharpe=0.25, got {agg['median_oos_sharpe']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# VAL-04 (regression): E[SR_max] must be scaled by sigma_SR
+#
+# The bracket of Bailey & Lopez de Prado Proposition 3 is a dimensionless
+# multiplier on the cross-sectional std of the trial Sharpes. Comparing SR_hat
+# to the bare bracket puts the hurdle at ~1.52 in per-period units (~24
+# annualized), which nothing clears — every DSR collapses to ~0 regardless of
+# the strategy. These tests pin the scaling so that failure mode cannot return.
+# ---------------------------------------------------------------------------
+
+
+def _synthetic_returns(ann_sharpe: float, T: int = 300, seed: int = 0) -> np.ndarray:
+    """Daily returns whose realized annualized Sharpe equals ann_sharpe."""
+    rng = np.random.default_rng(seed)
+    r = rng.standard_normal(T) * 0.01
+    target_pp = ann_sharpe / np.sqrt(252)
+    return r - r.mean() + target_pp * r.std()
+
+
+def test_compute_dsr_not_degenerate_for_realistic_sharpe():
+    """VAL-04 regression: a strong IS Sharpe over clustered trials must not give DSR ~ 0.
+
+    These are the actual IS Sharpe ratios from a 3-seed x 3-window run. Under
+    the unscaled formula every one of them produced DSR < 1e-170.
+    """
+    from vgp.analysis import compute_dsr
+
+    trials = [4.045, 3.744, 4.063, 3.312, 3.686, 3.629, 3.222, 3.113, 3.254]
+    dsr = compute_dsr(_synthetic_returns(4.045), sr_hat=4.045, trial_sharpes=trials)
+
+    assert np.isfinite(dsr), f"DSR must be finite for a valid trial set, got {dsr}"
+    assert dsr > 0.5, (
+        f"DSR = {dsr:.3e} for IS Sharpe 4.045 against trials with annualized "
+        f"spread {np.std(trials, ddof=1):.3f}. A value near zero means E[SR_max] "
+        f"is not being scaled by sigma_SR — the hurdle has become ~24 annualized."
+    )
+
+
+def test_compute_dsr_decreases_with_trial_spread():
+    """VAL-04: a wider spread of trial Sharpes raises the hurdle, lowering DSR."""
+    from vgp.analysis import compute_dsr
+
+    returns = _synthetic_returns(4.0)
+    tight = [3.8, 4.0, 4.2, 3.9, 4.1, 4.05, 3.95, 4.15, 3.85]
+    wide  = [0.5, 8.0, 1.5, 7.0, 2.5, 6.5, 3.5, 7.5, 4.0]
+
+    dsr_tight = compute_dsr(returns, sr_hat=4.0, trial_sharpes=tight)
+    dsr_wide  = compute_dsr(returns, sr_hat=4.0, trial_sharpes=wide)
+
+    assert dsr_tight > dsr_wide, (
+        f"DSR must fall as the trial Sharpe spread grows (more scope for "
+        f"selection bias): tight={dsr_tight:.4f}, wide={dsr_wide:.4f}"
+    )
+
+
+def test_compute_dsr_requires_two_finite_trials():
+    """VAL-04: sigma_SR is undefined below 2 trials — DSR is NaN, not 0.0.
+
+    NaN means "not computable"; 0.0 would assert "no skill", which is a
+    different claim and would be read as a result.
+    """
+    from vgp.analysis import compute_dsr
+
+    returns = _synthetic_returns(2.0)
+    assert np.isnan(compute_dsr(returns, sr_hat=2.0, trial_sharpes=[2.0]))
+    assert np.isnan(compute_dsr(returns, sr_hat=2.0, trial_sharpes=[]))
+
+
+def test_compute_dsr_ignores_worst_fitness_trials():
+    """VAL-04: -inf trial Sharpes are sentinels, not data — they must be dropped."""
+    from vgp.analysis import compute_dsr
+
+    returns = _synthetic_returns(4.0)
+    clean = [3.8, 4.0, 4.2, 3.9, 4.1]
+    with_sentinels = clean + [-np.inf, -np.inf, np.nan]
+
+    dsr_clean = compute_dsr(returns, sr_hat=4.0, trial_sharpes=clean)
+    dsr_dirty = compute_dsr(returns, sr_hat=4.0, trial_sharpes=with_sentinels)
+
+    assert dsr_clean == pytest.approx(dsr_dirty), (
+        f"Sentinel trial values changed the result: clean={dsr_clean}, "
+        f"with sentinels={dsr_dirty}. -inf would blow up sigma_SR."
+    )
+
+
+def test_compute_dsr_nonfinite_sr_hat_is_nan():
+    """VAL-04: a worst-fitness IS Sharpe is not a measurement — DSR is NaN."""
+    from vgp.analysis import compute_dsr
+
+    returns = _synthetic_returns(4.0)
+    trials = [3.8, 4.0, 4.2, 3.9, 4.1]
+    assert np.isnan(compute_dsr(returns, sr_hat=-np.inf, trial_sharpes=trials))
+    assert np.isnan(compute_dsr(returns, sr_hat=np.nan, trial_sharpes=trials))
+
+
+def test_compute_dsr_identical_trials_is_nan():
+    """VAL-04: sigma_SR == 0 makes the hurdle degenerate — NaN, not a free pass."""
+    from vgp.analysis import compute_dsr
+
+    dsr = compute_dsr(_synthetic_returns(4.0), sr_hat=4.0, trial_sharpes=[4.0, 4.0, 4.0])
+    assert np.isnan(dsr), f"Zero trial spread must give NaN, got {dsr}"
+
+
+# ---------------------------------------------------------------------------
+# VAL-04: attach_dsr() computes DSR across the whole trial set
+# ---------------------------------------------------------------------------
+
+
+def test_attach_dsr_fills_rows_and_drops_returns():
+    """VAL-04: attach_dsr fills dsr from all trials and removes the scratch returns."""
+    from vgp.analysis import IS_RETURNS_KEY, attach_dsr
+
+    sharpes = [4.0, 3.6, 3.9, 3.2, 3.7, 3.5]
+    results = [
+        {"is_sharpe": sr, "oos_sharpe": 0.5, "dsr": float("nan"),
+         IS_RETURNS_KEY: _synthetic_returns(sr, seed=i)}
+        for i, sr in enumerate(sharpes)
+    ]
+
+    attach_dsr(results)
+
+    for row in results:
+        assert IS_RETURNS_KEY not in row, "scratch IS returns must be popped"
+        assert np.isfinite(row["dsr"]), f"dsr not filled in: {row['dsr']}"
+        assert 0.0 <= row["dsr"] <= 1.0
+        assert row["dsr_n_trials"] == len(sharpes), (
+            "n_trials must be the whole trial set, not one row"
+        )
+        assert row["dsr_trial_sr_std"] == pytest.approx(np.std(sharpes, ddof=1))
+
+
+def test_attach_dsr_excludes_sentinel_rows():
+    """VAL-04: rows with a worst-fitness IS Sharpe get NaN DSR and do not count as trials."""
+    from vgp.analysis import IS_RETURNS_KEY, attach_dsr
+
+    results = [
+        {"is_sharpe": 4.0, "dsr": float("nan"), IS_RETURNS_KEY: _synthetic_returns(4.0, seed=1)},
+        {"is_sharpe": 3.6, "dsr": float("nan"), IS_RETURNS_KEY: _synthetic_returns(3.6, seed=2)},
+        {"is_sharpe": 3.8, "dsr": float("nan"), IS_RETURNS_KEY: _synthetic_returns(3.8, seed=3)},
+        {"is_sharpe": float("nan"), "dsr": float("nan"),
+         IS_RETURNS_KEY: _synthetic_returns(1.0, seed=4)},
+    ]
+
+    attach_dsr(results)
+
+    assert all(r["dsr_n_trials"] == 3 for r in results), (
+        "the unmeasured row must not be counted as a trial"
+    )
+    assert np.isnan(results[-1]["dsr"]), "unmeasured IS Sharpe must give NaN DSR"
+    assert all(np.isfinite(r["dsr"]) for r in results[:3])
+
+
+def test_attach_dsr_row_without_returns_is_nan():
+    """VAL-04: a row whose IS backtest failed gets NaN DSR, not 0.0."""
+    from vgp.analysis import attach_dsr
+
+    results = [{"is_sharpe": 4.0, "dsr": float("nan")},
+               {"is_sharpe": 3.5, "dsr": float("nan")}]
+    attach_dsr(results)
+    assert all(np.isnan(r["dsr"]) for r in results)
+
+
+# ---------------------------------------------------------------------------
+# VAL-03 (regression): the worst-fitness sentinel must never be reported
+# as an OOS Sharpe ratio
+# ---------------------------------------------------------------------------
+
+
+def test_run_window_records_nan_not_inf_when_oos_unmeasurable(
+    feature_matrix, close_prices, dates, eval_cfg, base_evo_kwargs
+):
+    """VAL-03 regression: an unmeasurable OOS window yields NaN, never -inf.
+
+    evaluate() returns (-inf, -inf, -size) so NSGA-II can still RANK an unusable
+    individual. That sentinel is not a Sharpe ratio of minus infinity. Writing it
+    into results.csv reports "the trade filter tripped" as catastrophic
+    performance, and poisons every median and IQR computed from the column.
+    """
+    from vgp.analysis import generate_windows
+    from vgp.analysis.runner import WalkForwardRunner
+
+    runner = WalkForwardRunner(dates=dates)
+    window = generate_windows("2024-01-01", "2026-04-01")[0]
+    mock_return = _make_mock_evolution_return()
+
+    # evaluate_with_status reports the sentinel plus the reason for it
+    sentinel = ((-np.inf, -np.inf, -5.0), "below_min_trades", 3)
+
+    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
+         patch("vgp.analysis.runner.evaluate_with_status", return_value=sentinel), \
+         patch("vgp.analysis.runner._get_is_returns",
+               return_value=np.random.default_rng(0).standard_normal(250)):
+
+        results = runner.run_window(
+            window=window,
+            feature_matrix=feature_matrix,
+            close_prices=close_prices,
+            base_eval_config=eval_cfg,
+            seeds=[0],
+            evo_config_kwargs=base_evo_kwargs,
+        )
+
+    row = results[0]
+    assert not np.isinf(row["oos_sharpe"]), (
+        f"oos_sharpe = {row['oos_sharpe']} — the worst-fitness sentinel leaked "
+        f"into reporting as a performance number"
+    )
+    assert np.isnan(row["oos_sharpe"]), (
+        f"oos_sharpe must be NaN ('not measured') when the OOS evaluation is "
+        f"invalid, got {row['oos_sharpe']}"
+    )
+    assert row["oos_status"] == "below_min_trades"
+    assert row["oos_n_trades"] == 3, "the observed trade count must be reported"
+
+
+def test_run_window_reports_ok_status_and_real_sharpe(
+    feature_matrix, close_prices, dates, eval_cfg, base_evo_kwargs
+):
+    """VAL-03: a valid OOS evaluation is recorded verbatim with status 'ok'."""
+    from vgp.analysis import generate_windows
+    from vgp.analysis.runner import WalkForwardRunner
+
+    runner = WalkForwardRunner(dates=dates)
+    window = generate_windows("2024-01-01", "2026-04-01")[0]
+    mock_return = _make_mock_evolution_return()
+
+    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
+         patch("vgp.analysis.runner.evaluate_with_status",
+               return_value=((1.23, 0.05, -5.0), "ok", 87)), \
+         patch("vgp.analysis.runner._get_is_returns",
+               return_value=np.random.default_rng(0).standard_normal(250)):
+
+        results = runner.run_window(
+            window=window, feature_matrix=feature_matrix, close_prices=close_prices,
+            base_eval_config=eval_cfg, seeds=[0], evo_config_kwargs=base_evo_kwargs,
+        )
+
+    assert results[0]["oos_sharpe"] == pytest.approx(1.23)
+    assert results[0]["oos_status"] == "ok"
+    assert results[0]["oos_n_trades"] == 87
+
+
+def test_run_window_records_nan_for_worst_fitness_is_sharpe(
+    feature_matrix, close_prices, dates, eval_cfg, base_evo_kwargs
+):
+    """VAL-03: a -inf IS Sharpe on hof[0] is also a sentinel — record NaN."""
+    from vgp.analysis import generate_windows
+    from vgp.analysis.runner import WalkForwardRunner
+
+    _pop, mock_hof, mock_logbook = _make_mock_evolution_return()
+    mock_hof[0].fitness.values = (-np.inf, -np.inf, -5.0)
+
+    runner = WalkForwardRunner(dates=dates)
+    window = generate_windows("2024-01-01", "2026-04-01")[0]
+
+    with patch("vgp.analysis.runner.run_evolution", return_value=([], mock_hof, mock_logbook)), \
+         patch("vgp.analysis.runner.evaluate_with_status",
+               return_value=((0.3, 0.05, -5.0), "ok", 90)), \
+         patch("vgp.analysis.runner._get_is_returns",
+               return_value=np.random.default_rng(0).standard_normal(250)):
+
+        results = runner.run_window(
+            window=window, feature_matrix=feature_matrix, close_prices=close_prices,
+            base_eval_config=eval_cfg, seeds=[0], evo_config_kwargs=base_evo_kwargs,
+        )
+
+    assert np.isnan(results[0]["is_sharpe"]), (
+        f"is_sharpe = {results[0]['is_sharpe']} — worst-fitness sentinel must "
+        f"not be reported as an IS Sharpe"
+    )
+
+
+def test_run_window_scales_oos_min_trades(
+    feature_matrix, close_prices, dates, base_evo_kwargs
+):
+    """VAL-03: the OOS trade threshold scales to the OOS window length.
+
+    min_trades is a RATE requirement written for the ~12-month train window.
+    A 3-month OOS window has roughly a quarter of the bars, so requiring the
+    same 50 sign changes is mechanically unreachable for a strategy trading at
+    exactly its in-sample frequency.
+    """
+    from vgp.analysis import generate_windows
+    from vgp.analysis.runner import WalkForwardRunner
+    from vgp.backtest.runner import EvalConfig
+
+    runner = WalkForwardRunner(dates=dates)
+    window = generate_windows("2024-01-01", "2026-04-01")[0]
+    base_cfg = EvalConfig(close_prices=close_prices, min_trades=50)
+    mock_return = _make_mock_evolution_return()
+
+    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
+         patch("vgp.analysis.runner.evaluate_with_status",
+               return_value=((0.3, 0.05, -5.0), "ok", 90)) as mock_eval, \
+         patch("vgp.analysis.runner._get_is_returns",
+               return_value=np.random.default_rng(0).standard_normal(250)):
+
+        results = runner.run_window(
+            window=window, feature_matrix=feature_matrix, close_prices=close_prices,
+            base_eval_config=base_cfg, seeds=[0], evo_config_kwargs=base_evo_kwargs,
+        )
+
+    oos_cfg = mock_eval.call_args.args[2]
+    assert oos_cfg.min_trades < 50, (
+        f"OOS min_trades = {oos_cfg.min_trades}; the train-window threshold of "
+        f"50 was applied verbatim to a 3-month OOS window"
+    )
+    assert oos_cfg.min_trades >= 1, "threshold must stay at least 1"
+    assert results[0]["oos_min_trades"] == oos_cfg.min_trades, (
+        "the threshold actually applied must be recorded alongside the result"
+    )
+
+
+def test_run_window_honours_explicit_oos_min_trades(
+    feature_matrix, close_prices, dates, base_evo_kwargs
+):
+    """VAL-03: oos_min_trades=0 measures whatever the OOS window produced."""
+    from vgp.analysis import generate_windows
+    from vgp.analysis.runner import WalkForwardRunner
+    from vgp.backtest.runner import EvalConfig
+
+    runner = WalkForwardRunner(dates=dates)
+    window = generate_windows("2024-01-01", "2026-04-01")[0]
+    base_cfg = EvalConfig(close_prices=close_prices, min_trades=50)
+    mock_return = _make_mock_evolution_return()
+
+    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
+         patch("vgp.analysis.runner.evaluate_with_status",
+               return_value=((0.3, 0.05, -5.0), "ok", 4)) as mock_eval, \
+         patch("vgp.analysis.runner._get_is_returns",
+               return_value=np.random.default_rng(0).standard_normal(250)):
+
+        runner.run_window(
+            window=window, feature_matrix=feature_matrix, close_prices=close_prices,
+            base_eval_config=base_cfg, seeds=[0], evo_config_kwargs=base_evo_kwargs,
+            oos_min_trades=0,
+        )
+
+    assert mock_eval.call_args.args[2].min_trades == 0
+
+
+# ---------------------------------------------------------------------------
+# VAL-04: aggregate_seeds() and save_results_csv() must not treat
+# "not measured" as a data point
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_seeds_ignores_unmeasured_oos():
+    """VAL-04: NaN OOS Sharpes are excluded from median, IQR and positive count."""
+    from vgp.analysis import aggregate_seeds
+
+    agg = aggregate_seeds([
+        {"oos_sharpe": 1.0, "dsr": 0.9},
+        {"oos_sharpe": float("nan"), "dsr": float("nan")},
+        {"oos_sharpe": 0.5, "dsr": 0.8},
+    ])
+
+    assert agg["n_seeds_valid_oos"] == 2, "only measured seeds count as valid"
+    assert agg["n_seeds"] == 3
+    assert agg["n_seeds_positive_oos"] == 2
+    assert agg["median_oos_sharpe"] == pytest.approx(0.75), (
+        f"median must be over measured seeds only, got {agg['median_oos_sharpe']}"
+    )
+    assert np.isfinite(agg["iqr_oos_sharpe"])
+    assert agg["median_dsr"] == pytest.approx(0.85)
+
+
+def test_aggregate_seeds_all_unmeasured():
+    """VAL-04: when no seed was measurable, medians are NaN and counts are 0."""
+    from vgp.analysis import aggregate_seeds
+
+    agg = aggregate_seeds([
+        {"oos_sharpe": float("nan"), "dsr": float("nan")},
+        {"oos_sharpe": float("nan"), "dsr": float("nan")},
+    ])
+
+    assert np.isnan(agg["median_oos_sharpe"])
+    assert np.isnan(agg["iqr_oos_sharpe"])
+    assert agg["n_seeds_valid_oos"] == 0
+    assert agg["n_seeds_positive_oos"] == 0
+    assert agg["n_seeds"] == 2
+
+
+def test_aggregate_seeds_would_be_poisoned_by_inf():
+    """VAL-04: an -inf that somehow reaches aggregation must not silently
+    produce -inf / NaN summaries for the whole window."""
+    from vgp.analysis import aggregate_seeds
+
+    agg = aggregate_seeds([
+        {"oos_sharpe": 1.0, "dsr": 0.9},
+        {"oos_sharpe": -np.inf, "dsr": 0.1},
+        {"oos_sharpe": 1.4, "dsr": 0.8},
+    ])
+
+    assert np.isfinite(agg["median_oos_sharpe"]), (
+        f"median_oos_sharpe = {agg['median_oos_sharpe']} — an infinite sentinel "
+        f"destroyed the window summary"
+    )
+    assert agg["median_oos_sharpe"] == pytest.approx(1.2)
+    assert agg["n_seeds_valid_oos"] == 2
+
+
+def test_save_results_csv_drops_scratch_keys(tmp_path):
+    """VAL-04: the per-period returns array is scratch, not a CSV column."""
+    from vgp.analysis import IS_RETURNS_KEY, save_results_csv
+
+    path = tmp_path / "results.csv"
+    save_results_csv([{
+        "window_id": 0, "seed": 0, "is_sharpe": 4.0, "oos_sharpe": float("nan"),
+        "oos_status": "below_min_trades", "dsr": 0.9,
+        IS_RETURNS_KEY: np.zeros(10),
+    }], str(path))
+
+    header = path.read_text().splitlines()[0]
+    assert IS_RETURNS_KEY not in header, f"scratch key written to CSV: {header}"
+    assert "oos_status" in header, "the status column must be persisted"

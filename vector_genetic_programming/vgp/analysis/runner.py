@@ -18,8 +18,8 @@ import pandas as pd
 # Available in all environments that have pandas>=3.0.0 installed.
 from dateutil.relativedelta import relativedelta
 
-from vgp.analysis.dsr import compute_dsr
-from vgp.backtest.runner import EvalConfig, evaluate
+from vgp.analysis.dsr import IS_RETURNS_KEY
+from vgp.backtest.runner import EVAL_OK, EvalConfig, evaluate_with_status
 from vgp.data.splitter import WalkForwardSplitter
 from vgp.evolution.config import EvolutionConfig
 from vgp.evolution.loop import run_evolution
@@ -183,7 +183,7 @@ class WalkForwardRunner:
         base_eval_config: EvalConfig,
         seeds: list[int],
         evo_config_kwargs: dict,
-        n_trials: int | None = None,
+        oos_min_trades: int | None = None,
     ) -> list[dict]:
         """Run evolution for all seeds on one window. Returns one dict per seed.
 
@@ -206,11 +206,23 @@ class WalkForwardRunner:
             Seeds to iterate over. Length = n_seeds.
         evo_config_kwargs : dict
             Keyword args for EvolutionConfig (excluding seed, which is set per iteration).
-        n_trials : int | None
-            Total independent trials for DSR multiple-testing correction
-            (seeds × windows across the full experiment). Defaults to len(seeds).
-            Pass the true total when calling run_window() in a multi-window loop:
-            ``n_trials=len(seeds) * n_windows``.
+        oos_min_trades : int | None
+            Minimum sign changes required for the OOS Sharpe to count as a
+            measurement. Defaults to ``base_eval_config.min_trades`` scaled by
+            the OOS/train length ratio, because the same trade RATE produces
+            proportionally fewer trades in a shorter window — applying the
+            train-window threshold (50) verbatim to a 3-month OOS window is
+            mechanically unreachable and reports every strategy as invalid.
+            Pass 0 to measure whatever the window produced.
+
+        Returns
+        -------
+        list[dict]
+            One row per seed. ``oos_sharpe`` is NaN — never the -inf
+            worst-fitness sentinel — whenever ``oos_status != EVAL_OK``; the
+            status and trade count say why. ``dsr`` is left as NaN and must be
+            filled in by ``attach_dsr()`` once every window and seed has run,
+            since the multiple-testing correction needs the whole trial set.
         """
         logger.info(
             "Window %d: train_end=%s test_start=%s test_end=%s n_seeds=%d",
@@ -244,9 +256,24 @@ class WalkForwardRunner:
             init_cash=base_eval_config.init_cash,
             close_prices=train_close.copy(),
         )
+        # Scale the OOS trade threshold to the OOS window length. min_trades is a
+        # RATE requirement expressed for the train window; a 3-month OOS window has
+        # ~1/4 the bars, so the unscaled 50 can be impossible to reach even for a
+        # strategy trading exactly as often as it did in-sample.
+        if oos_min_trades is None:
+            T_train = int(train_fm.shape[0])
+            T_test = int(test_fm.shape[0])
+            ratio = (T_test / T_train) if T_train > 0 else 1.0
+            oos_min_trades = max(1, int(round(base_eval_config.min_trades * ratio)))
+            logger.info(
+                "Window %d: OOS min_trades scaled %d -> %d (T_test=%d / T_train=%d)",
+                window.window_id, base_eval_config.min_trades, oos_min_trades,
+                T_test, T_train,
+            )
+
         test_eval_cfg = EvalConfig(
             fee_bps=base_eval_config.fee_bps,
-            min_trades=base_eval_config.min_trades,
+            min_trades=oos_min_trades,
             freq=base_eval_config.freq,
             init_cash=base_eval_config.init_cash,
             close_prices=test_close.copy(),
@@ -272,29 +299,49 @@ class WalkForwardRunner:
             # Using hof[0].fitness.values[0] rather than the logbook population-max
             # because hof[0] is the specific individual evaluated OOS — the two can
             # diverge under multi-objective (NSGA-II) selection.
+            # A non-finite value here is the worst-fitness sentinel, not a
+            # measurement — record NaN so it cannot be averaged or plotted.
             is_sharpe = float(best_ind.fitness.values[0])
+            if not np.isfinite(is_sharpe):
+                logger.warning(
+                    "Window %d seed %d: best individual carries worst-fitness IS Sharpe "
+                    "(%s) — recording NaN, not a measurement",
+                    window.window_id, seed, is_sharpe,
+                )
+                is_sharpe = float("nan")
 
             # --- OOS evaluate: called EXACTLY ONCE per (window, seed) --- #
-            oos_fitness = evaluate(best_ind, test_fm, test_eval_cfg)
-            oos_sharpe = float(oos_fitness[0])
+            oos_fitness, oos_status, oos_n_trades = evaluate_with_status(
+                best_ind, test_fm, test_eval_cfg
+            )
             # test_fm is no longer referenced after this line
 
-            # DSR: re-run IS backtest to get per-period returns for DSR formula
-            # Uses train data only (no OOS leakage). _get_is_returns() is
-            # a separate helper so tests can patch it without requiring
-            # actual GP tree execution.
-            # n_trials should be seeds × windows for the full experiment;
-            # defaults to len(seeds) when called without n_trials.
-            n_trials_actual = max(1, n_trials if n_trials is not None else len(seeds))
+            if oos_status == EVAL_OK:
+                oos_sharpe = float(oos_fitness[0])
+            else:
+                # evaluate() returns -inf to keep unusable individuals RANKABLE by
+                # NSGA-II. That sentinel is not an OOS Sharpe of minus infinity, so
+                # it must not be reported as one — NaN means "not measured".
+                oos_sharpe = float("nan")
+                logger.info(
+                    "Window %d seed %d: OOS not measured (status=%s, n_trades=%d, "
+                    "min_trades=%d)",
+                    window.window_id, seed, oos_status, oos_n_trades, oos_min_trades,
+                )
+
+            # Per-period IS returns for DSR. Uses train data only (no OOS leakage).
+            # DSR itself is deferred to attach_dsr(): the multiple-testing correction
+            # needs sigma_SR across every trial in the experiment, which is not
+            # knowable inside this loop. _get_is_returns() is a separate function so
+            # tests can patch it without running an actual GP tree.
             try:
                 is_returns = _get_is_returns(best_ind, train_fm, train_eval_cfg)
-                dsr = compute_dsr(is_returns, sr_hat=is_sharpe, n_trials=n_trials_actual)
             except Exception as exc:  # pragma: no cover — only fires if vbt/eval fails
                 logger.warning(
-                    "Window %d seed %d: DSR computation failed (%s) — defaulting to 0.0",
+                    "Window %d seed %d: IS returns unavailable (%s) — DSR will be NaN",
                     window.window_id, seed, exc,
                 )
-                dsr = 0.0
+                is_returns = None
 
             seed_results.append({
                 "window_id": window.window_id,
@@ -304,8 +351,12 @@ class WalkForwardRunner:
                 "test_end": window.test_end,
                 "is_sharpe": is_sharpe,
                 "oos_sharpe": oos_sharpe,
-                "dsr": dsr,
+                "oos_status": oos_status,
+                "oos_n_trades": oos_n_trades,
+                "oos_min_trades": oos_min_trades,
+                "dsr": float("nan"),   # filled in by attach_dsr()
                 "n_nodes_best": len(best_ind),
+                IS_RETURNS_KEY: is_returns,
             })
 
         return seed_results

@@ -21,6 +21,20 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Evaluation status codes
+# ---------------------------------------------------------------------------
+# The worst-fitness tuple (-inf, -inf, -tree_size) is a RANKING SENTINEL for
+# NSGA-II, not a measurement. It means "this individual is unusable", which is
+# not the same as "this individual scored minus infinity". Reporting code must
+# never write it out as a Sharpe ratio — use evaluate_with_status() and treat
+# any status other than EVAL_OK as "not measured" (NaN).
+
+EVAL_OK = "ok"
+EVAL_BELOW_MIN_TRADES = "below_min_trades"
+EVAL_NAN_METRICS = "nan_metrics"
+
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
@@ -55,15 +69,17 @@ class EvalConfig:
 # Evaluation function
 # ---------------------------------------------------------------------------
 
-def evaluate(
+def evaluate_with_status(
     individual,
     feature_matrix: np.ndarray,
     config: EvalConfig,
-) -> tuple[float, float, float]:
-    """Evaluate a GP individual and return a three-objective fitness tuple.
+) -> tuple[tuple[float, float, float], str, int]:
+    """Evaluate a GP individual, returning the fitness tuple AND why.
 
-    This function is the complete evaluate() contract for NSGA-II in Phase 4.
-    It must be importable and callable without deap being present in this module.
+    Same computation as evaluate(), but it also reports whether the fitness
+    tuple is a real measurement or the worst-fitness ranking sentinel. Use this
+    anywhere a Sharpe ratio is going to be reported rather than ranked — the
+    sentinel is -inf and must not be recorded as performance.
 
     Parameters
     ----------
@@ -77,11 +93,14 @@ def evaluate(
 
     Returns
     -------
-    tuple[float, float, float]
-        (sharpe_ratio, total_return, -tree_size)
-        Worst fitness = (-np.inf, -np.inf, -tree_size) for:
-        - fewer than config.min_trades sign changes (D-14)
-        - NaN Sharpe or NaN total_return from vectorbt
+    tuple[tuple[float, float, float], str, int]
+        (fitness, status, n_trades) where fitness is
+        (sharpe_ratio, total_return, -tree_size) and status is one of:
+        - EVAL_OK — fitness is a real measurement
+        - EVAL_BELOW_MIN_TRADES — fewer than config.min_trades sign changes (D-14)
+        - EVAL_NAN_METRICS — NaN Sharpe or NaN total_return from vectorbt
+        For both non-OK statuses fitness is (-np.inf, -np.inf, -tree_size).
+        n_trades is the observed sign-change count, reported regardless of status.
 
     Notes
     -----
@@ -128,7 +147,7 @@ def evaluate(
             "Returning worst fitness.",
             tree_size, sign_changes, config.min_trades,
         )
-        return worst_fitness
+        return worst_fitness, EVAL_BELOW_MIN_TRADES, sign_changes
 
     # Convert 3-state signals to boolean long/short entry/exit matrices.
     # Using explicit separate arrays (not direction='both') to support
@@ -169,9 +188,40 @@ def evaluate(
             "Returning worst fitness.",
             tree_size, sharpe, total_ret,
         )
-        return worst_fitness
+        return worst_fitness, EVAL_NAN_METRICS, sign_changes
 
-    return (sharpe, total_ret, float(-tree_size))
+    return (sharpe, total_ret, float(-tree_size)), EVAL_OK, sign_changes
+
+
+def evaluate(
+    individual,
+    feature_matrix: np.ndarray,
+    config: EvalConfig,
+) -> tuple[float, float, float]:
+    """Evaluate a GP individual and return a three-objective fitness tuple.
+
+    This function is the complete evaluate() contract for NSGA-II in Phase 4.
+    It must be importable and callable without deap being present in this module.
+
+    Parameters
+    ----------
+    individual : creator.Individual (DEAP PrimitiveTree — passed as opaque object)
+        The GP tree to evaluate. len(individual) gives tree size without importing deap.
+    feature_matrix : np.ndarray
+        Shape [T x F x A], dtype float32.
+    config : EvalConfig
+        Backtest configuration. config.close_prices must be set to a [T x A] DataFrame.
+
+    Returns
+    -------
+    tuple[float, float, float]
+        (sharpe_ratio, total_return, -tree_size), or the worst-fitness
+        sentinel (-np.inf, -np.inf, -tree_size). This form is for NSGA-II
+        ranking. Reporting code wanting to distinguish a real measurement
+        from the sentinel must call evaluate_with_status() instead.
+    """
+    fitness, _status, _n_trades = evaluate_with_status(individual, feature_matrix, config)
+    return fitness
 
 
 # ---------------------------------------------------------------------------
