@@ -388,7 +388,8 @@ def save_results_csv(results: list[dict], path: str) -> None:
         window_id, seed, train_end, test_start, test_end,
         is_sharpe, oos_sharpe, oos_status, oos_n_trades, oos_min_trades,
         dsr, dsr_bests_only, dsr_n_trials, dsr_trial_sr_std, dsr_trial_source,
-        dsr_n_evaluations, n_evaluations, n_nodes_best
+        dsr_n_evaluations, n_evaluations, n_nodes_best, and — when stamped by
+        UniverseRecord.stamp_rows() — n_assets and universe_fingerprint
     path : str
         Output file path. Parent directory must exist.
     """

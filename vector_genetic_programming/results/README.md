@@ -30,14 +30,20 @@ reporting bugs were fixed. **Do not cite these numbers.**
    nothing in that run rules out a lookahead, a reused training window or a
    survivor-biased universe.
 
+5. **The universe was never recorded.** The fetcher silently dropped any asset
+   it could not retrieve, so there is no way to know how many assets those
+   numbers were computed on, or whether it was the same set across windows.
+
 Regenerate with `make start` (or `python scripts/run.py`). The new schema adds
 `oos_status`, `oos_n_trades`, `oos_min_trades`, `dsr_bests_only`,
-`dsr_n_trials`, `dsr_trial_source`, `dsr_n_evaluations`, `dsr_trial_sr_std` and
-`n_evaluations`, and writes `null_control.txt` alongside. `NaN` in a metric
+`dsr_n_trials`, `dsr_trial_source`, `dsr_n_evaluations`, `dsr_trial_sr_std`,
+`n_evaluations`, `n_assets` and `universe_fingerprint`, and writes
+`null_control.txt` and `universe.json` alongside. `NaN` in a metric
 column means "not measured", never "bad result".
 
 Read three numbers together, not one: the OOS Sharpe, the conservative `dsr`,
-and the null control p-value.
+and the null control p-value — and check the `universe_fingerprint` matches
+before comparing any two runs.
 
 ## Note on the IS/OOS gap
 

@@ -198,16 +198,59 @@ def test_surrogate_rejects_bad_block_size(ohlcv):
         block_bootstrap_ohlcv(ohlcv, np.random.default_rng(0), block_size=0)
 
 
-def test_surrogate_rejects_misaligned_assets(ohlcv):
-    """Unequal index lengths would silently mis-pair the shared block indices."""
+def test_surrogate_handles_ragged_asset_histories(ohlcv):
+    """Staggered listing dates must work and preserve each asset's own span.
+
+    Crypto panels are ragged by nature and the fetcher returns them that way.
+    Critically, each surrogate asset must keep its ORIGINAL row count: that is
+    what makes FeatureEngine's min_obs_fraction filter reach the same retention
+    decision on the surrogate as on the real data, so the null run is computed
+    on the same universe as the observed run. If a short-history asset came
+    back full-length it would survive into the null universe when it was
+    dropped from the real one, and the comparison would be invalid.
+    """
     from vgp.analysis import block_bootstrap_ohlcv
 
-    bad = {k: v.copy() for k, v in ohlcv.items()}
-    first = next(iter(bad))
-    bad[first] = bad[first].iloc[:-10]
+    ragged = {k: v.copy() for k, v in ohlcv.items()}
+    short = sorted(ragged)[0]
+    ragged[short] = ragged[short].iloc[-60:]        # late listing
+    tiny = sorted(ragged)[1]
+    ragged[tiny] = ragged[tiny].iloc[-1:]           # single bar, degenerate
 
-    with pytest.raises(ValueError, match="index length"):
-        block_bootstrap_ohlcv(bad, np.random.default_rng(0), block_size=20)
+    sur = block_bootstrap_ohlcv(ragged, np.random.default_rng(0), block_size=20)
+
+    assert set(sur) == set(ragged), "an asset went missing"
+    for t in ragged:
+        assert len(sur[t]) == len(ragged[t]), (
+            f"{t}: surrogate has {len(sur[t])} rows, original had "
+            f"{len(ragged[t])} — the retention decision would differ"
+        )
+        assert sur[t].index.equals(ragged[t].index)
+        assert np.isfinite(sur[t].to_numpy(dtype=np.float64)).all(), f"{t}: non-finite"
+        assert (sur[t][["open", "high", "low", "close"]] > 0).all().all()
+
+    # The 60-bar asset must still be resampled, not passed through unchanged
+    assert not np.allclose(
+        sur[short]["close"].to_numpy(), ragged[short]["close"].to_numpy()
+    ), f"{short}: short-history asset was not resampled"
+
+
+def test_surrogate_preserves_ragged_asset_return_distribution(ohlcv):
+    """A folded shared draw must still sample from the asset's OWN returns."""
+    from vgp.analysis import block_bootstrap_ohlcv
+
+    ragged = {k: v.copy() for k, v in ohlcv.items()}
+    short = sorted(ragged)[0]
+    ragged[short] = ragged[short].iloc[-150:]
+
+    sur = block_bootstrap_ohlcv(ragged, np.random.default_rng(11), block_size=10)
+
+    real = _log_returns(ragged, short)
+    fake = _log_returns(sur, short)
+    assert fake.std() == pytest.approx(real.std(), rel=0.35), (
+        f"{short}: surrogate volatility {fake.std():.5f} vs real {real.std():.5f} — "
+        f"the fold is not drawing from this asset's own history"
+    )
 
 
 def test_surrogate_handles_empty_and_tiny_input():

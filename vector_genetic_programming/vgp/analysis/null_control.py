@@ -107,6 +107,22 @@ def block_bootstrap_ohlcv(
     the cross-sectional correlation structure. Drawing per-asset blocks
     independently would destroy the market factor and produce a null that is
     far too easy to beat.
+
+    RAGGED PANELS. Assets are not required to share an index length — staggered
+    listing dates are the normal case in crypto, and the fetcher returns them
+    as-is. Each asset keeps its OWN index and its own row count in the
+    surrogate, which matters because FeatureEngine's min_obs_fraction filter
+    then makes the same retention decision on the surrogate as on the real
+    data: the null run is computed on the same universe as the observed run,
+    which is what makes the comparison meaningful.
+
+    The shared block sequence is drawn over the longest asset and folded into
+    each shorter asset's own range (modulo its length). For equal-length assets
+    — the case the cross-correlation guarantee is stated for — this is exactly a
+    shared draw. For a shorter asset the fold keeps blocks contiguous and keeps
+    its returns drawn from its own history, so its marginal distribution is
+    preserved, but its co-movement with the others is approximate rather than
+    exact over the period where it has no data to co-move with.
     """
     if block_size < 1:
         raise ValueError(f"block_size must be >= 1, got {block_size}")
@@ -114,28 +130,32 @@ def block_bootstrap_ohlcv(
         return {}
 
     tickers = list(ohlcv.keys())
-    index = ohlcv[tickers[0]].index
-    T = len(index)
-    for t in tickers:
-        if len(ohlcv[t]) != T:
-            raise ValueError(
-                f"All assets must share one index length; '{t}' has "
-                f"{len(ohlcv[t])} rows, expected {T}. Align before bootstrapping."
-            )
-    if T < 2:
+    lengths = {t: len(ohlcv[t]) for t in tickers}
+    T_ref = max(lengths.values())
+    if T_ref < 2:
         return {t: df.copy() for t, df in ohlcv.items()}
 
-    # Draw circular blocks of source positions, shared across assets.
-    n_blocks = int(np.ceil((T - 1) / block_size))
-    starts = rng.integers(0, T - 1, size=n_blocks)
+    # Draw circular blocks of source positions over the longest asset, then
+    # fold into each asset's own range. Shared across assets by construction.
+    n_blocks = int(np.ceil((T_ref - 1) / block_size))
+    starts = rng.integers(0, T_ref - 1, size=n_blocks)
     offsets = (
         starts[:, None] + np.arange(block_size)[None, :]
-    ) % (T - 1)                       # [n_blocks x block_size]
-    src = offsets.reshape(-1)[: T - 1]  # one source return index per output bar
+    ) % (T_ref - 1)                          # [n_blocks x block_size]
+    src_shared = offsets.reshape(-1)[: T_ref - 1]
 
     out: dict[str, pd.DataFrame] = {}
     for ticker in tickers:
         df = ohlcv[ticker]
+        index = df.index
+        T = lengths[ticker]
+        if T < 2:
+            # Nothing to resample; pass it through so the asset still exists
+            # and the retention decision downstream is unchanged.
+            out[ticker] = df.copy()
+            continue
+        # Fold the shared sequence into this asset's own return range.
+        src = src_shared[: T - 1] % (T - 1)
         close = df["close"].to_numpy(dtype=np.float64)
 
         # Log returns, guarded against non-positive prices in the source data.
@@ -174,8 +194,8 @@ def block_bootstrap_ohlcv(
         )
 
     logger.debug(
-        "block_bootstrap_ohlcv: %d assets, T=%d, block_size=%d, %d blocks drawn",
-        len(tickers), T, block_size, n_blocks,
+        "block_bootstrap_ohlcv: %d assets, T_ref=%d, block_size=%d, %d blocks drawn",
+        len(tickers), T_ref, block_size, n_blocks,
     )
     return out
 

@@ -221,55 +221,198 @@ def test_force_refresh_bypasses_cache(synthetic_ohlcv_cache, block_network):
         fetcher.fetch_ohlcv(force_refresh=True)
 
 
-def test_partial_fetch_failure_silently_shrinks_the_universe(
+def test_partial_fetch_failure_raises_by_default(
     synthetic_ohlcv_cache, tmp_path, monkeypatch
 ):
-    """DOCUMENTS CURRENT BEHAVIOUR, which is a sharp edge worth knowing.
+    """A partial fetch must raise, not quietly return a smaller universe.
 
-    `fetch_ohlcv()` wraps every symbol in `except Exception` and only logs the
-    failure. So when some assets are cached and others are not, a fetch error
-    on the uncached ones returns a SMALLER UNIVERSE with no signal to the
-    caller — no raise, no return code, nothing downstream is told that assets
-    went missing. The run proceeds on whatever survived, and the universe
-    composition can differ between runs.
-
-    That matters for research validity, not just robustness: a quietly varying
-    universe is a survivorship-bias channel, and the null control cannot detect
-    it because the real and surrogate runs both inherit whatever universe they
-    were handed.
-
-    Pinned so a change to this behaviour is deliberate. Not an endorsement.
+    This is the behaviour that used to be silent: `fetch_ohlcv()` wrapped every
+    symbol in `except Exception` and only logged, so a fetch error on some
+    assets returned a SMALLER UNIVERSE with nothing downstream told. A run
+    could proceed on 3 assets instead of 30 and report results normally, and
+    neither the DSR nor the null control could detect it — every trial and
+    every surrogate inherits whatever universe it was handed.
     """
     import shutil
 
     import requests
 
-    from vgp.data import BinanceFetcher, get_binance_symbols
+    from vgp.data import BinanceFetcher, FetchError, get_binance_symbols
 
-    # Cache only the first three symbols; the rest will miss.
     symbols = get_binance_symbols()
     partial = tmp_path / "partial_cache"
     partial.mkdir()
     for symbol in symbols[:3]:
         shutil.copy(synthetic_ohlcv_cache / f"{symbol}_1d.parquet", partial)
 
-    # A realistic network error is an ordinary Exception, which is exactly what
-    # fetch_ohlcv swallows.
     def _connection_error(*args, **kwargs):
         raise requests.exceptions.ConnectionError("synthetic network failure")
 
     monkeypatch.setattr(requests, "get", _connection_error)
 
     fetcher = BinanceFetcher(cache_dir=partial, use_ccxt_fallback=False)
+    with pytest.raises(FetchError, match="symbols failed"):
+        fetcher.fetch_ohlcv(force_refresh=False)
+
+    # The report survives the raise, so a caller can see exactly what was lost
+    report = fetcher.last_fetch_report_
+    assert report is not None, "last_fetch_report_ must be set even when raising"
+    assert report.n_realized == 3
+    assert report.n_failed == len(symbols) - 3
+    assert not report.is_complete
+    assert "ConnectionError" in dict(report.failed)[symbols[5]]
+
+
+def test_allow_partial_permits_a_declared_smaller_universe(
+    synthetic_ohlcv_cache, tmp_path, monkeypatch
+):
+    """allow_partial=True proceeds, but the shrink is recorded, not hidden."""
+    import shutil
+
+    import requests
+
+    from vgp.data import BinanceFetcher, get_binance_symbols
+
+    symbols = get_binance_symbols()
+    partial = tmp_path / "partial_cache"
+    partial.mkdir()
+    for symbol in symbols[:5]:
+        shutil.copy(synthetic_ohlcv_cache / f"{symbol}_1d.parquet", partial)
+
+    monkeypatch.setattr(
+        requests, "get",
+        lambda *a, **k: (_ for _ in ()).throw(
+            requests.exceptions.ConnectionError("synthetic failure")
+        ),
+    )
+
+    fetcher = BinanceFetcher(cache_dir=partial, use_ccxt_fallback=False)
+    ohlcv = fetcher.fetch_ohlcv(force_refresh=False, allow_partial=True)
+
+    assert len(ohlcv) == 5
+    assert fetcher.last_fetch_report_.n_realized == 5
+    assert fetcher.last_fetch_report_.n_failed == len(symbols) - 5
+
+
+def test_min_assets_floor_raises_even_when_partial_allowed(
+    synthetic_ohlcv_cache, tmp_path, monkeypatch
+):
+    """min_assets is a hard floor: below it the run aborts rather than reports."""
+    import shutil
+
+    import requests
+
+    from vgp.data import BinanceFetcher, FetchError, get_binance_symbols
+
+    symbols = get_binance_symbols()
+    partial = tmp_path / "partial_cache"
+    partial.mkdir()
+    for symbol in symbols[:3]:
+        shutil.copy(synthetic_ohlcv_cache / f"{symbol}_1d.parquet", partial)
+
+    monkeypatch.setattr(
+        requests, "get",
+        lambda *a, **k: (_ for _ in ()).throw(
+            requests.exceptions.ConnectionError("synthetic failure")
+        ),
+    )
+
+    fetcher = BinanceFetcher(cache_dir=partial, use_ccxt_fallback=False)
+    with pytest.raises(FetchError, match="below the min_assets"):
+        fetcher.fetch_ohlcv(force_refresh=False, allow_partial=True, min_assets=10)
+
+
+def test_empty_universe_always_raises(tmp_path, monkeypatch):
+    """Zero assets is never a valid result, whatever the tolerance."""
+    import requests
+
+    from vgp.data import BinanceFetcher, FetchError
+
+    monkeypatch.setattr(
+        requests, "get",
+        lambda *a, **k: (_ for _ in ()).throw(
+            requests.exceptions.ConnectionError("synthetic failure")
+        ),
+    )
+
+    fetcher = BinanceFetcher(cache_dir=tmp_path, use_ccxt_fallback=False)
+    with pytest.raises(FetchError, match="zero assets"):
+        fetcher.fetch_ohlcv(force_refresh=False, allow_partial=True, min_assets=None)
+
+
+def test_symbol_returning_no_rows_counts_as_a_failure(tmp_path, monkeypatch):
+    """Binance answers 200 with [] for a pair that does not exist.
+
+    That must be a failure, not a success carrying an empty DataFrame — an
+    empty frame in the result dict pushes the problem downstream into the
+    FeatureEngine instead of surfacing it where it happened.
+    """
+    import requests
+
+    from vgp.data import BinanceFetcher, FetchError
+
+    class _EmptyOkResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return []          # a real Binance reply for an unlisted pair
+
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _EmptyOkResponse())
+
+    fetcher = BinanceFetcher(
+        cache_dir=tmp_path, symbols=["NOPEUSDT"], use_ccxt_fallback=False
+    )
+    with pytest.raises(FetchError) as exc:
+        fetcher.fetch_ohlcv(force_refresh=True)
+
+    # Zero realized assets trips the always-raise guard; the per-symbol reason
+    # still records that the download came back empty rather than errored.
+    reasons = dict(exc.value.report.failed)
+    assert "NOPEUSDT" in reasons, f"expected NOPEUSDT in {reasons}"
+    assert "no rows" in reasons["NOPEUSDT"], reasons["NOPEUSDT"]
+
+
+def test_empty_cached_file_triggers_a_refetch(synthetic_ohlcv_cache, tmp_path, block_network):
+    """A zero-row cached parquet must not be served as a cache hit.
+
+    Serving it would hand downstream code an empty asset; falling through to a
+    download is correct, and `block_network` proves that is what happens.
+    """
+    import shutil
+
+    from tests.conftest import NetworkAccessAttempted
+    from vgp.data import BinanceFetcher
+
+    cache = tmp_path / "cache_with_empty"
+    cache.mkdir()
+    shutil.copy(synthetic_ohlcv_cache / "BTCUSDT_1d.parquet", cache)
+
+    empty = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    empty.index = pd.DatetimeIndex([], name="date")
+    empty.to_parquet(cache / "BTCUSDT_1d.parquet")
+
+    fetcher = BinanceFetcher(
+        cache_dir=cache, symbols=["BTCUSDT"], use_ccxt_fallback=False
+    )
+    with pytest.raises(NetworkAccessAttempted):
+        fetcher.fetch_ohlcv(force_refresh=False)
+
+
+def test_complete_fetch_reports_no_failures(synthetic_ohlcv_cache, block_network):
+    """The happy path: full universe, no raise, report marked complete."""
+    from vgp.data import BinanceFetcher, get_binance_symbols
+
+    fetcher = BinanceFetcher(cache_dir=synthetic_ohlcv_cache)
     ohlcv = fetcher.fetch_ohlcv(force_refresh=False)
 
-    assert len(ohlcv) == 3, (
-        f"expected the 3 cached assets, got {len(ohlcv)}"
-    )
-    assert len(ohlcv) < len(symbols), (
-        "universe silently shrank — this assertion documents that no error is "
-        "raised and no caller is notified"
-    )
+    report = fetcher.last_fetch_report_
+    assert report.is_complete
+    assert report.n_failed == 0
+    assert report.n_realized == len(get_binance_symbols()) == len(ohlcv)
+    assert "30/30" in report.summary()
 
 
 def test_fixture_bars_have_valid_geometry(synthetic_ohlcv_cache, block_network):

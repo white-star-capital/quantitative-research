@@ -18,6 +18,7 @@ Output
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -39,6 +40,15 @@ N_GENERATIONS = 100      # generations per seed (raise to 50+ for real runs)
 N_JOBS        = max(1, (os.cpu_count() or 2) - 1)
 FEE_BPS       = 10.0
 MIN_TRADES    = 50
+
+# Universe tolerance. fetch_ohlcv() raises by default when any symbol fails,
+# because a silently shrunken universe changes the experiment and is invisible
+# to both DSR and the null control. Several UNIVERSE_30 coins were listed after
+# the sample start or are not on Binance at all, so a partial fetch is expected
+# here — but it is DECLARED, floored, and recorded in results/universe.json,
+# not discovered later from a log line.
+ALLOW_PARTIAL_UNIVERSE = True
+MIN_ASSETS    = 10        # below this the run aborts rather than reporting
 
 # Null control (see vgp/analysis/null_control.py). DSR cannot detect bias shared
 # by every trial — a lookahead, a reused training window, a survivor-biased
@@ -106,7 +116,13 @@ def main() -> None:
 
     from vgp.data import DataLoader, FeatureEngine
     loader = DataLoader(cache_dir=CACHE_DIR)
-    ohlcv = loader.fetch_ohlcv(start_date="2024-01-01", end_date="2026-04-01")
+    ohlcv = loader.fetch_ohlcv(
+        start_date="2024-01-01",
+        end_date="2026-04-01",
+        allow_partial=ALLOW_PARTIAL_UNIVERSE,
+        min_assets=MIN_ASSETS,
+    )
+    print(f"  {loader.last_fetch_report_.summary()}")
 
     # ------------------------------------------------------------------
     # 2. Build feature matrix
@@ -120,11 +136,20 @@ def main() -> None:
         {ticker: ohlcv[ticker]["close"] for ticker in fe.retained_assets_}
     ).reindex(fe.dates_).ffill(limit=3)
 
+    # The realized universe is a property of the run, not a log line: two
+    # stages narrow it (fetch failures, then min_obs_fraction), and results
+    # from different compositions are not comparable.
+    from vgp.data import UniverseRecord
+    universe = UniverseRecord.from_pipeline(loader.last_fetch_report_, fe)
+
     print(
         f"  Shape    {fm.shape}  (timesteps × features × assets)\n"
         f"  Assets   {len(fe.retained_assets_)}  →  {fe.retained_assets_}\n"
         f"  Dates    {fe.dates_.min().date()}  →  {fe.dates_.max().date()}"
     )
+    print()
+    for line in universe.summary().splitlines():
+        print(f"  {line}")
 
     # ------------------------------------------------------------------
     # 3. Generate walk-forward windows
@@ -255,9 +280,27 @@ def main() -> None:
     _banner("6 / 6  Saving results & plots")
 
     from vgp.analysis import save_results_csv, aggregate_seeds
+
+    # Tie every row to the universe it was computed on — must happen BEFORE the
+    # CSV is written, or the columns never reach the file.
+    universe.stamp_rows(all_results)
+
     csv_path = str(RESULTS_DIR / "results.csv")
     save_results_csv(all_results, csv_path)
     print(f"  results.csv  →  {csv_path}")
+
+    universe_path = RESULTS_DIR / "universe.json"
+    universe_payload = universe.to_dict()
+    universe_payload["null_control"] = {
+        "n_runs": 0 if null_result is None else null_result.n_runs,
+        "block_size": None if null_result is None else null_result.block_size,
+        # Surrogates are bootstrapped from the same ohlcv dict and preserve
+        # each asset's index exactly, so the FeatureEngine retention decision —
+        # and therefore the universe — is identical for the null runs.
+        "universe_matches_observed": null_result is not None,
+    }
+    universe_path.write_text(json.dumps(universe_payload, indent=2) + "\n")
+    print(f"  universe.json  →  {universe_path}")
 
     null_path = RESULTS_DIR / "null_control.txt"
     if null_result is not None:
@@ -360,6 +403,10 @@ def main() -> None:
             f"  ({agg['n_seeds_valid_oos']}/{agg['n_seeds']} measurable)"
         )
     print("\n  NaN / n/a = not measured (see OOS status), not a bad result.")
+
+    print(f"\n  Universe [{universe.fingerprint}]: {universe.n_retained}/"
+          f"{universe.n_requested} assets"
+          + ("" if universe.is_complete else " — INCOMPLETE, see universe.json"))
 
     r0 = all_results[0]
     print(

@@ -100,7 +100,9 @@ technical constraints above.
 
 4. **NaN means "not measured"** — never "bad result", and never 0.0 for a probability. `aggregate_seeds()` excludes unmeasured seeds and reports `n_seeds_valid_oos` against `n_seeds` so the denominator stays visible.
 
-5. **Null control block size must be shorter than the effect horizon** — a block bootstrap only breaks dependence at block boundaries, so structure shorter than the block survives into the surrogate. The 20-bar default will not flag a 1–5 day momentum artifact.
+5. **A missing asset is a change to the experiment, not a warning** — `fetch_ohlcv()` RAISES `FetchError` when any symbol fails. A caller willing to run on fewer assets must declare it (`allow_partial=True`) and set a `min_assets` floor; an empty universe always raises. The realized universe is then recorded in `results/universe.json` and stamped onto every result row (`n_assets`, `universe_fingerprint`), because two stages narrow it — fetch failures, then `min_obs_fraction` — and results computed on different compositions are not comparable. Compare fingerprints, not asset counts. This is the survivorship channel DSR and the null control cannot see: every trial and every surrogate inherits the same universe, so nothing in the statistics reveals that it moved.
+
+6. **Null control block size must be shorter than the effect horizon** — a block bootstrap only breaks dependence at block boundaries, so structure shorter than the block survives into the surrogate. The 20-bar default will not flag a 1–5 day momentum artifact.
 
 ## Architecture Invariants
 
@@ -116,7 +118,7 @@ technical constraints above.
 | Phase | Goal | Key Risk |
 |-------|------|----------|
 | 1 | Foundation & Environment | numpy/numba/vectorbt pin coherence |
-| 2 | Data Pipeline | Enforced OOS split (structural, not convention) |
+| 2 | Data Pipeline | Enforced OOS split + recorded realized universe |
 | 3 | GP Core & Evaluation | Vectorized tree exec + lookahead prevention |
 | 4 | Evolution Engine | JIT warmup trap in parallel eval |
 | 5 | Validation & Publication | Multi-seed DSR + null control, not raw OOS Sharpe |
