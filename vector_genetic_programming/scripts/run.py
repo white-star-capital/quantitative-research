@@ -35,17 +35,16 @@ from tqdm import tqdm
 CACHE_DIR     = Path("data_pipeline_example/cache")   # {SYMBOL}_1d.parquet, see results/README.md
 RESULTS_DIR   = Path("results")
 SEEDS         = [0, 1, 2]
-POP_SIZE      = 100       # individuals per generation
-N_GENERATIONS = 15        # generations per seed
+POP_SIZE      = 250       # individuals per generation
+N_GENERATIONS = 40        # generations per seed
 
-# n_jobs=1 deliberately. run_evolution() creates a fresh spawn Pool per
-# (window, seed) and each worker re-pays the numba JIT warmup (~4-5s, more on a
-# cold import). Measured on this dataset a single core sustains ~33 evaluations
-# per second, so for a run of this size the pool spawn overhead — 40s+ times
-# every window/seed pair, and again for every null run — costs far more than
-# the parallelism saves. Raise it only when pop_size x n_generations per seed is
-# large enough that per-seed startup is negligible.
-N_JOBS        = 1
+# One warm pool serves the WHOLE experiment (evolution_pool below) — every
+# window, every seed, every null run — so the numba JIT warmup is paid once
+# instead of once per evolution. Measured on this panel with 3 workers:
+# 37.3 eval/s serial vs 104.9 eval/s warm (2.81x), with a ~11.5s one-time
+# warmup. Before hoisting that warmup was paid 66 times and the experiment ran
+# faster serially than on 3 cores.
+N_JOBS        = max(1, (os.cpu_count() or 2) - 1)
 FEE_BPS       = 10.0
 MIN_TRADES    = 50
 
@@ -190,6 +189,7 @@ def main() -> None:
 
     from vgp.analysis.runner import WalkForwardRunner
     from vgp.backtest.runner import EvalConfig
+    from vgp.evolution import evolution_pool
 
     eval_cfg = EvalConfig(fee_bps=FEE_BPS, min_trades=MIN_TRADES)
     evo_kwargs = dict(
@@ -201,86 +201,94 @@ def main() -> None:
     runner   = WalkForwardRunner(dates=fe.dates_)
     all_results: list[dict] = []
 
-    # run_window() owns the split, the OOS evaluate and the reporting invariants
-    # (no worst-fitness sentinel written out as a Sharpe). Do not re-implement it
-    # here — a second copy of that logic is how the sentinel leak survived.
-    for w_idx, window in enumerate(windows):
-        print(
-            f"\n  Window {w_idx + 1}/{len(windows)}"
-            f"  train\u2192{window.train_end}"
-            f"  OOS {window.test_start}\u2192{window.test_end}"
-        )
+    # ONE warm pool for the entire experiment — every window, every seed, and
+    # every null run below. run_evolution() would otherwise build and tear down
+    # a pool per seed, re-paying the numba JIT warmup each time.
+    from vgp.analysis import aggregate_seeds
 
-        window_results = runner.run_window(
-            window=window,
-            feature_matrix=fm,
-            close_prices=close_prices,
-            base_eval_config=eval_cfg,
-            seeds=SEEDS,
-            evo_config_kwargs=evo_kwargs,
-        )
-        all_results.extend(window_results)
-
-        # Per-window summary line (DSR is still NaN here — it needs the full
-        # trial set, so it is filled in by attach_dsr() after every window runs)
-        from vgp.analysis import aggregate_seeds
-        agg = aggregate_seeds(window_results)
-        print(
-            f"    \u2192 median OOS SR {_fmt(agg['median_oos_sharpe'], '+.3f')}"
-            f"  IQR {_fmt(agg['iqr_oos_sharpe'], '.3f')}"
-            f"  ({agg['n_seeds_positive_oos']}/{agg['n_seeds_valid_oos']} valid seeds positive,"
-            f" {agg['n_seeds_valid_oos']}/{agg['n_seeds']} measurable)"
-        )
-
-    # DSR must be computed across the WHOLE trial set — the multiple-testing
-    # correction scales with the cross-sectional spread of trial Sharpes, which
-    # is not knowable one row at a time.
-    from vgp.analysis import attach_dsr
-    attach_dsr(all_results)
-
-    # ------------------------------------------------------------------
-    # 5. Null control — run the same pipeline on signal-free surrogates
-    # ------------------------------------------------------------------
-    _banner(f"5 / 6  Null control  ({N_NULL_RUNS} signal-free runs)")
-    null_result = None
-    if N_NULL_RUNS < 1:
-        print("  SKIPPED (N_NULL_RUNS = 0).")
-        print("  Without it, a high DSR cannot distinguish real signal from bias")
-        print("  shared by every trial. Do not report this run as validated.")
-    else:
-        from vgp.analysis import run_null_control
-
-        def _null_experiment(null_fm, null_close, null_dates):
-            """One full experiment on surrogate data — same code path as above."""
-            null_runner = WalkForwardRunner(dates=null_dates)
-            null_windows = generate_windows(
-                str(null_dates.min().date()), str(null_dates.max().date())
+    with evolution_pool(N_JOBS) as worker_pool:
+        # run_window() owns the split, the OOS evaluate and the reporting
+        # invariants (no worst-fitness sentinel written out as a Sharpe). Do not
+        # re-implement it here — a second copy of that logic is how the sentinel
+        # leak survived.
+        for w_idx, window in enumerate(windows):
+            print(
+                f"\n  Window {w_idx + 1}/{len(windows)}"
+                f"  train\u2192{window.train_end}"
+                f"  OOS {window.test_start}\u2192{window.test_end}"
             )
-            rows: list[dict] = []
-            for nw in null_windows:
-                rows += null_runner.run_window(
-                    window=nw,
-                    feature_matrix=null_fm,
-                    close_prices=null_close,
-                    base_eval_config=EvalConfig(fee_bps=FEE_BPS, min_trades=MIN_TRADES),
-                    seeds=NULL_SEEDS,
-                    evo_config_kwargs=evo_kwargs,
-                )
-            return rows
 
-        print(
-            f"  {N_NULL_RUNS} runs x {len(NULL_SEEDS)} seed(s), "
-            f"block={NULL_BLOCK} bars — this is the expensive part\n"
-        )
-        null_result = run_null_control(
-            ohlcv=ohlcv,
-            experiment_fn=_null_experiment,
-            observed_results=all_results,
-            n_runs=N_NULL_RUNS,
-            block_size=NULL_BLOCK,
-            seed=1000,
-        )
-        print(null_result.summary())
+            window_results = runner.run_window(
+                window=window,
+                feature_matrix=fm,
+                close_prices=close_prices,
+                base_eval_config=eval_cfg,
+                seeds=SEEDS,
+                evo_config_kwargs=evo_kwargs,
+                pool=worker_pool,
+            )
+            all_results.extend(window_results)
+
+            # Per-window summary line (DSR is still NaN here — it needs the full
+            # trial set, so attach_dsr() fills it in after every window runs)
+            agg = aggregate_seeds(window_results)
+            print(
+                f"    \u2192 median OOS SR {_fmt(agg['median_oos_sharpe'], '+.3f')}"
+                f"  IQR {_fmt(agg['iqr_oos_sharpe'], '.3f')}"
+                f"  ({agg['n_seeds_positive_oos']}/{agg['n_seeds_valid_oos']} valid seeds positive,"
+                f" {agg['n_seeds_valid_oos']}/{agg['n_seeds']} measurable)"
+            )
+
+        # DSR must be computed across the WHOLE trial set — the multiple-testing
+        # correction scales with the cross-sectional spread of trial Sharpes, which
+        # is not knowable one row at a time.
+        from vgp.analysis import attach_dsr
+        attach_dsr(all_results)
+
+        # ------------------------------------------------------------------
+        # 5. Null control — run the same pipeline on signal-free surrogates
+        # ------------------------------------------------------------------
+        _banner(f"5 / 6  Null control  ({N_NULL_RUNS} signal-free runs)")
+        null_result = None
+        if N_NULL_RUNS < 1:
+            print("  SKIPPED (N_NULL_RUNS = 0).")
+            print("  Without it, a high DSR cannot distinguish real signal from bias")
+            print("  shared by every trial. Do not report this run as validated.")
+        else:
+            from vgp.analysis import run_null_control
+
+            def _null_experiment(null_fm, null_close, null_dates):
+                """One full experiment on surrogate data — same code path as above."""
+                null_runner = WalkForwardRunner(dates=null_dates)
+                null_windows = generate_windows(
+                    str(null_dates.min().date()), str(null_dates.max().date())
+                )
+                rows: list[dict] = []
+                for nw in null_windows:
+                    rows += null_runner.run_window(
+                        window=nw,
+                        feature_matrix=null_fm,
+                        close_prices=null_close,
+                        base_eval_config=EvalConfig(fee_bps=FEE_BPS, min_trades=MIN_TRADES),
+                        seeds=NULL_SEEDS,
+                        evo_config_kwargs=evo_kwargs,
+                        pool=worker_pool,
+                    )
+                return rows
+
+            print(
+                f"  {N_NULL_RUNS} runs x {len(NULL_SEEDS)} seed(s), "
+                f"block={NULL_BLOCK} bars — this is the expensive part\n"
+            )
+            null_result = run_null_control(
+                ohlcv=ohlcv,
+                experiment_fn=_null_experiment,
+                observed_results=all_results,
+                n_runs=N_NULL_RUNS,
+                block_size=NULL_BLOCK,
+                seed=1000,
+            )
+            print(null_result.summary())
 
     # ------------------------------------------------------------------
     # 6. Save results + plots

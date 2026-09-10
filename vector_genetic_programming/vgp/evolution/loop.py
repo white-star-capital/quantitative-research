@@ -15,12 +15,14 @@ body using algorithms.varOr() — identical logic, full checkpoint control.
 """
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import functools
 import logging
 import multiprocessing
 import operator
 import random
+from collections.abc import Iterator
 from datetime import datetime
 
 import numpy as np
@@ -146,6 +148,73 @@ def _build_toolbox(
 
 
 # ---------------------------------------------------------------------------
+# Worker pool — create ONCE and reuse across windows, seeds and null runs
+# ---------------------------------------------------------------------------
+
+@contextlib.contextmanager
+def evolution_pool(n_jobs: int) -> Iterator[object | None]:
+    """A spawn Pool with numba JIT already warm, reusable across runs.
+
+    WHY HOIST THE POOL
+    ------------------
+    run_evolution() will create its own Pool when none is passed and close it
+    on the way out. That makes every (window, seed) pair pay the spawn cost:
+    each worker is a fresh interpreter that re-imports vectorbt and numba and
+    then runs _jit_warmup() to compile Portfolio.from_signals.
+
+    Measured on the 21-asset x 701-date panel, 3 workers:
+
+        serial                      37.3 eval/s
+        warm pool                  104.9 eval/s   (2.81x, 94% efficiency)
+        one-time warmup             ~11.5 s
+
+    Note that Pool() returns before its workers are ready — the warmup lands on
+    the FIRST map() call, so a per-run pool hides ~11.5s inside generation 0
+    every time. A walk-forward grid of 3 windows x 3 seeds plus a 19-run null
+    control is 66 evolutions, i.e. ~13 minutes of pure recompilation, which is
+    why the experiment used to run faster serially than on 3 cores.
+
+    Created once and passed down, the warmup is paid once for the whole
+    experiment and the cores pay for themselves from the first window on.
+
+    Reuse is safe because the pool carries no per-run state. The feature matrix
+    and EvalConfig are bound into the functools.partial that toolbox.evaluate
+    wraps, and that partial is pickled on each map() call — so a different
+    window, or a surrogate dataset in the null control, simply ships different
+    arguments to the same warm workers.
+
+    Yields None for n_jobs <= 1, which run_evolution() reads as "use builtin
+    map", so callers can wrap unconditionally.
+
+    Parameters
+    ----------
+    n_jobs : int
+        Worker processes. <= 1 yields None (serial, no pool created).
+    """
+    if n_jobs <= 1:
+        logger.info("evolution_pool: n_jobs=%d — serial, no pool created", n_jobs)
+        yield None
+        return
+
+    # macOS Python 3.12 defaults to spawn; be explicit for cross-platform safety
+    ctx = multiprocessing.get_context("spawn")
+    # _jit_warmup runs once per worker at Pool creation, compiling numba JIT
+    # (CLAUDE.md #8). Hoisting means this happens once per EXPERIMENT.
+    pool = ctx.Pool(processes=n_jobs, initializer=_jit_warmup)
+    logger.info(
+        "evolution_pool: %d workers created (spawn context, JIT warm) — reused "
+        "for every window, seed and null run",
+        n_jobs,
+    )
+    try:
+        yield pool
+    finally:
+        pool.close()
+        pool.join()
+        logger.info("evolution_pool: %d workers shut down", n_jobs)
+
+
+# ---------------------------------------------------------------------------
 # Statistics builder
 # ---------------------------------------------------------------------------
 
@@ -204,6 +273,7 @@ def run_evolution(
     tracker=None,
     resume_checkpoint: str | None = None,
     desc: str | None = None,
+    pool: object | None = None,
 ) -> tuple:
     """Run NSGA-II GP evolution and return (population, hof, logbook).
 
@@ -222,6 +292,13 @@ def run_evolution(
         Path to a checkpoint file to resume from. If None, starts fresh.
     desc : str | None
         Label for the tqdm generation progress bar. Defaults to "seed{seed}".
+    pool : multiprocessing.Pool | None
+        An already-warm worker pool from `evolution_pool()`, reused rather than
+        created here and NOT closed on exit — the caller owns its lifetime.
+        Pass one when running many evolutions (a walk-forward grid, a null
+        control) so the numba JIT warmup is paid once for the experiment rather
+        than once per run; see `evolution_pool()`. When None, a pool is created
+        and torn down here if config.n_jobs > 1.
 
     Returns
     -------
@@ -301,16 +378,25 @@ def run_evolution(
     else:
         population = toolbox.population(n=config.pop_size)
 
-    # Set up parallel evaluation (EVO-07)
-    pool = None
-    if config.n_jobs > 1:
+    # Set up parallel evaluation (EVO-07).
+    # owns_pool distinguishes a pool created here (ours to close) from one
+    # handed in by the caller (theirs to close) — closing a borrowed pool would
+    # defeat the hoisting and break the next run in the grid.
+    owns_pool = False
+    if pool is not None:
+        toolbox.register("map", pool.map)
+        logger.info("Parallel evaluation: reusing caller's warm pool")
+    elif config.n_jobs > 1:
         # macOS Python 3.12 defaults to spawn; be explicit for cross-platform safety
         ctx = multiprocessing.get_context("spawn")
         # _jit_warmup runs once per worker at Pool creation, compiling numba JIT (CLAUDE.md #8)
         pool = ctx.Pool(processes=config.n_jobs, initializer=_jit_warmup)
+        owns_pool = True
         toolbox.register("map", pool.map)
         logger.info(
-            "Parallel evaluation: %d workers (spawn context, JIT warmup active)",
+            "Parallel evaluation: %d workers (spawn context, JIT warmup active). "
+            "For a multi-run experiment pass evolution_pool() instead — this "
+            "pool is torn down when this single run ends.",
             config.n_jobs,
         )
     else:
@@ -397,7 +483,7 @@ def run_evolution(
                     logger.debug("Checkpoint saved: %s", ckpt_path)
 
     finally:
-        if pool is not None:
+        if owns_pool and pool is not None:
             pool.close()
             pool.join()
         tracker.end_run()

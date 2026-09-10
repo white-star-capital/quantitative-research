@@ -57,6 +57,11 @@ claim; a cheap significance test that cannot detect shared bias is not a
 substitute. Use fewer seeds per null run than the real run if you must — the
 statistic is the BEST Sharpe the search finds, and the null only needs to
 represent the same search procedure, not the same wall-clock budget.
+
+Because the null dominates the runtime, share ONE warm worker pool
+(`vgp.evolution.evolution_pool()`) across the observed run and every null run
+by capturing it in the `experiment_fn` closure. A pool created per run re-pays
+the numba JIT warmup each time, and there are `n_runs x n_windows` of them.
 """
 from __future__ import annotations
 

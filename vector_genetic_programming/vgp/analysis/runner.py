@@ -184,6 +184,7 @@ class WalkForwardRunner:
         seeds: list[int],
         evo_config_kwargs: dict,
         oos_min_trades: int | None = None,
+        pool: object | None = None,
     ) -> list[dict]:
         """Run evolution for all seeds on one window. Returns one dict per seed.
 
@@ -214,6 +215,12 @@ class WalkForwardRunner:
             train-window threshold (50) verbatim to a 3-month OOS window is
             mechanically unreachable and reports every strategy as invalid.
             Pass 0 to measure whatever the window produced.
+        pool : multiprocessing.Pool | None
+            A warm worker pool from `vgp.evolution.evolution_pool()`, forwarded
+            to every seed's evolution. Pass one when running a grid: otherwise
+            each (window, seed) pair creates and tears down its own pool and
+            re-pays the numba JIT warmup, which for a modest search costs more
+            than the parallelism returns.
 
         Returns
         -------
@@ -284,7 +291,9 @@ class WalkForwardRunner:
             cfg = EvolutionConfig(seed=seed, **evo_config_kwargs)
 
             # --- Evolution on train data ONLY --- #
-            pop, hof, logbook = run_evolution(cfg, train_fm, train_eval_cfg)
+            pop, hof, logbook = run_evolution(
+                cfg, train_fm, train_eval_cfg, pool=pool
+            )
 
             if not hof:
                 logger.warning(

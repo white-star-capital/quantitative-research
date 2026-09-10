@@ -461,3 +461,192 @@ def test_seed_reproducibility_exp03(feature_matrix, close_prices):
             f"HoF individuals differ across identical-seed runs (EXP-03).\n"
             f"Run 1: {str(ind1)}\nRun 2: {str(ind2)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# EVO-07: pool hoisting — one warm pool reused across an experiment
+#
+# run_evolution() creating its own Pool per call means every (window, seed)
+# pair re-pays the numba JIT warmup in every worker. On a walk-forward grid
+# with a 19-run null control that is 60+ pool creations, and it made the whole
+# experiment slower than running serially. These tests pin the contract that
+# makes hoisting safe: a borrowed pool is used and NOT closed.
+# ---------------------------------------------------------------------------
+
+def test_evolution_pool_yields_none_for_serial():
+    """n_jobs <= 1 must yield None so callers can wrap unconditionally."""
+    from vgp.evolution import evolution_pool
+
+    for n in (0, 1):
+        with evolution_pool(n) as pool:
+            assert pool is None, f"n_jobs={n} should not create a pool, got {pool}"
+
+
+def test_run_evolution_uses_a_borrowed_pool_and_does_not_close_it(
+    feature_matrix, eval_cfg
+):
+    """A caller-supplied pool must be used for map() and survive the run.
+
+    Closing a borrowed pool would break the next seed in the grid — the whole
+    point of hoisting is that it stays warm.
+    """
+    from vgp.evolution.config import EvolutionConfig
+    from vgp.evolution.loop import run_evolution
+
+    class _RecordingPool:
+        """Stands in for multiprocessing.Pool; map() is serial here."""
+
+        def __init__(self):
+            self.map_calls = 0
+            self.closed = False
+            self.joined = False
+
+        def map(self, fn, iterable):
+            self.map_calls += 1
+            return [fn(x) for x in iterable]
+
+        def close(self):
+            self.closed = True
+
+        def join(self):
+            self.joined = True
+
+    pool = _RecordingPool()
+    # n_jobs > 1 would normally build a real spawn pool; the borrowed one wins
+    cfg = EvolutionConfig(pop_size=8, n_generations=2, seed=0, n_jobs=4,
+                          checkpoint_freq=999)
+
+    _pop, _hof, logbook = run_evolution(
+        cfg, feature_matrix, eval_cfg, pool=pool
+    )
+
+    assert pool.map_calls >= cfg.n_generations, (
+        f"borrowed pool.map was called {pool.map_calls} times for "
+        f"{cfg.n_generations} generations — evaluation did not go through it"
+    )
+    assert not pool.closed, "run_evolution closed a pool it does not own"
+    assert not pool.joined, "run_evolution joined a pool it does not own"
+    assert len(logbook) == cfg.n_generations + 1
+
+
+def test_run_evolution_borrowed_pool_survives_repeated_runs(feature_matrix, eval_cfg):
+    """The same pool must serve several runs — the grid case."""
+    from vgp.evolution.config import EvolutionConfig
+    from vgp.evolution.loop import run_evolution
+
+    class _CountingPool:
+        def __init__(self):
+            self.map_calls = 0
+            self.closed = False
+
+        def map(self, fn, iterable):
+            self.map_calls += 1
+            return [fn(x) for x in iterable]
+
+        def close(self):
+            self.closed = True
+
+        def join(self):
+            pass
+
+    pool = _CountingPool()
+    for seed in (0, 1, 2):
+        cfg = EvolutionConfig(pop_size=6, n_generations=1, seed=seed, n_jobs=4,
+                              checkpoint_freq=999)
+        run_evolution(cfg, feature_matrix, eval_cfg, pool=pool)
+        assert not pool.closed, f"pool was closed after seed {seed}"
+
+    assert pool.map_calls >= 6, (
+        f"expected at least 2 map calls per seed across 3 seeds, got "
+        f"{pool.map_calls}"
+    )
+
+
+def test_run_evolution_still_closes_a_pool_it_created(feature_matrix, eval_cfg):
+    """Backwards compatibility: without a borrowed pool, ownership is ours.
+
+    A single-run caller that passes n_jobs>1 and no pool must still get its
+    pool cleaned up, or the process leaks workers.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from vgp.evolution.config import EvolutionConfig
+    from vgp.evolution.loop import run_evolution
+
+    created = MagicMock()
+    created.map.side_effect = lambda fn, it: [fn(x) for x in it]
+    ctx = MagicMock()
+    ctx.Pool.return_value = created
+
+    cfg = EvolutionConfig(pop_size=6, n_generations=1, seed=0, n_jobs=2,
+                          checkpoint_freq=999)
+
+    with patch("vgp.evolution.loop.multiprocessing.get_context", return_value=ctx):
+        run_evolution(cfg, feature_matrix, eval_cfg)
+
+    assert ctx.Pool.called, "expected a pool to be created when none was passed"
+    created.close.assert_called_once()
+    created.join.assert_called_once()
+
+
+def test_run_window_forwards_the_pool_to_every_seed():
+    """WalkForwardRunner must pass the borrowed pool down, or hoisting is moot."""
+    from unittest.mock import MagicMock, patch
+
+    import numpy as np
+    import pandas as pd
+
+    from vgp.analysis import generate_windows
+    from vgp.analysis.runner import WalkForwardRunner
+    from vgp.backtest.runner import EvalConfig
+
+    # Needs >= 17 months (12m train + 2m val + 3m OOS) to yield a window, which
+    # is longer than this module's shared fixtures provide.
+    T, A = 700, 2
+    rng = np.random.default_rng(0)
+    dates = pd.date_range("2024-01-01", periods=T, freq="D")
+    feature_matrix = rng.standard_normal((T, 12, A)).astype(np.float32)
+    close_prices = pd.DataFrame(
+        100.0 * np.exp(np.cumsum(rng.standard_normal((T, A)) * 0.01, axis=0)),
+        index=dates, columns=[f"a{i}" for i in range(A)],
+    )
+    eval_cfg = EvalConfig(close_prices=close_prices, min_trades=1)
+
+    runner = WalkForwardRunner(dates=dates)
+    window = generate_windows(
+        str(dates.min().date()), str(dates.max().date())
+    )[0]
+
+    ind = MagicMock()
+    ind.__len__ = lambda s: 5
+    ind.fitness = MagicMock()
+    ind.fitness.values = (0.5, 0.1, -5.0)
+    hof = MagicMock()
+    hof.__bool__ = lambda s: True
+    hof.__getitem__ = lambda s, i: ind
+    logbook = MagicMock()
+
+    sentinel = object()
+    with patch("vgp.analysis.runner.run_evolution",
+               return_value=([], hof, logbook)) as mock_evo, \
+         patch("vgp.analysis.runner.evaluate_with_status",
+               return_value=((0.3, 0.05, -5.0), "ok", 90)), \
+         patch("vgp.analysis.runner._get_is_returns",
+               return_value=np.zeros(50) + 0.01):
+        runner.run_window(
+            window=window,
+            feature_matrix=feature_matrix,
+            close_prices=close_prices,
+            base_eval_config=eval_cfg,
+            seeds=[0, 1, 2],
+            evo_config_kwargs=dict(pop_size=6, n_generations=1, n_jobs=4,
+                                   checkpoint_freq=999),
+            pool=sentinel,
+        )
+
+    assert mock_evo.call_count == 3
+    for call in mock_evo.call_args_list:
+        assert call.kwargs.get("pool") is sentinel, (
+            "run_window did not forward the pool to run_evolution — each seed "
+            "would create its own and re-pay the JIT warmup"
+        )
