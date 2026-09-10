@@ -104,6 +104,12 @@ technical constraints above.
 
 6. **Null control block size must be shorter than the effect horizon** — a block bootstrap only breaks dependence at block boundaries, so structure shorter than the block survives into the surrogate. The 20-bar default will not flag a 1–5 day momentum artifact.
 
+7. **A surrogate must be verified WINDOW BY WINDOW, never on the full sample** — correlation is time-varying and the window is what the model trains on. A surrogate that preserved 69% full-sample PC1 share had 0.001 mean pairwise correlation inside every training window (against 0.615 real), giving a 1/N book ~20 effective bets instead of 2.4 and making the null unbeatable in-sample. `check_surrogate_fidelity()` runs on every null control and `summary()` refuses to present a clean p-value over a breached one. Breach criteria cover only what the construction guarantees — cross-asset correlation and effective-bet count — and require exceeding both a relative tolerance and an absolute floor, because a relative check on a near-zero quantity fires on noise and a check that cries wolf gets ignored.
+
+8. **Report the TYPICAL window, not just the best** — the max statistic asks "could a search this size stumble on something this good by chance", which is the right question about the search and the wrong one about a deployable edge, because one lucky window carries it. The 6-window run's OOS medians decay +1.03 → −0.98 across time. `summary_sharpes()` returns both; the typical is the median across windows of each window's median, reduced per window first so it is comparable between a 3-seed observed run and a 1-seed null run. If the max clears 0.05 and the typical does not, that is a regime-dependent artifact, and the summary says so.
+
+9. **De-annualize with the convention that annualized it** — vectorbt annualizes a `freq="1D"` Sharpe with **365** periods per year, not 252 (verified: `pf.sharpe_ratio()` over the per-period Sharpe of `pf.returns()` equals sqrt(365) to 1e-14). `PERIODS_PER_YEAR_DAILY = 365` in `vgp/analysis/dsr.py`. Using 252 inflated the DSR z-statistic by ~20% — a unit mismatch is invisible in the output, so tests pin both sides of the coupling.
+
 ## Architecture Invariants
 
 - `EvolutionLoop` must NOT import `vectorbt`
@@ -121,4 +127,4 @@ technical constraints above.
 | 2 | Data Pipeline | Enforced OOS split + recorded realized universe |
 | 3 | GP Core & Evaluation | Vectorized tree exec + lookahead prevention |
 | 4 | Evolution Engine | JIT warmup trap in parallel eval |
-| 5 | Validation & Publication | Multi-seed DSR + null control, not raw OOS Sharpe |
+| 5 | Validation & Publication | Null control (verified window-locally) over raw OOS Sharpe or DSR |
