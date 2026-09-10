@@ -102,16 +102,18 @@ The OOS trade threshold is scaled to the OOS window length (`oos_min_trades`, ov
 
 ## Current result
 
-The pipeline has been run end to end on Binance daily data (2024-01-01 →
-2026-04-01, 21 assets, 3 walk-forward windows, 13,006 evaluations) with a
-19-run null control. **It found no evidence of skill:** every signal-free
-surrogate run produced a higher in-sample Sharpe than the real data
-(p = 1.000), and out-of-sample sat inside the null distribution (p = 0.200).
-The conservative DSR is 0.0095. See `results/README.md` for the full record.
+Run end to end on Binance daily data (2024-01-01 → 2026-04-01, 21 assets,
+3 walk-forward windows, 83,239 evaluations) with a 19-run null control.
+**No evidence of skill:** best OOS Sharpe +1.862 against a null median of
++0.900 and p95 of +2.623, p = 0.250; in-sample p = 0.300. The conservative
+DSR is 0.0002. See `results/README.md`.
 
-That is a working framework reporting an honest negative, not a broken one. The
-same run also shows why the reporting path matters: sized to the reported
-winners instead of the search, DSR reads 1.0000 on the identical data.
+Two earlier runs reported different numbers and were wrong — their null
+controls used a surrogate that had lost cross-asset correlation inside every
+training window (0.615 → 0.001), which inflated it in-sample and distorted it
+out-of-sample. The apparently encouraging OOS p = 0.050 from that period was an
+artifact. A working framework reporting an honest negative is the intended
+output; the null control now verifies its own surrogate window by window.
 
 **Honest caveat:** Positive OOS Sharpe is the goal. Results depend on data availability, asset universe, and evolution configuration. VGP is a framework for reproducible research — it does not guarantee profitable strategies.
 
