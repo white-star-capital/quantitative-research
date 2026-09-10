@@ -142,19 +142,27 @@ def block_bootstrap_ohlcv(
     data: the null run is computed on the same universe as the observed run,
     which is what makes the comparison meaningful.
 
-    Co-movement is preserved EXACTLY over the intersection window — the dates
-    every asset has in common. That is the span that reaches the GP, because
-    FeatureEngine intersects to a common date index before stacking, so getting
-    it exact there is what counts. Concretely: one shared block sequence is
-    drawn over the intersection, and every asset maps it through its own date
-    index, so on any given surrogate bar all assets take their return from the
-    same source date.
+    Co-movement is preserved by STRATIFYING on the set of listed assets. The
+    sample is split at each asset's listing date; within a stratum the alive set
+    is constant, and one shared block sequence is drawn over dates where every
+    alive asset has data. Assets that co-exist therefore always take their
+    return from the same source date, at every point in the sample rather than
+    only where all 27 overlap.
 
-    Each asset's history BEFORE the intersection (only the longer-listed assets
-    have any) is resampled independently from its own pre-intersection returns.
-    Those bars only feed the rolling-window warm-up that the lookback trim
-    discards, and there is nothing to co-move with there — the shorter assets
-    do not exist yet.
+    That distinction is not academic. An earlier version drew a single shared
+    sequence over the intersection of ALL assets and resampled everything
+    outside it independently per asset. On the real Binance panel EUL lists
+    2025-10-13, so the intersection was the final 171 days — after every
+    training window — and effectively the entire usable history was drawn
+    per-asset. Measured in the real training window: mean pairwise correlation
+    0.615 against 0.001 in the surrogate, 2.4 effective bets against 20. A
+    cross-sectional book with twenty independent bets instead of two reaches a
+    far higher in-sample Sharpe, which is why the null control was unbeatable
+    in-sample (p = 1.000) while out-of-sample behaved sensibly.
+
+    The lesson generalises: a surrogate that preserves the UNCONDITIONAL
+    correlation matrix can still destroy it within any particular window.
+    Correlation is time-varying, and the window is what the GP trains on.
     """
     if block_size < 1:
         raise ValueError(f"block_size must be >= 1, got {block_size}")
@@ -162,33 +170,108 @@ def block_bootstrap_ohlcv(
         return {}
 
     tickers = list(ohlcv.keys())
-    lengths = {t: len(ohlcv[t]) for t in tickers}
+    indices = {t: ohlcv[t].index for t in tickers}
+    lengths = {t: len(indices[t]) for t in tickers}
     if max(lengths.values()) < 2:
         return {t: df.copy() for t, df in ohlcv.items()}
 
-    # Intersection of all asset dates — the span that survives FeatureEngine.
-    common: pd.DatetimeIndex | None = None
-    for t in tickers:
-        idx = ohlcv[t].index
-        common = idx if common is None else common.intersection(idx)
-    common = common.sort_values() if common is not None else pd.DatetimeIndex([])
+    # ---- Strata: periods over which the set of listed assets is constant ----
+    # Draw ONE shared source sequence per stratum, over dates where every asset
+    # alive in that stratum has data. Assets alive together therefore always
+    # take their return from the same source date, which is what preserves
+    # contemporaneous cross-asset correlation.
+    #
+    # An earlier version drew one shared sequence over the intersection of ALL
+    # assets and resampled everything outside it per-asset independently. With
+    # one very late listing that intersection collapses — on the 27-asset
+    # Binance panel EUL lists 2025-10-13, leaving a 171-day intersection that
+    # excludes every training window — so effectively the whole usable history
+    # was drawn independently per asset. Measured effect: mean pairwise
+    # correlation 0.615 in the real training window against 0.001 in the
+    # surrogate, 2.4 effective bets against 20. That inflated the achievable
+    # in-sample Sharpe and made the null control unbeatable in-sample.
+    calendar = indices[tickers[0]]
+    for t in tickers[1:]:
+        calendar = calendar.union(indices[t])
+    calendar = calendar.sort_values()
 
-    shared_src: np.ndarray | None = None
-    if len(common) >= 2:
-        shared_src = _circular_block_indices(len(common) - 1, block_size, rng)
-    else:
+    starts = sorted({indices[t][0] for t in tickers})
+
+    # src[t][i] = source return slot for asset t's output slot i (arrival at
+    # indices[t][i + 1]). -1 until assigned.
+    src = {t: np.full(max(lengths[t] - 1, 0), -1, dtype=np.int64) for t in tickers}
+    degraded: list[str] = []
+
+    for k, stratum_start in enumerate(starts):
+        stratum_end = starts[k + 1] if k + 1 < len(starts) else None
+
+        alive = [t for t in tickers if indices[t][0] <= stratum_start]
+        if not alive:
+            continue
+
+        # Source region: dates from stratum_start on that EVERY alive asset has.
+        # Intersecting guards the general case of differing end dates; for the
+        # usual nested panel (staggered starts, common end) it is just the tail.
+        region = calendar[calendar >= stratum_start]
+        for t in alive:
+            region = region.intersection(indices[t])
+        region = region.sort_values()
+
+        # Output dates this stratum covers, on the shared calendar.
+        in_stratum = calendar >= stratum_start
+        if stratum_end is not None:
+            in_stratum &= calendar < stratum_end
+        out_dates = calendar[in_stratum]
+        if len(out_dates) == 0:
+            continue
+
+        if len(region) < 2:
+            # No shared source window for this stratum: fall back per asset to
+            # its own history so bars stay valid, and record the degradation.
+            for t in alive:
+                idx = indices[t]
+                pos = idx.get_indexer(out_dates)
+                pos = pos[pos >= 1]
+                if pos.size == 0:
+                    continue
+                local = _circular_block_indices(pos.size, block_size, rng)
+                src[t][pos - 1] = (pos - 1)[local % pos.size]
+                if t not in degraded:
+                    degraded.append(t)
+            continue
+
+        # ONE shared draw for the stratum, mapping each output date to a source
+        # date. Every alive asset reads this same mapping, so on any surrogate
+        # bar they all take their return from the same source date — which is
+        # what preserves contemporaneous cross-asset correlation.
+        shared = _circular_block_indices(len(out_dates), block_size, rng)
+        shared = shared % (len(region) - 1)
+        src_date_of = pd.Series(region[shared + 1].to_numpy(), index=out_dates)
+
+        for t in alive:
+            idx = indices[t]
+            out_pos = idx.get_indexer(out_dates)
+            keep = out_pos >= 1              # slot i - 1 arrives at idx[i]
+            if not keep.any():
+                continue
+            tgt_pos = out_pos[keep]
+            src_dates = src_date_of.to_numpy()[keep]
+            src_pos = idx.get_indexer(pd.DatetimeIndex(src_dates))
+            ok = src_pos >= 1
+            src[t][tgt_pos[ok] - 1] = src_pos[ok] - 1
+
+    if degraded:
         logger.warning(
-            "block_bootstrap_ohlcv: assets share %d common date(s) — no joint "
-            "window, so each asset is resampled independently and cross-asset "
-            "co-movement is NOT preserved. The null will be easier to beat "
-            "than it should be; check the universe's date alignment.",
-            len(common),
+            "block_bootstrap_ohlcv: %d asset(s) had a stratum with no shared "
+            "source window (%s) — cross-asset co-movement is not preserved "
+            "there and the null will be easier to beat than it should be",
+            len(degraded), ", ".join(degraded[:5]),
         )
 
     out: dict[str, pd.DataFrame] = {}
     for ticker in tickers:
         df = ohlcv[ticker]
-        index = df.index
+        index = indices[ticker]
         T = lengths[ticker]
         if T < 2:
             # Nothing to resample; pass it through so the asset still exists
@@ -196,26 +279,13 @@ def block_bootstrap_ohlcv(
             out[ticker] = df.copy()
             continue
 
-        # src[i] is the source return slot for output return slot i, where slot
-        # i is the return arriving at index[i + 1].
-        src = np.full(T - 1, -1, dtype=np.int64)
-
-        if shared_src is not None:
-            # Map the shared sequence through this asset's own dates. Every
-            # common date is present in this asset by construction, so the
-            # lookup cannot miss.
-            pos = index.get_indexer(common)
-            target_slots = pos[1:] - 1                     # arrival at common[j+1]
-            source_slots = pos[shared_src + 1] - 1         # arrival at common[src+1]
-            src[target_slots] = source_slots
-
-        # Slots the shared sequence did not cover: this asset's pre-intersection
-        # history. Resample from among themselves so the returns still come from
-        # the same regime, rather than importing intersection-window returns.
-        uncovered = np.flatnonzero(src < 0)
-        if uncovered.size:
-            local = _circular_block_indices(uncovered.size, block_size, rng)
-            src[uncovered] = uncovered[local]
+        s_idx = src[ticker]
+        # Any slot still unassigned (an asset absent from every stratum pass)
+        # falls back to identity so the bar is at least valid.
+        missing = s_idx < 0
+        if missing.any():
+            s_idx = s_idx.copy()
+            s_idx[missing] = np.flatnonzero(missing)
 
         close = df["close"].to_numpy(dtype=np.float64)
 
@@ -227,16 +297,15 @@ def block_bootstrap_ohlcv(
         # Rebuild a price path from the resampled returns.
         new_close = np.empty(T, dtype=np.float64)
         new_close[0] = close[0] if np.isfinite(close[0]) and close[0] > 0 else 1.0
-        new_close[1:] = new_close[0] * np.exp(np.cumsum(log_ret[src]))
+        new_close[1:] = new_close[0] * np.exp(np.cumsum(log_ret[s_idx]))
 
         # Bar geometry travels with the return that was drawn: each surrogate
         # bar reuses a real bar's open/high/low/volume RATIOS to its own close,
         # so the surrogate bars remain internally consistent (low <= close <=
         # high) instead of being synthesized.
-        # Return slot i came from source slot src[i], i.e. source bar src[i]+1.
         geom_src = np.empty(T, dtype=np.int64)
         geom_src[0] = 0
-        geom_src[1:] = src + 1
+        geom_src[1:] = s_idx + 1
 
         surrogate = {"close": new_close}
         for col in ("open", "high", "low"):
@@ -255,8 +324,8 @@ def block_bootstrap_ohlcv(
         )
 
     logger.debug(
-        "block_bootstrap_ohlcv: %d assets, %d common dates, block_size=%d",
-        len(tickers), len(common), block_size,
+        "block_bootstrap_ohlcv: %d assets, %d strata, block_size=%d",
+        len(tickers), len(starts), block_size,
     )
     return out
 

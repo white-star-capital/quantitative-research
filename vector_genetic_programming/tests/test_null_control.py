@@ -612,3 +612,164 @@ def test_ragged_surrogate_retention_decision_matches_real_data():
     assert real_arr.shape == sur_arr.shape, (
         f"panel shape differs: {real_arr.shape} vs {sur_arr.shape}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Correlation must be preserved WITHIN A WINDOW, not just over the full sample
+#
+# This is the regression for the bug that made the null control unbeatable
+# in-sample. Co-movement was shared only over the intersection of ALL assets;
+# with one very late listing that intersection was the final few months, so
+# every training window fell outside it and each asset was resampled
+# independently there. The full-sample correlation matrix still looked right,
+# which is exactly why it went unnoticed — the assertion has to be made on the
+# window the GP actually trains on.
+#
+# Measured on the real 27-asset Binance panel before the fix: mean pairwise
+# correlation 0.615 in the real training window against 0.001 in the surrogate,
+# 2.4 effective bets against 20. A cross-sectional book with twenty independent
+# bets instead of two reaches a far higher in-sample Sharpe, inflating the null.
+# ---------------------------------------------------------------------------
+
+
+def _mean_pairwise_corr(data: dict, tickers, window) -> float:
+    rets = np.column_stack([
+        np.diff(np.log(data[t].loc[window, "close"].to_numpy(dtype=np.float64)))
+        for t in tickers
+    ])
+    c = np.corrcoef(rets, rowvar=False)
+    return float(c[~np.eye(c.shape[0], dtype=bool)].mean())
+
+
+def _effective_bets(data: dict, tickers, window) -> float:
+    """Participation ratio of the correlation spectrum: independent directions."""
+    rets = np.column_stack([
+        np.diff(np.log(data[t].loc[window, "close"].to_numpy(dtype=np.float64)))
+        for t in tickers
+    ])
+    eig = np.linalg.eigvalsh(np.corrcoef(rets, rowvar=False))
+    return float((eig.sum() ** 2) / (eig ** 2).sum())
+
+
+@pytest.fixture
+def late_listing_panel():
+    """Correlated assets, plus one that lists only in the final stretch.
+
+    Mirrors the real panel's shape: staggered starts, common end, and one
+    asset (EUL, 2025-10-13) whose listing date collapses the all-asset
+    intersection to a window that excludes the training periods.
+    """
+    T = 600
+    rng = np.random.default_rng(17)
+    idx = pd.date_range("2024-01-01", periods=T, freq="D")
+    market = rng.standard_normal(T) * 0.02
+    panel = {}
+    for a in range(5):
+        ret = 0.9 * market + rng.standard_normal(T) * 0.005   # strongly correlated
+        close = 100.0 * np.exp(np.cumsum(ret))
+        df = pd.DataFrame(
+            {"open": close, "high": close * 1.004, "low": close * 0.996,
+             "close": close, "volume": np.full(T, 1e6)},
+            index=idx,
+        )
+        panel[f"LONG{a}"] = df
+    # The late lister: present only for the last 80 bars
+    panel["LATE"] = panel["LONG0"].iloc[-80:].copy()
+    return panel, idx
+
+
+def test_correlation_preserved_in_an_early_window_despite_a_late_listing(
+    late_listing_panel,
+):
+    """The regression: an EARLY window must keep its cross-asset correlation.
+
+    The early window lies entirely outside the all-asset intersection, which is
+    precisely where the previous implementation fell back to per-asset draws.
+    """
+    from vgp.analysis import block_bootstrap_ohlcv
+
+    panel, idx = late_listing_panel
+    long_tickers = [t for t in panel if t.startswith("LONG")]
+    early = idx[:400]                     # ends long before LATE lists
+
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(0), block_size=20)
+
+    real_corr = _mean_pairwise_corr(panel, long_tickers, early)
+    sur_corr = _mean_pairwise_corr(sur, long_tickers, early)
+
+    assert real_corr > 0.8, f"fixture is not correlated enough ({real_corr:.3f})"
+    assert sur_corr > 0.7 * real_corr, (
+        f"cross-asset correlation collapsed in the early window: real "
+        f"{real_corr:.3f} -> surrogate {sur_corr:.3f}. The shared source "
+        f"sequence is not reaching this window, so the assets are being drawn "
+        f"independently and a cross-sectional book gets far too many "
+        f"independent bets — which inflates the null's in-sample Sharpe."
+    )
+
+
+def test_effective_bets_preserved_in_an_early_window(late_listing_panel):
+    """The quantity that actually drives achievable Sharpe dispersion.
+
+    Correlation is the mechanism; the effective number of independent bets is
+    what a 1/N book experiences. Before the fix this went from ~1 to ~5 on this
+    fixture (2.4 to 20 on the real panel).
+    """
+    from vgp.analysis import block_bootstrap_ohlcv
+
+    panel, idx = late_listing_panel
+    long_tickers = [t for t in panel if t.startswith("LONG")]
+    early = idx[:400]
+
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(1), block_size=20)
+
+    real_n = _effective_bets(panel, long_tickers, early)
+    sur_n = _effective_bets(sur, long_tickers, early)
+
+    assert sur_n < 2.0 * real_n, (
+        f"effective independent bets inflated from {real_n:.2f} to {sur_n:.2f} "
+        f"in the early window — the surrogate is an easier problem than the "
+        f"real data, so it is not a valid null"
+    )
+
+
+def test_correlation_preserved_across_several_disjoint_windows(late_listing_panel):
+    """Every window the walk-forward grid can land on, not just one."""
+    from vgp.analysis import block_bootstrap_ohlcv
+
+    panel, idx = late_listing_panel
+    long_tickers = [t for t in panel if t.startswith("LONG")]
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(2), block_size=20)
+
+    for lo, hi in ((0, 150), (150, 300), (300, 450), (450, 600)):
+        window = idx[lo:hi]
+        real_corr = _mean_pairwise_corr(panel, long_tickers, window)
+        sur_corr = _mean_pairwise_corr(sur, long_tickers, window)
+        assert sur_corr > 0.7 * real_corr, (
+            f"window {lo}:{hi} lost correlation: real {real_corr:.3f} -> "
+            f"surrogate {sur_corr:.3f}"
+        )
+
+
+def test_full_sample_correlation_alone_would_not_catch_this(late_listing_panel):
+    """Documents why the bug survived: the full-sample check passes either way.
+
+    A surrogate can preserve the unconditional correlation matrix while
+    destroying it inside every window, because correlation is time-varying and
+    the window is what the model trains on. Any future check must be
+    window-local.
+    """
+    from vgp.analysis import block_bootstrap_ohlcv
+
+    panel, idx = late_listing_panel
+    long_tickers = [t for t in panel if t.startswith("LONG")]
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(3), block_size=20)
+
+    full = idx
+    real_full = _mean_pairwise_corr(panel, long_tickers, full)
+    sur_full = _mean_pairwise_corr(sur, long_tickers, full)
+
+    # Both are high — this assertion held even when every window was broken
+    assert real_full > 0.8 and sur_full > 0.7 * real_full, (
+        "full-sample correlation should be preserved; if this fails the "
+        "surrogate is broken in a more basic way"
+    )

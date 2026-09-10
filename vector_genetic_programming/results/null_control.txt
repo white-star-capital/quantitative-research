@@ -1,7 +1,7 @@
 Null control: 19 signal-free run(s), block_size=20 bars
-  observed best IS Sharpe   +3.317   null median +5.189   null p95 +5.917   p = 1.000
-  observed best OOS Sharpe  +0.735   null median -0.195   null p95 +1.571   p = 0.200
+  observed best IS Sharpe   +3.705   null median +5.387   null p95 +6.059   p = 1.000
+  observed best OOS Sharpe  +1.862   null median -0.043   null p95 +0.849   p = 0.050
   VERDICT: the search finds comparable performance in data with no signal. Treat the headline result as unproven regardless of DSR.
 
-null best IS Sharpe per run:  +4.6987, +4.4889, +4.9513, +5.9158, +4.0197, +5.2925, +5.7392, +5.2051, +5.7731, +5.7112, +4.2947, +3.9993, +5.9280, +5.4077, +4.5959, +5.5695, +4.8670, +5.1480, +5.1887
-null best OOS Sharpe per run: +0.1281, -1.4670, +1.9966, -1.6119, +0.6879, -0.1951, -0.2280, -0.9726, -0.3340, +1.5238, -0.8574, -2.1338, +0.9011, +0.6125, +0.3802, -0.3447, +0.6502, +0.0336, -0.9627
+null best IS Sharpe per run:  +5.2980, +4.7086, +5.1697, +6.1075, +4.5570, +6.0177, +5.7628, +5.2979, +5.4502, +5.6740, +4.5460, +4.4877, +6.0537, +5.3866, +5.3863, +5.6256, +5.7949, +5.4698, +5.0108
+null best OOS Sharpe per run: +0.7048, +0.8183, -0.0169, -1.0583, -0.0431, -0.3685, -0.8000, -0.9457, +1.1293, -0.8702, -0.0024, -1.2088, +0.4939, +0.4560, -0.0699, -0.5567, +0.6382, +0.3204, -0.5359
