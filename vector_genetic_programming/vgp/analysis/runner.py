@@ -98,11 +98,16 @@ def _get_is_returns(
     train_fm: np.ndarray,
     train_eval_cfg: EvalConfig,
 ) -> np.ndarray:
-    """Re-run IS backtest to extract per-period returns for DSR computation.
+    """Per-period IS portfolio returns, for the DSR.
 
-    This uses ONLY train data — no OOS data is accessed here.
-    Separated into its own function so tests can patch it without
-    requiring actual GP tree execution.
+    Uses ONLY train data — no OOS is touched here. Delegates to the same
+    compute_signals/build_portfolio used by evaluate(), so the returns the DSR
+    deflates are by construction those of the portfolio whose Sharpe it is
+    deflating. This function previously re-derived the signal conversion, fee
+    handling and Portfolio.from_signals call itself; the two copies did agree,
+    but nothing kept them in step.
+
+    Kept as a separate function so tests can patch it without running a GP tree.
 
     Parameters
     ----------
@@ -116,41 +121,15 @@ def _get_is_returns(
     Returns
     -------
     np.ndarray
-        Per-period portfolio returns shape [T_train].
+        Per-period portfolio returns, shape [T_train].
     """
-    import vectorbt as vbt  # noqa: PLC0415 — deferred import (D-15 pattern)
-
-    from vgp.gp.gp_types import build_pset  # noqa: PLC0415
-    from vgp.gp.tree_evaluator import TreeEvaluator  # noqa: PLC0415
-
-    pset = build_pset()
-    evaluator = TreeEvaluator(pset)
-    T_train, F, A = train_fm.shape
-    train_signals = np.zeros((T_train, A), dtype=np.float32)
-    for a in range(A):
-        train_signals[:, a] = evaluator.execute(individual, train_fm[:, :, a])
-
-    long_entries = train_signals > 0
-    short_entries = train_signals < 0
-    long_exits = train_signals <= 0
-    short_exits = train_signals >= 0
-    fee_per_side = (train_eval_cfg.fee_bps / 2.0) / 10_000.0
-
-    pf = vbt.Portfolio.from_signals(
-        close=train_eval_cfg.close_prices,
-        entries=long_entries,
-        exits=long_exits,
-        short_entries=short_entries,
-        short_exits=short_exits,
-        size=1.0 / A,
-        size_type="percent",
-        upon_opposite_entry="close",
-        fees=fee_per_side,
-        freq=train_eval_cfg.freq,
-        init_cash=train_eval_cfg.init_cash,
-        group_by=True,
-        cash_sharing=True,
+    from vgp.backtest.runner import (  # noqa: PLC0415 — deferred (D-15 pattern)
+        build_portfolio,
+        compute_signals,
     )
+
+    signals = compute_signals(individual, train_fm)
+    pf = build_portfolio(signals, train_eval_cfg)
     return pf.returns().to_numpy()
 
 

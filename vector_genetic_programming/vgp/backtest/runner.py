@@ -66,6 +66,87 @@ class EvalConfig:
 
 
 # ---------------------------------------------------------------------------
+# Signal and portfolio construction — ONE definition, shared by every caller
+# ---------------------------------------------------------------------------
+
+def compute_signals(individual, feature_matrix: np.ndarray) -> np.ndarray:
+    """Execute a GP tree per asset and return the [T x A] float32 signal matrix.
+
+    D-01: one tree applied to each asset's [T x F] slice. The loop is over
+    ASSETS, not timesteps — TreeEvaluator.execute() is vectorized over T (D-16).
+    D-15: the GP import is deferred so this module still holds no deap
+    dependency at import time.
+    """
+    from vgp.gp.gp_types import build_pset  # noqa: PLC0415 — deferred (D-15)
+    from vgp.gp.tree_evaluator import TreeEvaluator  # noqa: PLC0415
+
+    if feature_matrix.ndim != 3:
+        raise ValueError(
+            f"feature_matrix must be 3-D [T x F x A], got shape {feature_matrix.shape}"
+        )
+    T, F, A = feature_matrix.shape
+    if F != 12:
+        raise ValueError(f"Expected F=12 feature columns (FEATURE_NAMES), got {F}")
+
+    # pset is stateless — safe to build per call
+    evaluator = TreeEvaluator(build_pset())
+    signals = np.zeros((T, A), dtype=np.float32)
+    for a in range(A):
+        signals[:, a] = evaluator.execute(individual, feature_matrix[:, :, a])
+    return signals
+
+
+def count_trades(signals: np.ndarray) -> int:
+    """Sign changes summed across assets (D-14's definition of a "trade")."""
+    return int(np.sum(np.abs(np.diff(signals, axis=0)) > 0))
+
+
+def build_portfolio(signals: np.ndarray, config: EvalConfig):
+    """Build the vectorbt Portfolio for a signal matrix.
+
+    THE SINGLE DEFINITION of how a signal becomes a portfolio. It used to be
+    written twice — here and in vgp.analysis.runner._get_is_returns, which
+    re-derived it to obtain per-period returns for the DSR. Two copies of this
+    that must agree is exactly the shape of defect this project keeps finding:
+    they did agree (verified — the Sharpe from these returns matches
+    evaluate()'s to within the annualization factor), but nothing structural
+    kept them in step, so a change to fees, sizing or reversal handling in one
+    would have silently deflated the DSR of a different portfolio.
+
+    Transaction costs are applied HERE via fees=, never post-hoc
+    (CLAUDE.md constraint #3).
+    """
+    A = signals.shape[1]
+
+    # Convert 3-state signals to boolean long/short entry/exit matrices.
+    # Using explicit separate arrays (not direction='both') to support
+    # size_type='percent' with position reversals (Pitfall 2).
+    long_entries   = signals > 0    # [T x A] bool: go long
+    short_entries  = signals < 0    # [T x A] bool: go short
+    long_exits     = signals <= 0   # [T x A] bool: exit long
+    short_exits    = signals >= 0   # [T x A] bool: exit short
+
+    # fee_bps is round-trip; divide by 2 for per-side, then by 10_000 for decimal.
+    fee_per_side = (config.fee_bps / 2.0) / 10_000.0  # 10 bps -> 0.0005
+
+    return vbt.Portfolio.from_signals(
+        close=config.close_prices,       # [T x A] DataFrame, DatetimeIndex
+        entries=long_entries,
+        exits=long_exits,
+        short_entries=short_entries,
+        short_exits=short_exits,
+        size=1.0 / A,                    # equal weight: 1/N per asset (D-11)
+        size_type="percent",
+        upon_opposite_entry="close",     # close existing position before reversing (Pitfall 2)
+        fees=fee_per_side,               # EVAL-02 — inside evaluate, not post-hoc
+        freq=config.freq,                # "1D" — REQUIRED for sharpe_ratio() (Pitfall 1)
+        init_cash=config.init_cash,
+        group_by=True,                   # aggregate to single portfolio-level metrics
+        cash_sharing=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Evaluation function
 # ---------------------------------------------------------------------------
 
@@ -109,38 +190,13 @@ def evaluate_with_status(
     D-16: No per-bar Python loops. The per-asset loop (range(A)) is over assets,
           not timesteps. TreeEvaluator.execute() is vectorized over [T].
     """
-    # Import GP layer here (deferred — maintains architectural separation D-15)
-    from vgp.gp.tree_evaluator import TreeEvaluator
-    from vgp.gp.gp_types import build_pset
-
     tree_size = len(individual)  # PrimitiveTree.__len__ — no deap import needed
     worst_fitness = (-np.inf, -np.inf, float(-tree_size))
 
-    # Validate input shape
-    if feature_matrix.ndim != 3:
-        raise ValueError(
-            f"feature_matrix must be 3-D [T x F x A], got shape {feature_matrix.shape}"
-        )
-    T, F, A = feature_matrix.shape
-    if F != 12:
-        raise ValueError(
-            f"Expected F=12 feature columns (FEATURE_NAMES), got {F}"
-        )
+    signals = compute_signals(individual, feature_matrix)
 
-    # Build evaluator (pset is stateless — safe to build per call; Phase 4 will cache)
-    pset = build_pset()
-    evaluator = TreeEvaluator(pset)
-
-    # Execute tree on each asset independently — loop is over A assets, not T timesteps.
-    # D-01: single tree applied to single-asset [T x F] slice for each asset.
-    signals = np.zeros((T, A), dtype=np.float32)
-    for a in range(A):
-        signals[:, a] = evaluator.execute(individual, feature_matrix[:, :, a])
-
-    # Trade filter (D-14): count sign changes summed across all assets.
-    # "Trade" = sign change in the 3-state signal at any timestep for any asset.
-    # np.abs(np.diff(...)) > 0 is True when signal changes (including 0->±1, ±1->∓1).
-    sign_changes = int(np.sum(np.abs(np.diff(signals, axis=0)) > 0))
+    # Trade filter (D-14): sign changes summed across all assets.
+    sign_changes = count_trades(signals)
     if sign_changes < config.min_trades:
         logger.debug(
             "Individual (size=%d) has only %d sign changes — below min_trades=%d. "
@@ -149,33 +205,7 @@ def evaluate_with_status(
         )
         return worst_fitness, EVAL_BELOW_MIN_TRADES, sign_changes
 
-    # Convert 3-state signals to boolean long/short entry/exit matrices.
-    # Using explicit separate arrays (not direction='both') to support
-    # size_type='percent' with position reversals (Pitfall 2).
-    long_entries   = signals > 0    # [T x A] bool: go long
-    short_entries  = signals < 0    # [T x A] bool: go short
-    long_exits     = signals <= 0   # [T x A] bool: exit long
-    short_exits    = signals >= 0   # [T x A] bool: exit short
-
-    # Transaction costs: 10 bps round-trip = 5 bps per side.
-    # fee_bps is round-trip; divide by 2 for per-side, then by 10_000 for decimal.
-    fee_per_side = (config.fee_bps / 2.0) / 10_000.0  # 10 bps -> 0.0005
-
-    pf = vbt.Portfolio.from_signals(
-        close=config.close_prices,       # [T x A] DataFrame, DatetimeIndex
-        entries=long_entries,
-        exits=long_exits,
-        short_entries=short_entries,
-        short_exits=short_exits,
-        size=1.0 / A,                    # equal weight: 1/N per asset (D-11)
-        size_type="percent",
-        upon_opposite_entry="close",     # close existing position before reversing (Pitfall 2)
-        fees=fee_per_side,               # 5 bps per side (EVAL-02 — inside evaluate, not post-hoc)
-        freq=config.freq,                # "1D" — REQUIRED for sharpe_ratio() (Pitfall 1)
-        init_cash=config.init_cash,
-        group_by=True,                   # aggregate to single portfolio-level metrics
-        cash_sharing=True,
-    )
+    pf = build_portfolio(signals, config)
 
     sharpe = float(pf.sharpe_ratio())
     total_ret = float(pf.total_return())
