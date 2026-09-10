@@ -346,10 +346,14 @@ def main() -> None:
     if null_result is not None:
         null_path.write_text(
             null_result.summary()
-            + "\n\nnull best IS Sharpe per run:  "
+            + "\n\nnull best IS Sharpe per run:     "
             + ", ".join(f"{v:+.4f}" for v in null_result.null_best_is_sharpe)
-            + "\nnull best OOS Sharpe per run: "
+            + "\nnull best OOS Sharpe per run:    "
             + ", ".join(f"{v:+.4f}" for v in null_result.null_best_oos_sharpe)
+            + "\nnull typical IS Sharpe per run:  "
+            + ", ".join(f"{v:+.4f}" for v in null_result.null_typical_is_sharpe)
+            + "\nnull typical OOS Sharpe per run: "
+            + ", ".join(f"{v:+.4f}" for v in null_result.null_typical_oos_sharpe)
             + "\n"
         )
     else:

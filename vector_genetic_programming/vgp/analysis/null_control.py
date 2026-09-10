@@ -341,9 +341,15 @@ def block_bootstrap_ohlcv(
 # exactly what silently broke: a surrogate whose assets are too independent
 # hands the search more bets than the real data has, inflating achievable
 # in-sample Sharpe and making the null unbeatable.
+# Each entry is (relative tolerance, absolute floor). A breach needs BOTH: a
+# relative tolerance alone is unstable on a near-zero quantity — a genuinely
+# low-correlation window at 0.05 would trip a 30% check on estimation noise,
+# and a check that cries wolf trains readers to ignore it. The absolute floor
+# means only differences that could plausibly change the number of independent
+# bets a strategy sees are reported.
 _FIDELITY_TOL = {
-    "mean_corr": 0.30,     # |surrogate - observed| as a fraction of observed
-    "n_eff_bets": 0.50,
+    "mean_corr": (0.30, 0.10),
+    "n_eff_bets": (0.50, 0.75),
 }
 
 # Reported for context but NOT breach criteria. A bootstrap resamples from the
@@ -395,7 +401,9 @@ def window_fidelity_report(
 
     Returns one dict per window with the observed value, the surrogate value
     and the relative divergence for each statistic, plus a `breaches` list
-    naming any statistic outside `_FIDELITY_TOL`.
+    naming any statistic outside `_FIDELITY_TOL` — which requires exceeding
+    both a relative tolerance and an absolute floor, so estimation noise on a
+    small correlation does not register as a defect.
     """
     tickers = sorted(set(observed) & set(surrogate))
     if not tickers:
@@ -426,9 +434,11 @@ def window_fidelity_report(
             denom = abs(o) if abs(o) > 1e-9 else 1.0
             rel = (v - o) / denom
             row[key] = {"observed": o, "surrogate": v, "rel": float(rel)}
-            tol = _FIDELITY_TOL.get(key)
-            if tol is not None and abs(rel) > tol:
-                row["breaches"].append(key)
+            limits = _FIDELITY_TOL.get(key)
+            if limits is not None:
+                rel_tol, abs_floor = limits
+                if abs(rel) > rel_tol and abs(v - o) > abs_floor:
+                    row["breaches"].append(key)
         report.append(row)
     return report
 
@@ -516,8 +526,12 @@ class NullControlResult:
     block_size: int
     observed_best_is_sharpe: float
     observed_best_oos_sharpe: float
+    observed_typical_is_sharpe: float = float("nan")
+    observed_typical_oos_sharpe: float = float("nan")
     null_best_is_sharpe: np.ndarray = field(default_factory=lambda: np.array([]))
     null_best_oos_sharpe: np.ndarray = field(default_factory=lambda: np.array([]))
+    null_typical_is_sharpe: np.ndarray = field(default_factory=lambda: np.array([]))
+    null_typical_oos_sharpe: np.ndarray = field(default_factory=lambda: np.array([]))
     n_runs_failed: int = 0
     fidelity: list[dict] = field(default_factory=list)
 
@@ -536,6 +550,23 @@ class NullControlResult:
         return empirical_p_value(self.observed_best_oos_sharpe, self.null_best_oos_sharpe)
 
     @property
+    def p_value_typical_is(self) -> float:
+        return empirical_p_value(
+            self.observed_typical_is_sharpe, self.null_typical_is_sharpe
+        )
+
+    @property
+    def p_value_typical_oos(self) -> float:
+        """The harder bar: does the TYPICAL window beat chance?
+
+        A regime-dependent artifact can clear the max test on one lucky window
+        while failing here.
+        """
+        return empirical_p_value(
+            self.observed_typical_oos_sharpe, self.null_typical_oos_sharpe
+        )
+
+    @property
     def resolution(self) -> float:
         """Smallest p-value this many runs can express."""
         n = int(np.sum(np.isfinite(self.null_best_is_sharpe)))
@@ -547,19 +578,37 @@ class NullControlResult:
             a = a[np.isfinite(a)]
             return float(np.percentile(a, q)) if a.size else float("nan")
 
+        def _row(label, obs, null, p):
+            return (f"  {label:<24}{obs:+.3f}"
+                    f"   null median {_pct(null, 50):+.3f}"
+                    f"   null p95 {_pct(null, 95):+.3f}"
+                    f"   p = {p:.3f}")
+
         lines = [
             f"Null control: {self.n_runs} signal-free run(s), "
             f"block_size={self.block_size} bars"
             + (f", {self.n_runs_failed} failed" if self.n_runs_failed else ""),
-            f"  observed best IS Sharpe   {self.observed_best_is_sharpe:+.3f}"
-            f"   null median {_pct(self.null_best_is_sharpe, 50):+.3f}"
-            f"   null p95 {_pct(self.null_best_is_sharpe, 95):+.3f}"
-            f"   p = {self.p_value_is:.3f}",
-            f"  observed best OOS Sharpe  {self.observed_best_oos_sharpe:+.3f}"
-            f"   null median {_pct(self.null_best_oos_sharpe, 50):+.3f}"
-            f"   null p95 {_pct(self.null_best_oos_sharpe, 95):+.3f}"
-            f"   p = {self.p_value_oos:.3f}",
+            "  MAX statistic — could the search stumble on this by chance?",
+            _row("best IS Sharpe", self.observed_best_is_sharpe,
+                 self.null_best_is_sharpe, self.p_value_is),
+            _row("best OOS Sharpe", self.observed_best_oos_sharpe,
+                 self.null_best_oos_sharpe, self.p_value_oos),
         ]
+        if np.isfinite(self.observed_typical_oos_sharpe):
+            lines += [
+                "  TYPICAL statistic — does the median window beat chance?",
+                _row("typical IS Sharpe", self.observed_typical_is_sharpe,
+                     self.null_typical_is_sharpe, self.p_value_typical_is),
+                _row("typical OOS Sharpe", self.observed_typical_oos_sharpe,
+                     self.null_typical_oos_sharpe, self.p_value_typical_oos),
+            ]
+            p_max, p_typ = self.p_value_oos, self.p_value_typical_oos
+            if np.isfinite(p_max) and np.isfinite(p_typ) and p_max <= 0.05 < p_typ:
+                lines.append(
+                    "  NOTE: the max clears 0.05 but the typical window does "
+                    "not — consistent with a regime-dependent artifact rather "
+                    "than an edge that would survive deployment."
+                )
         p_is = self.p_value_is
         if not np.isfinite(p_is):
             lines.append("  VERDICT: not measured — no usable null runs.")
@@ -601,6 +650,62 @@ class NullControlResult:
 # Runner
 # ---------------------------------------------------------------------------
 
+def _measurable(results: list[dict], key: str) -> list[float]:
+    return [
+        float(r[key]) for r in results
+        if key in r and np.isfinite(float(r.get(key, np.nan)))
+    ]
+
+
+def _typical(results: list[dict], key: str) -> float:
+    """Median over WINDOWS of each window's median — the "typical window".
+
+    Reducing per window first, then across windows, makes the statistic
+    comparable between the observed run (3 seeds per window) and a null run
+    (1 seed per window): a plain median over all rows would weight windows by
+    how many of their seeds happened to be measurable. Falls back to a plain
+    median when rows carry no window_id, which is the case for test stubs.
+    """
+    if not results:
+        return float("nan")
+    if any("window_id" not in r for r in results):
+        vals = _measurable(results, key)
+        return float(np.median(vals)) if vals else float("nan")
+
+    per_window = []
+    for wid in sorted({r["window_id"] for r in results}):
+        vals = _measurable([r for r in results if r["window_id"] == wid], key)
+        if vals:
+            per_window.append(float(np.median(vals)))
+    return float(np.median(per_window)) if per_window else float("nan")
+
+
+def summary_sharpes(results: list[dict]) -> dict:
+    """The two statistics the null control compares, and why both are needed.
+
+    max — the best row anywhere in the run. Answers "could a search of this
+      size stumble on a strategy this good by chance". Sensitive to a single
+      lucky window, which is exactly the question when asking whether the
+      SEARCH is fooling itself.
+
+    typical — the median window's median seed. Answers "does the average
+      period beat chance". A strategy that works in one regime and fails in
+      others can clear the max test while failing this one, and for a
+      deployable edge this is the harder and more relevant bar.
+
+    Reporting only the max is how a regime-dependent artifact gets mistaken
+    for an edge.
+    """
+    return {
+        "max_is": max(_measurable(results, "is_sharpe"), default=float("nan")),
+        "max_oos": max(_measurable(results, "oos_sharpe"), default=float("nan")),
+        "typical_is": _typical(results, "is_sharpe"),
+        "typical_oos": _typical(results, "oos_sharpe"),
+        "n_measurable_oos": len(_measurable(results, "oos_sharpe")),
+        "n_rows": len(results),
+    }
+
+
 def best_sharpes(results: list[dict]) -> tuple[float, float]:
     """Best measurable IS and OOS Sharpe across result rows.
 
@@ -608,14 +713,8 @@ def best_sharpes(results: list[dict]) -> tuple[float, float]:
     tripped OOS trade filter) and are skipped rather than treated as bad
     results. Returns NaN for a field with no measurable row.
     """
-    def _best(key: str) -> float:
-        vals = [
-            float(r[key]) for r in results
-            if key in r and np.isfinite(float(r.get(key, np.nan)))
-        ]
-        return max(vals) if vals else float("nan")
-
-    return _best("is_sharpe"), _best("oos_sharpe")
+    stats = summary_sharpes(results)
+    return stats["max_is"], stats["max_oos"]
 
 
 def run_null_control(
@@ -664,10 +763,12 @@ def run_null_control(
     if feature_builder is None:
         feature_builder = _default_feature_builder
 
-    obs_is, obs_oos = best_sharpes(observed_results)
+    obs = summary_sharpes(observed_results)
 
     null_is: list[float] = []
     null_oos: list[float] = []
+    null_typ_is: list[float] = []
+    null_typ_oos: list[float] = []
     n_failed = 0
     fidelity: list[dict] = []
 
@@ -688,22 +789,29 @@ def run_null_control(
             n_failed += 1
             continue
 
-        b_is, b_oos = best_sharpes(rows)
-        null_is.append(b_is)
-        null_oos.append(b_oos)
+        st = summary_sharpes(rows)
+        null_is.append(st["max_is"])
+        null_oos.append(st["max_oos"])
+        null_typ_is.append(st["typical_is"])
+        null_typ_oos.append(st["typical_oos"])
         logger.info(
-            "Null run %d/%d: best IS Sharpe %+.3f, best OOS Sharpe %+.3f",
-            r + 1, n_runs, b_is, b_oos,
+            "Null run %d/%d: best IS %+.3f / OOS %+.3f | typical IS %+.3f / OOS %+.3f",
+            r + 1, n_runs, st["max_is"], st["max_oos"],
+            st["typical_is"], st["typical_oos"],
         )
 
     return NullControlResult(
         n_runs=n_runs,
         block_size=block_size,
         fidelity=fidelity,
-        observed_best_is_sharpe=obs_is,
-        observed_best_oos_sharpe=obs_oos,
+        observed_best_is_sharpe=obs["max_is"],
+        observed_best_oos_sharpe=obs["max_oos"],
+        observed_typical_is_sharpe=obs["typical_is"],
+        observed_typical_oos_sharpe=obs["typical_oos"],
         null_best_is_sharpe=np.asarray(null_is, dtype=np.float64),
         null_best_oos_sharpe=np.asarray(null_oos, dtype=np.float64),
+        null_typical_is_sharpe=np.asarray(null_typ_is, dtype=np.float64),
+        null_typical_oos_sharpe=np.asarray(null_typ_oos, dtype=np.float64),
         n_runs_failed=n_failed,
     )
 

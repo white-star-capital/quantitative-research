@@ -897,3 +897,126 @@ def test_null_result_summary_confirms_verified_fidelity():
 
     assert "fidelity verified across 2 windows" in res.summary()
     assert not res.fidelity_breaches
+
+
+# ---------------------------------------------------------------------------
+# The TYPICAL-window statistic
+#
+# The max statistic asks "could a search this size stumble on a strategy this
+# good by chance". It is sensitive to one lucky window — which is the right
+# question about the SEARCH, and the wrong question about a deployable edge.
+# The real 6-window run shows OOS medians decaying +1.03, +0.82, +0.66, +0.24,
+# -0.38, -0.98 across time: a max statistic reads the +1.03 window, a typical
+# statistic reads the middle. Reporting only the max is how a regime-dependent
+# artifact gets mistaken for an edge.
+# ---------------------------------------------------------------------------
+
+
+def _rows(per_window):
+    """Build result rows: {window_id: [oos per seed]}."""
+    out = []
+    for wid, seeds in per_window.items():
+        for i, v in enumerate(seeds):
+            out.append({"window_id": wid, "seed": i,
+                        "is_sharpe": 3.0, "oos_sharpe": v})
+    return out
+
+
+def test_typical_is_median_of_per_window_medians():
+    """Reduce within a window first, then across windows."""
+    from vgp.analysis import summary_sharpes
+
+    stats = summary_sharpes(_rows({
+        0: [1.0, 1.2, 1.1],     # median 1.1
+        1: [0.0, 0.2, 0.1],     # median 0.1
+        2: [-1.0, -0.8, -0.9],  # median -0.9
+    }))
+
+    assert stats["max_oos"] == pytest.approx(1.2)
+    assert stats["typical_oos"] == pytest.approx(0.1), (
+        f"typical should be the median of (1.1, 0.1, -0.9) = 0.1, got "
+        f"{stats['typical_oos']}"
+    )
+
+
+def test_typical_is_not_skewed_by_unequal_measurable_seeds():
+    """Windows must weight equally however many of their seeds were measurable.
+
+    A plain median over all rows would let a window with 3 measurable seeds
+    outvote one with 1 — and measurability depends on the trade filter, not on
+    the window's importance.
+    """
+    from vgp.analysis import summary_sharpes
+
+    nan = float("nan")
+    balanced = summary_sharpes(_rows({0: [1.0, 1.0, 1.0], 1: [-1.0, -1.0, -1.0]}))
+    lopsided = summary_sharpes(_rows({0: [1.0, 1.0, 1.0], 1: [-1.0, nan, nan]}))
+
+    assert balanced["typical_oos"] == pytest.approx(lopsided["typical_oos"]), (
+        f"unequal measurable counts shifted the typical statistic: "
+        f"{balanced['typical_oos']} vs {lopsided['typical_oos']}"
+    )
+
+
+def test_max_can_pass_while_typical_fails():
+    """The scenario the statistic exists for.
+
+    One strong window against a null whose runs are consistently mediocre: the
+    max clears, the typical does not.
+    """
+    from vgp.analysis import NullControlResult
+
+    res = NullControlResult(
+        n_runs=19, block_size=20,
+        observed_best_is_sharpe=3.0, observed_best_oos_sharpe=2.5,
+        observed_typical_is_sharpe=3.0, observed_typical_oos_sharpe=0.1,
+        null_best_is_sharpe=np.full(19, 2.0),
+        null_best_oos_sharpe=np.full(19, 1.0),      # observed max 2.5 beats all
+        null_typical_is_sharpe=np.full(19, 3.0),
+        null_typical_oos_sharpe=np.full(19, 0.5),   # observed typical 0.1 beats none
+    )
+
+    assert res.p_value_oos < 0.06, f"max should clear, got {res.p_value_oos}"
+    assert res.p_value_typical_oos > 0.9, (
+        f"typical should fail, got {res.p_value_typical_oos}"
+    )
+    summary = res.summary()
+    assert "TYPICAL statistic" in summary
+    assert "regime-dependent artifact" in summary, (
+        "the summary must call out max-passes/typical-fails explicitly"
+    )
+
+
+def test_summary_omits_typical_when_not_computed():
+    """Older results without the typical fields must still render."""
+    from vgp.analysis import NullControlResult
+
+    res = NullControlResult(
+        n_runs=19, block_size=20,
+        observed_best_is_sharpe=3.0, observed_best_oos_sharpe=1.0,
+        null_best_is_sharpe=np.full(19, 1.0),
+        null_best_oos_sharpe=np.full(19, 0.0),
+    )
+    summary = res.summary()
+    assert "MAX statistic" in summary
+    assert "TYPICAL statistic" not in summary
+
+
+def test_run_null_control_records_both_statistics(ohlcv):
+    """End to end through the runner, with a stub experiment."""
+    from vgp.analysis import run_null_control
+
+    def stub(fm, close, dates):
+        return _rows({0: [0.4, 0.5, 0.6], 1: [-0.1, 0.0, 0.1]})
+
+    res = run_null_control(
+        ohlcv=ohlcv, experiment_fn=stub,
+        observed_results=_rows({0: [1.0, 1.1, 1.2], 1: [0.8, 0.9, 1.0]}),
+        n_runs=5, feature_builder=lambda o: (None, None, None),
+    )
+
+    assert res.null_typical_oos_sharpe.size == 5
+    # per-window medians are 1.1 and 0.9, so the typical is their median: 1.0
+    assert res.observed_typical_oos_sharpe == pytest.approx(1.0)
+    assert np.isfinite(res.p_value_typical_oos)
+    assert res.p_value_typical_oos == pytest.approx(1 / 6)   # observed beats all 5

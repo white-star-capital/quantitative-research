@@ -14,6 +14,7 @@ from vgp.analysis.null_control import (
     check_surrogate_fidelity,
     empirical_p_value,
     run_null_control,
+    summary_sharpes,
     window_fidelity_report,
 )
 from vgp.analysis.plots import plot_equity_curves, plot_pareto_front, plot_tree_graph
@@ -34,6 +35,7 @@ __all__ = [
     "block_bootstrap_ohlcv",
     "empirical_p_value",
     "best_sharpes",
+    "summary_sharpes",
     "window_fidelity_report",
     "check_surrogate_fidelity",
     "plot_pareto_front",
