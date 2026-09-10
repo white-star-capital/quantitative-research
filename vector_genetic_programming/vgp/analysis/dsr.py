@@ -50,6 +50,20 @@ logger = logging.getLogger(__name__)
 # Euler-Mascheroni constant
 _EULER_GAMMA = 0.5772156649
 
+# Periods per year for de-annualizing a Sharpe ratio.
+#
+# This MUST match the convention vectorbt used to annualize it, or sr_hat is
+# rescaled by the wrong factor. Verified empirically: with freq="1D",
+# pf.sharpe_ratio() equals the per-period Sharpe of pf.returns() times
+# sqrt(365) — constant to 1e-14 across individuals. 365, not 252, because
+# crypto trades every calendar day.
+#
+# Using 252 against vectorbt's 365 inflates both sr_hat and sigma_SR by
+# sqrt(365/252) = 1.2035, and hence the DSR z-statistic by about 20%.
+# tests/test_evaluate.py pins the vectorbt side of this coupling so a change
+# in its convention is caught here.
+PERIODS_PER_YEAR_DAILY = 365
+
 # Key under which run_window() stashes per-period IS returns on each result row.
 # attach_dsr() consumes and removes it; save_results_csv() drops any leftovers.
 IS_RETURNS_KEY = "_is_returns"
@@ -79,7 +93,7 @@ def compute_dsr(
     returns: np.ndarray,
     sr_hat: float,
     trial_sharpes: TrialSet | np.ndarray | list[float],
-    periods_per_year: int = 252,
+    periods_per_year: int = PERIODS_PER_YEAR_DAILY,
 ) -> float:
     """Deflated Sharpe Ratio — probability that SR_hat exceeds E[max SR under H0].
 
@@ -104,7 +118,10 @@ def compute_dsr(
         only the per-seed winners understates N by orders of magnitude and
         leaves the correction nearly inert — see vgp/trials.py.
     periods_per_year : int
-        252 for daily data. Used to de-annualize sr_hat and trial_sharpes.
+        Must match the convention that annualized these Sharpe ratios.
+        Defaults to 365 (PERIODS_PER_YEAR_DAILY) because that is what vectorbt
+        uses for freq="1D" — see the constant's comment. Passing 252 against a
+        vectorbt-annualized Sharpe inflates the z-statistic by ~20%.
 
     Returns
     -------
@@ -181,7 +198,7 @@ def compute_dsr(
 
 def attach_dsr(
     results: list[dict],
-    periods_per_year: int = 252,
+    periods_per_year: int = PERIODS_PER_YEAR_DAILY,
 ) -> list[dict]:
     """Fill in the DSR fields on every result row, in place.
 
@@ -214,7 +231,8 @@ def attach_dsr(
         Mutated in place: the ``dsr*`` fields are set, and ``IS_RETURNS_KEY``
         and ``TRIALS_KEY`` are removed.
     periods_per_year : int
-        252 for daily data.
+        Must match how the Sharpe ratios were annualized; defaults to 365 to
+        agree with vectorbt's freq="1D" convention.
 
     Returns
     -------

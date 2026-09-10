@@ -346,3 +346,53 @@ def test_evaluate_with_status_reports_ok_for_valid_individual(
             return
 
     pytest.skip("no randomly generated tree was measurable on this synthetic data")
+
+
+# ---------------------------------------------------------------------------
+# The vectorbt side of the annualization coupling.
+#
+# vgp/analysis/dsr.py de-annualizes with PERIODS_PER_YEAR_DAILY, which is only
+# correct while vectorbt annualizes freq="1D" the same way. Pin it here so a
+# change in vectorbt's convention fails loudly rather than silently rescaling
+# every DSR by a constant factor.
+# ---------------------------------------------------------------------------
+
+def test_vectorbt_daily_sharpe_uses_the_documented_annualization(
+    pset, feature_matrix, close_prices
+):
+    """pf.sharpe_ratio() must equal the per-period Sharpe times sqrt(365)."""
+    import random
+
+    from deap import creator, gp
+
+    from vgp.analysis.dsr import PERIODS_PER_YEAR_DAILY
+    from vgp.backtest.runner import EVAL_OK, EvalConfig, evaluate_with_status
+    random.seed(3)
+
+    cfg = EvalConfig(fee_bps=10.0, min_trades=1, freq="1D",
+                     init_cash=10_000.0, close_prices=close_prices)
+
+    for _ in range(40):
+        ind = creator.Individual(gp.genHalfAndHalf(pset, min_=2, max_=4))
+        fitness, status, _ = evaluate_with_status(ind, feature_matrix, cfg)
+        if status != EVAL_OK or not np.isfinite(fitness[0]) or abs(fitness[0]) < 1e-6:
+            continue
+
+        # Rebuild the same portfolio's return series via the DSR helper
+        from vgp.analysis.runner import _get_is_returns
+        rets = _get_is_returns(ind, feature_matrix, cfg)
+        sd = float(np.std(rets, ddof=1))
+        if sd == 0.0:
+            continue
+        per_period = float(np.mean(rets)) / sd
+
+        implied = fitness[0] / per_period
+        assert implied == pytest.approx(np.sqrt(PERIODS_PER_YEAR_DAILY), rel=1e-6), (
+            f"vectorbt annualized with {implied ** 2:.1f} periods/year but "
+            f"vgp.analysis.dsr de-annualizes with {PERIODS_PER_YEAR_DAILY}. "
+            f"Every DSR would be rescaled by "
+            f"{implied / np.sqrt(PERIODS_PER_YEAR_DAILY):.4f}."
+        )
+        return
+
+    pytest.skip("no randomly generated tree produced a measurable portfolio")

@@ -1,6 +1,7 @@
 """Analysis: walk-forward runner, DSR reporting, visualizations."""
 from vgp.analysis.dsr import (
     IS_RETURNS_KEY,
+    PERIODS_PER_YEAR_DAILY,
     aggregate_seeds,
     attach_dsr,
     compute_dsr,
@@ -26,6 +27,7 @@ __all__ = [
     "attach_dsr",
     "aggregate_seeds",
     "IS_RETURNS_KEY",
+    "PERIODS_PER_YEAR_DAILY",
     "save_results_csv",
     "run_null_control",
     "NullControlResult",

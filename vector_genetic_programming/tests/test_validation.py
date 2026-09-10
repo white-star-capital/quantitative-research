@@ -998,3 +998,80 @@ def test_more_windows_from_a_shorter_train_window():
         f"narrow geometry covers {coverage(narrow)}d of OOS vs {coverage(wide)}d "
         f"— more windows should mean more out-of-sample calendar, not less"
     )
+
+
+# ---------------------------------------------------------------------------
+# VAL-04: de-annualization must match how the Sharpe was annualized
+#
+# vectorbt annualizes a freq="1D" Sharpe with 365 periods per year (verified:
+# pf.sharpe_ratio() / per-period Sharpe of pf.returns() == sqrt(365), constant
+# to 1e-14). compute_dsr previously de-annualized with 252, rescaling sr_hat
+# and sigma_SR by sqrt(365/252) = 1.2035 and inflating the DSR z-statistic by
+# about 20%. A unit mismatch like this is invisible in the output — the number
+# is simply wrong by a constant factor — so it needs pinning.
+# ---------------------------------------------------------------------------
+
+
+def test_periods_per_year_matches_vectorbt_daily_convention():
+    """The constant must be 365, not the equity-market 252."""
+    from vgp.analysis import PERIODS_PER_YEAR_DAILY
+
+    assert PERIODS_PER_YEAR_DAILY == 365, (
+        f"PERIODS_PER_YEAR_DAILY is {PERIODS_PER_YEAR_DAILY}; vectorbt "
+        f"annualizes freq='1D' with 365, and crypto trades every calendar day"
+    )
+
+
+def test_de_annualization_is_self_consistent():
+    """Annualizing then de-annualizing must be a round trip.
+
+    compute_dsr with Sharpes annualized by sqrt(ppy) and periods_per_year=ppy
+    must equal compute_dsr with per-period Sharpes and periods_per_year=1. If
+    the two disagree the de-annualization is not inverting the annualization.
+    """
+    from vgp.analysis import compute_dsr
+
+    rng = np.random.default_rng(0)
+    returns = rng.standard_normal(400) * 0.01
+    sr_pp = 0.06
+    trials_pp = [0.05, 0.06, 0.07, 0.055, 0.065, 0.045, 0.075, 0.06, 0.058]
+
+    for ppy in (252, 365):
+        scale = np.sqrt(ppy)
+        annualized = compute_dsr(
+            returns, sr_hat=sr_pp * scale,
+            trial_sharpes=[t * scale for t in trials_pp],
+            periods_per_year=ppy,
+        )
+        per_period = compute_dsr(
+            returns, sr_hat=sr_pp, trial_sharpes=trials_pp, periods_per_year=1
+        )
+        assert annualized == pytest.approx(per_period, rel=1e-9), (
+            f"ppy={ppy}: annualized path gave {annualized}, per-period path "
+            f"gave {per_period} — de-annualization is not the inverse"
+        )
+
+
+def test_wrong_periods_per_year_changes_the_answer_materially():
+    """Documents the size of the bug this replaced, so it is not dismissed.
+
+    Same inputs, only the assumed annualization differing, must move the DSR —
+    otherwise the constant would not matter and the test above would be
+    pointless ceremony.
+    """
+    from vgp.analysis import compute_dsr
+
+    rng = np.random.default_rng(1)
+    returns = rng.standard_normal(400) * 0.01
+    sr_ann = 3.0
+    trials = [2.6, 2.8, 3.0, 3.1, 2.7, 2.9, 3.2, 2.5, 3.05]
+
+    correct = compute_dsr(returns, sr_hat=sr_ann, trial_sharpes=trials,
+                          periods_per_year=365)
+    wrong = compute_dsr(returns, sr_hat=sr_ann, trial_sharpes=trials,
+                        periods_per_year=252)
+
+    assert correct != pytest.approx(wrong, rel=1e-6), (
+        "the annualization constant made no difference; the de-annualization "
+        "is not actually being applied"
+    )
