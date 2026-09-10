@@ -650,3 +650,66 @@ def test_run_window_forwards_the_pool_to_every_seed():
             "run_window did not forward the pool to run_evolution — each seed "
             "would create its own and re-pay the JIT warmup"
         )
+
+
+def test_seed_reproducibility_holds_through_a_borrowed_pool_stub(
+    feature_matrix, eval_cfg
+):
+    """EXP-03 must survive pool hoisting — borrowed-pool code path.
+
+    Hoisting made one pool serve many evolutions. If map() results were ever
+    mis-zipped to individuals, or the borrowed-pool branch perturbed anything,
+    reproducibility would break silently while every other test stayed green.
+    The existing test_seed_reproducibility_exp03 only covers the serial path.
+
+    Uses a serial stub rather than a real spawn pool: it exercises the same
+    branch in run_evolution without starting processes. A real-pool version
+    additionally covers pickling and worker isolation, but each spawn worker
+    loads vectorbt+numba at ~1.5GB, which is not safe to do inside a suite that
+    may run alongside a long job.
+    """
+    from vgp.evolution.config import EvolutionConfig
+    from vgp.evolution.loop import run_evolution
+
+    class _SerialPool:
+        """Borrowed-pool interface, evaluated in-process and in order."""
+
+        def __init__(self):
+            self.map_calls = 0
+
+        def map(self, fn, iterable):
+            self.map_calls += 1
+            return [fn(x) for x in iterable]
+
+        def close(self):
+            raise AssertionError("run_evolution closed a pool it does not own")
+
+        def join(self):
+            raise AssertionError("run_evolution joined a pool it does not own")
+
+    def fitnesses(hof):
+        return [tuple(round(v, 10) for v in ind.fitness.values) for ind in hof]
+
+    kw = dict(pop_size=12, n_generations=2, seed=99, checkpoint_freq=999)
+
+    _p, hof_serial, _l = run_evolution(
+        EvolutionConfig(n_jobs=1, **kw), feature_matrix, eval_cfg
+    )
+
+    pool = _SerialPool()
+    _p, hof_a, _l = run_evolution(
+        EvolutionConfig(n_jobs=4, **kw), feature_matrix, eval_cfg, pool=pool
+    )
+    _p, hof_b, _l = run_evolution(
+        EvolutionConfig(n_jobs=4, **kw), feature_matrix, eval_cfg, pool=pool
+    )
+
+    assert pool.map_calls >= 6, (
+        f"evaluation did not go through the borrowed pool ({pool.map_calls} calls)"
+    )
+    assert fitnesses(hof_serial) == fitnesses(hof_a), (
+        "the borrowed-pool path diverged from serial for the same seed"
+    )
+    assert fitnesses(hof_a) == fitnesses(hof_b), (
+        "the second run through the same pool differed from the first"
+    )
