@@ -773,3 +773,127 @@ def test_full_sample_correlation_alone_would_not_catch_this(late_listing_panel):
         "full-sample correlation should be preserved; if this fails the "
         "surrogate is broken in a more basic way"
     )
+
+
+# ---------------------------------------------------------------------------
+# Window-local fidelity check — the pipeline must catch an unfaithful surrogate
+# itself, rather than relying on someone running the diagnostic script.
+# ---------------------------------------------------------------------------
+
+def test_fidelity_report_passes_for_a_faithful_surrogate(late_listing_panel):
+    """A correct surrogate must clear the check in every window."""
+    from vgp.analysis import block_bootstrap_ohlcv, window_fidelity_report
+
+    panel, _idx = late_listing_panel
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(0), block_size=20)
+
+    report = window_fidelity_report(panel, sur)
+
+    assert report, "no comparable windows were produced"
+    breaches = [r for r in report if r["breaches"]]
+    assert not breaches, (
+        f"faithful surrogate flagged in {len(breaches)} window(s): "
+        f"{[(r['window'], r['breaches']) for r in breaches]}"
+    )
+
+
+def test_fidelity_report_catches_decorrelated_surrogate(late_listing_panel):
+    """The check must flag the exact failure that inflated the null.
+
+    Independently shuffling each asset preserves every marginal property and
+    destroys only the cross-asset structure — the signature of the bug.
+    """
+    from vgp.analysis import window_fidelity_report
+
+    panel, _idx = late_listing_panel
+    rng = np.random.default_rng(4)
+    broken = {}
+    for t, df in panel.items():
+        close = df["close"].to_numpy(dtype=np.float64)
+        r = np.diff(np.log(close))
+        rng.shuffle(r)                      # per-asset, independent
+        new = np.empty_like(close)
+        new[0] = close[0]
+        new[1:] = close[0] * np.exp(np.cumsum(r))
+        broken[t] = pd.DataFrame(
+            {"open": new, "high": new * 1.004, "low": new * 0.996,
+             "close": new, "volume": df["volume"].to_numpy()},
+            index=df.index,
+        )
+
+    report = window_fidelity_report(panel, broken)
+    breached = [r for r in report if r["breaches"]]
+
+    assert breached, "a fully decorrelated surrogate was not flagged"
+    flagged = {k for r in breached for k in r["breaches"]}
+    assert "mean_corr" in flagged or "n_eff_bets" in flagged, (
+        f"the cross-sectional statistics did not trip; flagged only {flagged}"
+    )
+
+
+def test_check_surrogate_fidelity_logs_breaches(late_listing_panel, caplog):
+    """A breach must be logged at ERROR — it invalidates the p-value."""
+    import logging
+
+    from vgp.analysis import check_surrogate_fidelity
+
+    panel, _idx = late_listing_panel
+    rng = np.random.default_rng(5)
+    broken = {}
+    for t, df in panel.items():
+        close = df["close"].to_numpy(dtype=np.float64)
+        r = np.diff(np.log(close))
+        rng.shuffle(r)
+        new = np.empty_like(close)
+        new[0] = close[0]
+        new[1:] = close[0] * np.exp(np.cumsum(r))
+        broken[t] = pd.DataFrame(
+            {"open": new, "high": new * 1.004, "low": new * 0.996,
+             "close": new, "volume": df["volume"].to_numpy()},
+            index=df.index,
+        )
+
+    with caplog.at_level(logging.ERROR, logger="vgp.analysis.null_control"):
+        check_surrogate_fidelity(panel, broken)
+
+    assert any("FIDELITY BREACH" in m for m in caplog.messages), (
+        "an unfaithful surrogate did not produce an ERROR-level log"
+    )
+
+
+def test_null_result_summary_surfaces_a_fidelity_breach():
+    """The verdict text must not report a clean p-value over a broken null."""
+    from vgp.analysis import NullControlResult
+
+    res = NullControlResult(
+        n_runs=19, block_size=20,
+        observed_best_is_sharpe=3.7, observed_best_oos_sharpe=1.0,
+        null_best_is_sharpe=np.full(19, 1.0),
+        null_best_oos_sharpe=np.full(19, 0.0),
+        fidelity=[{"window": "2024-01-01..2024-06-30",
+                   "breaches": ["mean_corr", "n_eff_bets"]}],
+    )
+
+    summary = res.summary()
+    assert "FIDELITY BREACH" in summary
+    assert "not trustworthy" in summary
+    assert res.fidelity_breaches == [
+        "2024-01-01..2024-06-30: mean_corr, n_eff_bets"
+    ]
+
+
+def test_null_result_summary_confirms_verified_fidelity():
+    """Conversely, a verified surrogate should say so."""
+    from vgp.analysis import NullControlResult
+
+    res = NullControlResult(
+        n_runs=19, block_size=20,
+        observed_best_is_sharpe=3.7, observed_best_oos_sharpe=1.0,
+        null_best_is_sharpe=np.full(19, 1.0),
+        null_best_oos_sharpe=np.full(19, 0.0),
+        fidelity=[{"window": "w1", "breaches": []},
+                  {"window": "w2", "breaches": []}],
+    )
+
+    assert "fidelity verified across 2 windows" in res.summary()
+    assert not res.fidelity_breaches

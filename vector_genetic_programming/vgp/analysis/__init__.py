@@ -10,11 +10,13 @@ from vgp.analysis.null_control import (
     NullControlResult,
     best_sharpes,
     block_bootstrap_ohlcv,
+    check_surrogate_fidelity,
     empirical_p_value,
     run_null_control,
+    window_fidelity_report,
 )
-from vgp.analysis.runner import WalkForwardRunner, WindowSpec, generate_windows
 from vgp.analysis.plots import plot_equity_curves, plot_pareto_front, plot_tree_graph
+from vgp.analysis.runner import WalkForwardRunner, WindowSpec, generate_windows
 
 __all__ = [
     "WalkForwardRunner",
@@ -30,6 +32,8 @@ __all__ = [
     "block_bootstrap_ohlcv",
     "empirical_p_value",
     "best_sharpes",
+    "window_fidelity_report",
+    "check_surrogate_fidelity",
     "plot_pareto_front",
     "plot_equity_curves",
     "plot_tree_graph",

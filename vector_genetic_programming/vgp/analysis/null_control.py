@@ -331,6 +331,152 @@ def block_bootstrap_ohlcv(
 
 
 # ---------------------------------------------------------------------------
+# Surrogate fidelity — checked WINDOW BY WINDOW
+# ---------------------------------------------------------------------------
+
+# Only statistics the construction actually GUARANTEES window-locally can be
+# breach criteria. Drawing one shared source date per bar preserves the
+# contemporaneous cross-sectional structure wherever that bar lands, so
+# correlation and effective-bet count must match in every window — and they are
+# exactly what silently broke: a surrogate whose assets are too independent
+# hands the search more bets than the real data has, inflating achievable
+# in-sample Sharpe and making the null unbeatable.
+_FIDELITY_TOL = {
+    "mean_corr": 0.30,     # |surrogate - observed| as a fraction of observed
+    "n_eff_bets": 0.50,
+}
+
+# Reported for context but NOT breach criteria. A bootstrap resamples from the
+# whole eligible pool, so any individual window's return scale legitimately
+# differs from the observed window's — that is the surrogate having no signal,
+# not a defect. Flagging it would train readers to ignore the check.
+_FIDELITY_INFO = ("ew_vol", "mean_abs_ret")
+
+
+def _window_stats(ohlcv: dict[str, pd.DataFrame], window: pd.DatetimeIndex) -> dict:
+    """Cross-sectional and scale statistics of one window."""
+    tickers = [t for t in sorted(ohlcv) if window.isin(ohlcv[t].index).all()]
+    if len(tickers) < 2:
+        return {}
+    rets = np.column_stack([
+        np.diff(np.log(ohlcv[t].loc[window, "close"].to_numpy(dtype=np.float64)))
+        for t in tickers
+    ])
+    if rets.shape[0] < 3:
+        return {}
+    corr = np.corrcoef(rets, rowvar=False)
+    if not np.isfinite(corr).all():
+        return {}
+    off = corr[~np.eye(corr.shape[0], dtype=bool)]
+    eig = np.linalg.eigvalsh(corr)
+    return {
+        "mean_corr": float(off.mean()),
+        "n_eff_bets": float((eig.sum() ** 2) / (eig ** 2).sum()),
+        "ew_vol": float(rets.mean(axis=1).std() * np.sqrt(252)),
+        "mean_abs_ret": float(np.abs(rets).mean()),
+        "n_assets": len(tickers),
+    }
+
+
+def window_fidelity_report(
+    observed: dict[str, pd.DataFrame],
+    surrogate: dict[str, pd.DataFrame],
+    n_windows: int = 8,
+) -> list[dict]:
+    """Compare observed and surrogate panels window by window.
+
+    A surrogate can match the full sample perfectly and still be wrong inside
+    every window — correlation is time-varying, and the window is what the
+    model trains on. That is exactly how a surrogate with 0.001 mean pairwise
+    correlation in the training window passed a full-sample check showing 69%
+    PC1 share. So the comparison here is deliberately LOCAL: the shared
+    calendar is cut into `n_windows` contiguous pieces and each is compared on
+    its own.
+
+    Returns one dict per window with the observed value, the surrogate value
+    and the relative divergence for each statistic, plus a `breaches` list
+    naming any statistic outside `_FIDELITY_TOL`.
+    """
+    tickers = sorted(set(observed) & set(surrogate))
+    if not tickers:
+        return []
+    calendar = None
+    for t in tickers:
+        idx = observed[t].index
+        calendar = idx if calendar is None else calendar.union(idx)
+    calendar = calendar.sort_values()
+    if len(calendar) < 4 * n_windows:
+        n_windows = max(1, len(calendar) // 4)
+
+    edges = np.linspace(0, len(calendar), n_windows + 1).astype(int)
+    report: list[dict] = []
+    for i in range(n_windows):
+        window = calendar[edges[i]:edges[i + 1]]
+        obs = _window_stats(observed, window)
+        sur = _window_stats(surrogate, window)
+        if not obs or not sur:
+            continue
+        row = {
+            "window": f"{window[0].date()}..{window[-1].date()}",
+            "n_assets": obs["n_assets"],
+            "breaches": [],
+        }
+        for key in (*_FIDELITY_TOL, *_FIDELITY_INFO):
+            o, v = obs[key], sur[key]
+            denom = abs(o) if abs(o) > 1e-9 else 1.0
+            rel = (v - o) / denom
+            row[key] = {"observed": o, "surrogate": v, "rel": float(rel)}
+            tol = _FIDELITY_TOL.get(key)
+            if tol is not None and abs(rel) > tol:
+                row["breaches"].append(key)
+        report.append(row)
+    return report
+
+
+def check_surrogate_fidelity(
+    observed: dict[str, pd.DataFrame],
+    surrogate: dict[str, pd.DataFrame],
+    n_windows: int = 8,
+) -> list[dict]:
+    """Run window_fidelity_report and log any breach loudly.
+
+    Called on the first surrogate of a null control. A breach means the null is
+    not the same problem as the observed run, so its p-value cannot be read at
+    face value — most often because the surrogate is EASIER, which makes the
+    test silently unbeatable rather than conservative.
+    """
+    report = window_fidelity_report(observed, surrogate, n_windows=n_windows)
+    breached = [r for r in report if r["breaches"]]
+    if not report:
+        logger.warning(
+            "check_surrogate_fidelity: no comparable windows — fidelity unverified"
+        )
+        return report
+    if not breached:
+        logger.info(
+            "Surrogate fidelity OK across %d windows (cross-asset correlation "
+            "and effective-bet count within tolerance in every window)",
+            len(report),
+        )
+        return report
+
+    logger.error(
+        "SURROGATE FIDELITY BREACH in %d of %d windows — the null control is "
+        "not the same problem as the observed run and its p-value is not "
+        "trustworthy",
+        len(breached), len(report),
+    )
+    for r in breached:
+        for key in r["breaches"]:
+            d = r[key]
+            logger.error(
+                "  %s  %s: observed %.4f vs surrogate %.4f (%+.0f%%)",
+                r["window"], key, d["observed"], d["surrogate"], 100 * d["rel"],
+            )
+    return report
+
+
+# ---------------------------------------------------------------------------
 # Empirical p-value
 # ---------------------------------------------------------------------------
 
@@ -373,6 +519,13 @@ class NullControlResult:
     null_best_is_sharpe: np.ndarray = field(default_factory=lambda: np.array([]))
     null_best_oos_sharpe: np.ndarray = field(default_factory=lambda: np.array([]))
     n_runs_failed: int = 0
+    fidelity: list[dict] = field(default_factory=list)
+
+    @property
+    def fidelity_breaches(self) -> list[str]:
+        """Windows where the surrogate did not match the observed panel."""
+        return [f"{r['window']}: {', '.join(r['breaches'])}"
+                for r in self.fidelity if r.get("breaches")]
 
     @property
     def p_value_is(self) -> float:
@@ -423,6 +576,17 @@ class NullControlResult:
                 f"(p <= {max(p_is, self.resolution):.3f}). This rules out bias "
                 f"shared by all trials; it does not by itself establish "
                 f"tradeable alpha."
+            )
+        if self.fidelity_breaches:
+            lines.append(
+                f"  FIDELITY BREACH in {len(self.fidelity_breaches)} window(s) — "
+                f"the surrogate is not the same problem as the observed run, so "
+                f"this p-value is not trustworthy:"
+            )
+            lines.extend(f"    {b}" for b in self.fidelity_breaches)
+        elif self.fidelity:
+            lines.append(
+                f"  surrogate fidelity verified across {len(self.fidelity)} windows"
             )
         if np.isfinite(self.resolution) and self.resolution > 0.05:
             lines.append(
@@ -505,10 +669,15 @@ def run_null_control(
     null_is: list[float] = []
     null_oos: list[float] = []
     n_failed = 0
+    fidelity: list[dict] = []
 
     for r in range(n_runs):
         rng = np.random.default_rng(seed + r)
         surrogate = block_bootstrap_ohlcv(ohlcv, rng, block_size=block_size)
+        if r == 0:
+            # Verify the surrogate is the same problem as the observed run
+            # before spending 19 experiments comparing against it.
+            fidelity = check_surrogate_fidelity(ohlcv, surrogate)
         try:
             fm, close, dates = feature_builder(surrogate)
             rows = experiment_fn(fm, close, dates)
@@ -530,6 +699,7 @@ def run_null_control(
     return NullControlResult(
         n_runs=n_runs,
         block_size=block_size,
+        fidelity=fidelity,
         observed_best_is_sharpe=obs_is,
         observed_best_oos_sharpe=obs_oos,
         null_best_is_sharpe=np.asarray(null_is, dtype=np.float64),
