@@ -907,3 +907,94 @@ def test_run_evolution_records_every_evaluation():
         f"accumulator counted {acc.n_evaluations} evaluations but the logbook "
         f"recorded {logged} — the two must agree"
     )
+
+
+# ---------------------------------------------------------------------------
+# VAL-01: window geometry is configurable, and step == oos keeps OOS periods
+# independent at ANY geometry — not just the defaults.
+#
+# scripts/run.py now runs 9m/2m/2m to get 6 windows out of a ~23-month panel
+# instead of 3, so the non-overlap guarantee has to hold there too. Overlapping
+# OOS periods would correlate the per-window results and break aggregation.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "train,val,oos",
+    [(12, 2, 3), (9, 2, 2), (9, 1, 2), (6, 1, 2), (6, 2, 3)],
+)
+def test_generate_windows_oos_never_overlaps_at_any_geometry(train, val, oos):
+    """step == oos must produce strictly non-overlapping OOS periods."""
+    from vgp.analysis import generate_windows
+
+    windows = generate_windows(
+        "2024-05-01", "2026-04-01",
+        train_months=train, val_months=val, oos_months=oos, step_months=oos,
+    )
+    assert windows, f"no windows for {train}/{val}/{oos} — geometry unusable"
+
+    for a, b in zip(windows, windows[1:]):
+        assert pd.Timestamp(b.test_start) > pd.Timestamp(a.test_end), (
+            f"{train}/{val}/{oos}: window {a.window_id} OOS ends "
+            f"{a.test_end} but {b.window_id} starts {b.test_start}"
+        )
+
+
+@pytest.mark.parametrize(
+    "train,val,oos",
+    [(12, 2, 3), (9, 2, 2), (6, 1, 2)],
+)
+def test_generate_windows_respects_requested_lengths(train, val, oos):
+    """Each window's train/val/OOS spans must match what was asked for.
+
+    Guards the config actually meaning something: a geometry that silently
+    ignored train_months would change the experiment without changing the
+    printed setup.
+    """
+    from vgp.analysis import generate_windows
+
+    windows = generate_windows(
+        "2024-05-01", "2026-04-01",
+        train_months=train, val_months=val, oos_months=oos, step_months=oos,
+    )
+    for w in windows:
+        val_span = (pd.Timestamp(w.val_end) - pd.Timestamp(w.val_start)).days
+        oos_span = (pd.Timestamp(w.test_end) - pd.Timestamp(w.test_start)).days
+        # Calendar months vary in length; allow a few days of slack
+        assert abs(val_span - val * 30.44) < 8, (
+            f"window {w.window_id} val span {val_span}d, expected ~{val * 30.44:.0f}d"
+        )
+        assert abs(oos_span - oos * 30.44) < 8, (
+            f"window {w.window_id} OOS span {oos_span}d, expected ~{oos * 30.44:.0f}d"
+        )
+        # train_end must precede val_start, which must precede test_start
+        assert pd.Timestamp(w.train_end) < pd.Timestamp(w.val_start)
+        assert pd.Timestamp(w.val_end) < pd.Timestamp(w.test_start)
+
+
+def test_more_windows_from_a_shorter_train_window():
+    """The trade-off the run config makes, pinned.
+
+    A ~23-month panel fits only 3 non-overlapping 12m/2m/3m windows. Shortening
+    to 9m/2m/2m doubles that. If generate_windows ever stopped honouring this,
+    the run would quietly fall back to too few OOS periods to say anything.
+    """
+    from vgp.analysis import generate_windows
+
+    wide = generate_windows("2024-05-01", "2026-04-01", train_months=12,
+                            val_months=2, oos_months=3, step_months=3)
+    narrow = generate_windows("2024-05-01", "2026-04-01", train_months=9,
+                              val_months=2, oos_months=2, step_months=2)
+
+    assert len(wide) == 3, f"expected 3 wide windows, got {len(wide)}"
+    assert len(narrow) == 6, f"expected 6 narrow windows, got {len(narrow)}"
+
+    # And the narrow geometry must cover more OOS calendar in total
+    def coverage(ws):
+        return sum((pd.Timestamp(w.test_end) - pd.Timestamp(w.test_start)).days
+                   for w in ws)
+
+    assert coverage(narrow) > coverage(wide), (
+        f"narrow geometry covers {coverage(narrow)}d of OOS vs {coverage(wide)}d "
+        f"— more windows should mean more out-of-sample calendar, not less"
+    )

@@ -35,8 +35,26 @@ from tqdm import tqdm
 CACHE_DIR     = Path("data_pipeline_example/cache")   # {SYMBOL}_1d.parquet, see results/README.md
 RESULTS_DIR   = Path("results")
 SEEDS         = [0, 1, 2]
-POP_SIZE      = 250       # individuals per generation
-N_GENERATIONS = 40        # generations per seed
+POP_SIZE      = 200       # individuals per generation
+N_GENERATIONS = 30        # generations per seed
+
+# Walk-forward geometry. THE SAME DICT IS USED FOR THE NULL CONTROL BELOW —
+# if the null ran a different number of windows, or different lengths, it would
+# not be the same problem and its p-value would be meaningless. Defined once so
+# the two cannot drift apart.
+#
+# Three windows (12m train / 2m val / 3m OOS) was all the ~23-month panel could
+# fit non-overlapping, and three OOS periods over one regime cannot distinguish
+# "no alpha" from "alpha this window happened to miss". Trading 3 months of
+# training window and 1 month of OOS for twice the windows buys 12 contiguous
+# months of OOS coverage across 6 independent periods, on the same 21-asset
+# universe. step = oos keeps OOS periods strictly non-overlapping, so the
+# windows stay independent for aggregation.
+#
+# The alternative — 6m train, 8 windows — was rejected: ~183 training bars is
+# thin for fitting depth-8 trees, and noisier fits work against the very
+# question more windows are meant to answer.
+WINDOW_KW = dict(train_months=9, val_months=2, oos_months=2, step_months=2)
 
 # One warm pool serves the WHOLE experiment (evolution_pool below) — every
 # window, every seed, every null run — so the numba JIT warmup is paid once
@@ -166,11 +184,13 @@ def main() -> None:
 
     total_start = str(fe.dates_.min().date())
     total_end   = str(fe.dates_.max().date())
-    windows = generate_windows(total_start, total_end)
+    windows = generate_windows(total_start, total_end, **WINDOW_KW)
 
     if not windows:
         print(f"  ERROR: no windows from {total_start} → {total_end}")
-        print("  Need at least 17 months (12m train + 2m val + 3m OOS).")
+        need = sum(WINDOW_KW[k] for k in ("train_months", "val_months", "oos_months"))
+        print(f"  Need at least {need} months ({WINDOW_KW['train_months']}m train + "
+              f"{WINDOW_KW['val_months']}m val + {WINDOW_KW['oos_months']}m OOS).")
         sys.exit(1)
 
     for w in windows:
@@ -182,7 +202,10 @@ def main() -> None:
     # ------------------------------------------------------------------
     # 4. Run walk-forward evolution
     # ------------------------------------------------------------------
-    _banner(f"4 / 6  Evolution  ({len(windows)} windows × {len(SEEDS)} seeds × {N_GENERATIONS} gen)")
+    _banner(
+        f"4 / 6  Evolution  ({len(windows)} windows × {len(SEEDS)} seeds "
+        f"× {N_GENERATIONS} gen)"
+    )
     print(
         f"  pop={POP_SIZE}  jobs={N_JOBS}  fee={FEE_BPS}bps  min_trades={MIN_TRADES}\n"
     )
@@ -261,7 +284,8 @@ def main() -> None:
                 """One full experiment on surrogate data — same code path as above."""
                 null_runner = WalkForwardRunner(dates=null_dates)
                 null_windows = generate_windows(
-                    str(null_dates.min().date()), str(null_dates.max().date())
+                    str(null_dates.min().date()), str(null_dates.max().date()),
+                    **WINDOW_KW,          # MUST match the observed run
                 )
                 rows: list[dict] = []
                 for nw in null_windows:
