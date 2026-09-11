@@ -31,9 +31,14 @@ defaults:
     working-directory: vector_genetic_programming
 
 jobs:
-  smoke-test:
-    name: Smoke Test (Python 3.12)
+  test:
+    name: Tests (Python 3.12)
     runs-on: ubuntu-latest
+    # The suite runs in ~70s from cold and install takes ~1-2min on an empty
+    # pip cache. The ceiling exists for the deadlock case, not the slow case:
+    # the pooled determinism test below spawns real worker processes, and a
+    # hung pool would otherwise sit on the runner for the 6-hour default.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -55,8 +60,27 @@ jobs:
       - name: Install package and dev dependencies
         run: pip install -e ".[dev]"
 
-      - name: Run smoke tests
-        run: pytest tests/test_smoke.py -v
+      # The full suite, not a smoke subset. Two properties make this safe to run
+      # unattended on a hosted runner, both measured rather than assumed:
+      #
+      #   * Hermetic. No test reaches the network. `tests/conftest.py` generates
+      #     its own OHLCV parquet cache and the `block_network` fixture raises on
+      #     any outbound socket, so a network-shaped failure here is a real
+      #     regression, not the old silent fallthrough to the Binance API.
+      #   * Bounded. Measured in a clean-room run — fresh worktree, fresh 3.12
+      #     venv, these exact commands: 185 passed, 2 skipped in 70s, peak RSS
+      #     ~1 GB across the whole process tree. That includes the two spawn
+      #     workers started by
+      #     test_seed_reproducibility_holds_through_a_real_spawn_pool, which at
+      #     15.4s is the second-slowest test and the only one that forks. A
+      #     4-core/16 GB runner has room to spare, so no worker cap or
+      #     deselection is needed. The two slowest tests are dominated by numba
+      #     JIT compilation, so a warm cache runs the suite in ~50s.
+      #
+      # 2 tests skip: the MLflow logging pair, which is an optional dependency
+      # (D-02) and deliberately absent from the dev extra.
+      - name: Run test suite
+        run: pytest -q --durations=15
 
       # The numpy/numba bound is asserted inside tests/test_smoke.py, read from
       # numba's installed metadata. It is deliberately NOT duplicated as a
