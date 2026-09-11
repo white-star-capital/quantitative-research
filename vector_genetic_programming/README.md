@@ -107,17 +107,23 @@ The OOS trade threshold is scaled to the OOS window length (`oos_min_trades`, ov
 ## Current result
 
 Run end to end on Binance daily data (2024-01-01 → 2026-04-01, 21 assets,
-3 walk-forward windows, 83,239 evaluations) with a 19-run null control.
-**No evidence of skill:** best OOS Sharpe +1.862 against a null median of
-+0.900 and p95 of +2.623, p = 0.250; in-sample p = 0.300. The conservative
-DSR is 0.0002. See `results/README.md`.
+6 walk-forward windows, 100,852 evaluations) with a 19-run null control whose
+surrogate was verified faithful in every fidelity window.
 
-Two earlier runs reported different numbers and were wrong — their null
-controls used a surrogate that had lost cross-asset correlation inside every
-training window (0.615 → 0.001), which inflated it in-sample and distorted it
-out-of-sample. The apparently encouraging OOS p = 0.050 from that period was an
-artifact. A working framework reporting an honest negative is the intended
-output; the null control now verifies its own surrogate window by window.
+**No evidence of skill, and the out-of-sample result is negative.** The typical
+window's OOS Sharpe is −0.943 against a null median of −0.412 (p = 0.750); the
+best OOS Sharpe is +1.362 against a null median of +0.866 (p = 0.400). See
+`results/README.md`.
+
+The run before this one reported a *positive* typical OOS Sharpe of +0.448
+(p = 0.200). The difference was a single feature, `obv_signal`, z-scored with
+whole-series statistics that included every OOS period. One contaminated
+feature accounted for essentially all of the apparent edge — and its severity
+was badly underestimated from proxy diagnostics before the rerun settled it.
+
+Note that `dsr` reaches 0.861 on this same run while the null control returns
+p = 0.600. Both are correct; they answer different questions, and DSR is blind
+to bias shared by every trial. Where they disagree, believe the null control.
 
 **Honest caveat:** Positive OOS Sharpe is the goal. Results depend on data availability, asset universe, and evolution configuration. VGP is a framework for reproducible research — it does not guarantee profitable strategies.
 
