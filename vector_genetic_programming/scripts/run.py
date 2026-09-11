@@ -319,7 +319,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     _banner("6 / 6  Saving results & plots")
 
-    from vgp.analysis import save_results_csv, aggregate_seeds
+    from vgp.analysis import aggregate_seeds, save_results_csv
 
     # Tie every row to the universe it was computed on — must happen BEFORE the
     # CSV is written, or the columns never reach the file.
@@ -377,12 +377,15 @@ def main() -> None:
         best = max(is_measured, key=lambda r: r["is_sharpe"]) if is_measured else all_results[0]
     best_window = windows[best["window_id"]]
 
-    with tqdm(["pareto_front", "tree_graph", "equity_curves"], desc="  Plots", unit="plot", leave=True) as pbar:
-        from vgp.analysis import plot_pareto_front, plot_equity_curves, plot_tree_graph
+    with tqdm(
+        ["pareto_front", "tree_graph", "equity_curves"],
+        desc="  Plots", unit="plot", leave=True,
+    ) as pbar:
+        from vgp.analysis import plot_equity_curves, plot_pareto_front, plot_tree_graph
+        from vgp.backtest.runner import EvalConfig as EC
         from vgp.data.splitter import WalkForwardSplitter
         from vgp.evolution.config import EvolutionConfig
         from vgp.evolution.loop import run_evolution
-        from vgp.backtest.runner import EvalConfig as EC
 
         splitter = WalkForwardSplitter()
         train_fm, _, _ = splitter.split(

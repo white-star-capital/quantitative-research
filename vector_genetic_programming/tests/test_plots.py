@@ -13,13 +13,15 @@ import os
 import tempfile
 
 import matplotlib
+
 matplotlib.use('Agg')  # headless safety — must precede any pyplot import
+
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
 import pytest
 from deap import base, gp, tools
-from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -118,7 +120,9 @@ def test_plot_pareto_front_empty_hof_raises(tmp_dir):
 # VAL-06: Equity curve plot
 # ---------------------------------------------------------------------------
 
-def test_plot_equity_curves_creates_png(tmp_dir, real_individual, synthetic_feature_matrix, synthetic_eval_config):
+def test_plot_equity_curves_creates_png(
+    tmp_dir, real_individual, synthetic_feature_matrix, synthetic_eval_config
+):
     """VAL-06: plot_equity_curves() creates a non-empty PNG file with IS/OOS boundary."""
     from vgp.analysis.plots import plot_equity_curves
     out = os.path.join(tmp_dir, "equity_curves.png")
@@ -135,7 +139,9 @@ def test_plot_equity_curves_creates_png(tmp_dir, real_individual, synthetic_feat
     assert os.path.getsize(out) > 1000, f"PNG file too small: {os.path.getsize(out)} bytes"
 
 
-def test_plot_equity_curves_empty_individuals(tmp_dir, synthetic_feature_matrix, synthetic_eval_config):
+def test_plot_equity_curves_empty_individuals(
+    tmp_dir, synthetic_feature_matrix, synthetic_eval_config
+):
     """VAL-06: empty individuals list logs warning and returns without error."""
     from vgp.analysis.plots import plot_equity_curves
     out = os.path.join(tmp_dir, "equity_empty.png")

@@ -33,7 +33,10 @@ from vgp.backtest.runner import EvalConfig, evaluate
 from vgp.evolution.checkpoint import load_checkpoint, save_checkpoint
 from vgp.evolution.config import EvolutionConfig
 from vgp.evolution.tracker import NoOpTracker
-from vgp.gp.gp_types import build_pset, creator  # noqa: F401 — side effect: registers creator.Individual
+from vgp.gp.gp_types import (  # noqa: F401 — side effect: registers creator.Individual
+    build_pset,
+    creator,
+)
 from vgp.trials import TrialAccumulator
 
 logger = logging.getLogger(__name__)

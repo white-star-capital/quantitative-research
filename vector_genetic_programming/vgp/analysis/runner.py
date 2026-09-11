@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+
 # python-dateutil is a pandas transitive dependency (not in pyproject.toml directly).
 # Available in all environments that have pandas>=3.0.0 installed.
 from dateutil.relativedelta import relativedelta

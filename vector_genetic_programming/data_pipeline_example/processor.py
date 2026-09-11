@@ -15,7 +15,6 @@ Steps
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -132,7 +131,7 @@ def equal_weighted_returns(returns: pd.DataFrame) -> pd.Series:
 def value_weighted_returns(
     returns: pd.DataFrame,
     prices: pd.DataFrame,
-    supply: Optional[pd.DataFrame] = None,
+    supply: pd.DataFrame | None = None,
 ) -> pd.Series:
     """
     Market-cap-weighted portfolio returns.
@@ -169,7 +168,7 @@ def _winsorise_df(df: pd.DataFrame, lower: float, upper: float) -> pd.DataFrame:
 
 
 def compute_rolling_returns(
-    returns: pd.DataFrame, window: int, min_obs: Optional[int] = None
+    returns: pd.DataFrame, window: int, min_obs: int | None = None
 ) -> pd.DataFrame:
     """Compute rolling cumulative returns over `window` days."""
     min_obs = min_obs or window // 2

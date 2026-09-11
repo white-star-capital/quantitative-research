@@ -22,7 +22,6 @@ EXP-03: same seed produces identical Pareto fronts across two independent runs
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
 
 import numpy as np
@@ -114,6 +113,7 @@ def test_evolution_loop_does_not_import_vectorbt_evo01():
     statements written in loop.py's own source.
     """
     import inspect
+
     import vgp.evolution.loop as loop_mod
 
     src_lines = inspect.getsource(loop_mod).split("\n")
@@ -221,7 +221,8 @@ def test_pareto_front_populated_evo04(evolution_result):
 def test_checkpoint_save_load_evo05():
     """Checkpoint round-trip: save writes dill file; load restores all keys (EVO-05, D-07)."""
     import random as rnd
-    from vgp.evolution.checkpoint import save_checkpoint, load_checkpoint
+
+    from vgp.evolution.checkpoint import load_checkpoint, save_checkpoint
 
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "subdir/gen_0005.pkl")
@@ -353,6 +354,7 @@ def test_logbook_structure_evo06(evolution_result):
 def test_jit_warmup_is_module_level_evo07():
     """_jit_warmup must be a module-level callable for spawn pickling (EVO-07, CLAUDE.md #8)."""
     import inspect
+
     import vgp.evolution.loop as loop_mod
 
     assert hasattr(loop_mod, "_jit_warmup"), (
@@ -381,6 +383,7 @@ def test_mlflow_tracker_logs_params_exp01():
     """MLflowTracker.log_params receives EvolutionConfig fields as a dict (EXP-01)."""
     import dataclasses
     from unittest.mock import patch
+
     from vgp.evolution.config import EvolutionConfig
     from vgp.evolution.tracker import MLflowTracker
 
@@ -409,6 +412,7 @@ def test_mlflow_tracker_logs_params_exp01():
 def test_mlflow_tracker_logs_metrics_per_gen_exp02():
     """MLflowTracker.log_metrics is called with step=gen for each generation (EXP-02)."""
     from unittest.mock import patch
+
     from vgp.evolution.tracker import MLflowTracker
 
     with patch("mlflow.set_experiment"), patch("mlflow.start_run"), \

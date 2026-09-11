@@ -29,11 +29,9 @@ a Roll (1984) spread approximation is provided instead.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +54,12 @@ class GlostenHarris:
         self.min_trades = min_trades
 
         # Fitted parameters
-        self.c0_: Optional[float] = None   # transient component (half-spread)
-        self.z1_: Optional[float] = None   # permanent component
-        self.spread_: Optional[float] = None  # effective spread = c0 + 2*z1
-        self.r_squared_: Optional[float] = None
+        self.c0_: float | None = None   # transient component (half-spread)
+        self.z1_: float | None = None   # permanent component
+        self.spread_: float | None = None  # effective spread = c0 + 2*z1
+        self.r_squared_: float | None = None
 
-    def fit(self, prices: np.ndarray, directions: np.ndarray) -> "GlostenHarris":
+    def fit(self, prices: np.ndarray, directions: np.ndarray) -> GlostenHarris:
         """
         Estimate c₀ and z₁ via OLS.
 

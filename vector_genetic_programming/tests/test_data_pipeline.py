@@ -161,13 +161,24 @@ def test_full_pipeline_split_array(synthetic_ohlcv_cache, block_network):
 
 
 def test_vgp_submodule_imports():
-    """All vgp sub-modules are importable (COMM-01)."""
-    import vgp
-    import vgp.data
-    import vgp.gp
-    import vgp.evolution
-    import vgp.backtest
-    import vgp.analysis
+    """All vgp sub-modules are importable (COMM-01).
+
+    Written as a loop over module names rather than a block of bare `import`
+    statements: those read as unused imports to a linter, and deleting them —
+    which is the obvious automated "fix" — would silently empty this test of
+    its only assertion.
+    """
+    import importlib
+
+    for name in (
+        "vgp",
+        "vgp.data",
+        "vgp.gp",
+        "vgp.evolution",
+        "vgp.backtest",
+        "vgp.analysis",
+    ):
+        assert importlib.import_module(name) is not None, f"{name} failed to import"
 
 
 # ---------------------------------------------------------------------------

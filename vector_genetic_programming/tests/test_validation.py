@@ -151,8 +151,8 @@ def test_generate_windows_non_overlapping():
 
 
 def test_generate_windows_dates():
-    """VAL-01: first window has correct dates matching 12-month train / 2-month val / 3-month OOS."""
-    from vgp.analysis import generate_windows, WindowSpec
+    """VAL-01: first window dates match 12-month train / 2-month val / 3-month OOS."""
+    from vgp.analysis import generate_windows
 
     windows = generate_windows("2024-01-01", "2026-04-01")
     w0 = windows[0]
@@ -174,7 +174,9 @@ def test_generate_windows_dates():
 # ---------------------------------------------------------------------------
 
 
-def test_runner_oos_not_passed_to_evolution(feature_matrix, close_prices, dates, eval_cfg, base_evo_kwargs):
+def test_runner_oos_not_passed_to_evolution(
+    feature_matrix, close_prices, dates, eval_cfg, base_evo_kwargs
+):
     """VAL-02: structural OOS invariant — feature_matrix arg to run_evolution must be
     train_fm (shape T_train), never the full feature_matrix (shape T_full)."""
     from vgp.analysis import generate_windows
@@ -191,7 +193,8 @@ def test_runner_oos_not_passed_to_evolution(feature_matrix, close_prices, dates,
     with patch("vgp.analysis.runner.run_evolution", return_value=mock_return) as mock_run_evo, \
          patch("vgp.analysis.runner.evaluate_with_status",
                return_value=((0.3, 0.05, -5.0), "ok", 120)), \
-         patch("vgp.analysis.runner._get_is_returns", return_value=np.random.default_rng(0).standard_normal(250)):
+         patch("vgp.analysis.runner._get_is_returns",
+               return_value=np.random.default_rng(0).standard_normal(250)):
 
         runner.run_window(
             window=window,
@@ -239,7 +242,8 @@ def test_runner_iterates_seeds(feature_matrix, close_prices, dates, eval_cfg, ba
     with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
          patch("vgp.analysis.runner.evaluate_with_status",
                return_value=((0.3, 0.05, -5.0), "ok", 120)), \
-         patch("vgp.analysis.runner._get_is_returns", return_value=np.random.default_rng(0).standard_normal(250)):
+         patch("vgp.analysis.runner._get_is_returns",
+               return_value=np.random.default_rng(0).standard_normal(250)):
 
         results = runner.run_window(
             window=window,

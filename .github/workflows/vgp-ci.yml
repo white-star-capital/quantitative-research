@@ -60,6 +60,19 @@ jobs:
       - name: Install package and dev dependencies
         run: pip install -e ".[dev]"
 
+      # Lint gate. `select = ["E", "F", "W", "I", "UP"]` in pyproject — pycodestyle,
+      # pyflakes, import sorting and pyupgrade. Placed before the tests because it
+      # costs well under a second and a dead import is worth failing on before
+      # spending two minutes evolving trees.
+      #
+      # The dev extra pins ruff to a minor series. Ruff is pre-1.0 and adds rules
+      # in minor releases, so an unpinned gate fails on code nobody touched.
+      #
+      # Formatting is NOT gated: the project carries both black and ruff in its
+      # dev extra, and picking a formatter is a separate decision from linting.
+      - name: Lint
+        run: ruff check .
+
       # The full suite, not a smoke subset. Two properties make this safe to run
       # unattended on a hosted runner, both measured rather than assumed:
       #

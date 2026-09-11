@@ -21,8 +21,8 @@ import argparse
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 # ---------------------------------------------------------------------------
 # Minimal scenario registry
@@ -62,6 +62,7 @@ def scenario(phase: int, name: str, description: str):
 def verify_phase4_parallel_eval() -> None:
     import numpy as np
     import pandas as pd
+
     from vgp.backtest.runner import EvalConfig
     from vgp.evolution.config import EvolutionConfig
     from vgp.evolution.loop import run_evolution
@@ -77,8 +78,12 @@ def verify_phase4_parallel_eval() -> None:
     fm = rng.standard_normal((T, F, A)).astype(np.float32)
     eval_cfg = EvalConfig(close_prices=close, min_trades=1)
 
-    cfg_serial = EvolutionConfig(pop_size=20, n_generations=3, seed=42, n_jobs=1, checkpoint_freq=999)
-    cfg_parallel = EvolutionConfig(pop_size=20, n_generations=3, seed=42, n_jobs=2, checkpoint_freq=999)
+    cfg_serial = EvolutionConfig(
+        pop_size=20, n_generations=3, seed=42, n_jobs=1, checkpoint_freq=999
+    )
+    cfg_parallel = EvolutionConfig(
+        pop_size=20, n_generations=3, seed=42, n_jobs=2, checkpoint_freq=999
+    )
 
     t0 = time.perf_counter()
     pop_s, hof_s, _ = run_evolution(cfg_serial, fm, eval_cfg)
@@ -153,7 +158,7 @@ def run_scenarios(phase_filter: int | None) -> bool:
             print(f"  ✓ PASSED ({elapsed:.1f}s)\n")
             passed += 1
         except Exception:
-            print(f"  ✗ FAILED\n")
+            print("  ✗ FAILED\n")
             traceback.print_exc()
             print()
             failed += 1

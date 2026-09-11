@@ -9,7 +9,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-
 _T = 300   # timesteps for tree evaluator fixtures
 _F = 12    # feature columns — must match FEATURE_NAMES length
 
@@ -34,8 +33,9 @@ def feature_matrix():
 
 @pytest.fixture
 def random_individual(pset):
-    from deap import creator, gp
     import random
+
+    from deap import creator, gp
     random.seed(7)
     expr = gp.genHalfAndHalf(pset, min_=1, max_=3)
     return creator.Individual(expr)
@@ -86,6 +86,7 @@ def test_fshift_roll_boundary_no_lookahead_gp06(evaluator, feature_matrix):
     if we did NOT zero it out. The tree evaluator must zero it, so signal[0] == 0.
     """
     from deap import creator, gp
+
     from vgp.gp.gp_types import build_pset
     from vgp.gp.tree_evaluator import TreeEvaluator
 
@@ -151,9 +152,10 @@ def test_lookahead_detection_gp07():
     that a leaky tree systematically produces signals that correlate with future
     returns — which would artificially inflate in-sample Sharpe in the full system.
     """
-    from deap import creator, gp
-    from vgp.gp.primitives import Vector, Scalar
+    from deap import creator
+
     from vgp.gp.gp_types import build_pset
+    from vgp.gp.primitives import Vector
     from vgp.gp.tree_evaluator import TreeEvaluator
 
     # ---------- define the future-leak primitive ----------

@@ -75,7 +75,10 @@ def prim_sub(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 
 def prim_mul(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """Element-wise multiplication. Handles scalar (ephemeral constant) inputs via numpy broadcast."""
+    """Element-wise multiplication.
+
+    Handles scalar (ephemeral constant) inputs via numpy broadcast.
+    """
     return (np.asarray(x, dtype=np.float32) * np.asarray(y, dtype=np.float32)).astype(np.float32)
 
 

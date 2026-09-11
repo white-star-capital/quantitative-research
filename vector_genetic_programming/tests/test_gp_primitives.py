@@ -11,7 +11,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-
 _T = 200  # timesteps for all array fixtures
 
 
@@ -32,7 +31,7 @@ def y(rng):
 
 def test_arithmetic_primitives_dtype(x, y):
     """All arithmetic primitives return float32 [T] arrays (GP-08)."""
-    from vgp.gp.primitives import prim_add, prim_sub, prim_mul, prim_protected_div, prim_neg
+    from vgp.gp.primitives import prim_add, prim_mul, prim_neg, prim_protected_div, prim_sub
 
     for fn_2arg in [prim_add, prim_sub, prim_mul, prim_protected_div]:
         result = fn_2arg(x, y)
@@ -51,8 +50,12 @@ def test_arithmetic_primitives_dtype(x, y):
 def test_rolling_primitives_shape_and_dtype(x):
     """All rolling primitives return float32 [T] arrays (GP-08)."""
     from vgp.gp.primitives import (
-        rolling_mean_5, rolling_mean_20, rolling_std_5,
-        rolling_std_20, rolling_max_20, rolling_min_20,
+        rolling_max_20,
+        rolling_mean_5,
+        rolling_mean_20,
+        rolling_min_20,
+        rolling_std_5,
+        rolling_std_20,
     )
 
     for fn in [rolling_mean_5, rolling_mean_20, rolling_std_5,
@@ -91,7 +94,7 @@ def test_protected_div_near_zero_denominator(x):
 
 def test_scalar_is_subclass_of_vector():
     """Scalar must be a subclass of Vector for DEAP type-chain to work (GP-01)."""
-    from vgp.gp.primitives import Vector, Scalar
+    from vgp.gp.primitives import Scalar, Vector
 
     assert issubclass(Scalar, Vector), (
         "Scalar must be a subclass of Vector so DEAP's issubclass() check allows "
@@ -102,6 +105,7 @@ def test_scalar_is_subclass_of_vector():
 def test_1000_random_trees_no_error():
     """1000 random trees generate and execute without IndexError or dtype failure (GP-08)."""
     from deap import creator, gp
+
     from vgp.gp.gp_types import build_pset
     from vgp.gp.tree_evaluator import TreeEvaluator
 

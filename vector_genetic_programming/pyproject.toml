@@ -66,7 +66,9 @@ dev = [
   "packaging>=24.0",
   "pytest-benchmark>=4.0",
   "black>=24.0",
-  "ruff>=0.5",
+  # Pinned to a minor series because CI gates on `ruff check`: ruff is pre-1.0 and
+  # adds rules in minor releases, which would turn the gate red on unchanged code.
+  "ruff>=0.16.6,<0.17",
   "mypy>=1.10",
   "jupyterlab>=4.0",
   "nbstripout>=0.7",

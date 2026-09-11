@@ -9,17 +9,16 @@ Fallback: Uses CCXT as backup if Binance REST API is unavailable.
 """
 from __future__ import annotations
 
-import time
 import logging
-from datetime import datetime, timezone, timedelta
+import time
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 import requests
 from tqdm import tqdm
 
-from .universe import UNIVERSE_30, get_binance_symbols
+from .universe import get_binance_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ class BinanceFetcher:
     def __init__(
         self,
         cache_dir: Path,
-        symbols: Optional[list[str]] = None,
+        symbols: list[str] | None = None,
         use_ccxt_fallback: bool = True,
     ) -> None:
         self.cache_dir = Path(cache_dir)
@@ -151,7 +150,7 @@ class BinanceFetcher:
         start_date: str,
         end_date: str,
         interval: str,
-        symbols_to_fetch: Optional[list[str]] = None,
+        symbols_to_fetch: list[str] | None = None,
     ) -> dict[str, pd.Series]:
         """
         Fetch close-price series via CCXT for the given symbols.
@@ -279,7 +278,7 @@ class BinanceFetcher:
 
 def _to_ms(date_str: str, end_of_day: bool = False) -> int:
     """Convert 'YYYY-MM-DD' to millisecond Unix timestamp."""
-    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=UTC)
     if end_of_day:
         dt = dt.replace(hour=23, minute=59, second=59)
     return int(dt.timestamp() * 1000)

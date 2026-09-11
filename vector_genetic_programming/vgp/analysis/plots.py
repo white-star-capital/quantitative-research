@@ -15,13 +15,13 @@ from __future__ import annotations
 import logging
 
 import matplotlib
+
 matplotlib.use('Agg')  # Must be called before any pyplot import — headless safety
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 — required for projection='3d'
-
 import networkx as nx
 import numpy as np
 import pandas as pd
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 — required for projection='3d'
 
 from vgp.backtest.runner import EvalConfig
 from vgp.gp.gp_types import build_pset
@@ -181,7 +181,9 @@ def plot_tree_graph(
     title : str
         Figure title prefix.
     """
-    from deap import gp as deap_gp  # noqa: PLC0415 — deferred (avoid loading deap on vgp.analysis import)
+    from deap import (
+        gp as deap_gp,  # noqa: PLC0415 — deferred (avoid loading deap on vgp.analysis import)
+    )
 
     nodes, edges, labels = deap_gp.graph(individual)
 

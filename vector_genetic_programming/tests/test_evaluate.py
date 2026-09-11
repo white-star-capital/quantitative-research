@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
@@ -74,8 +73,9 @@ def eval_config(close_prices):
 @pytest.fixture(scope="module")
 def valid_individual(pset):
     """A randomly generated GP individual likely to produce enough sign changes."""
-    from deap import creator, gp
     import random
+
+    from deap import creator, gp
     random.seed(55)
     expr = gp.genHalfAndHalf(pset, min_=2, max_=4)
     return creator.Individual(expr)
@@ -214,9 +214,11 @@ def test_transaction_costs_applied_inside_eval02(pset, feature_matrix, close_pri
     the fitness calculation would not reflect them during GP tree selection.
     This test confirms that different fee_bps values produce different fitness values.
     """
-    from deap import creator, gp
-    from vgp.backtest.runner import EvalConfig, evaluate
     import random
+
+    from deap import creator, gp
+
+    from vgp.backtest.runner import EvalConfig, evaluate
 
     random.seed(999)
     expr = gp.genHalfAndHalf(pset, min_=2, max_=4)
@@ -256,13 +258,15 @@ def test_transaction_costs_applied_inside_eval02(pset, feature_matrix, close_pri
 # ---------------------------------------------------------------------------
 
 def test_below_50_trades_returns_worst_fitness_eval03(pset, feature_matrix, close_prices):
-    """An individual that produces < min_trades sign changes must return (-inf, -inf, -size) (EVAL-03).
+    """An individual with < min_trades sign changes returns (-inf, -inf, -size) (EVAL-03).
 
     Forces worst-fitness path by setting min_trades=99999 — impossibly high for any tree.
     """
-    from deap import creator, gp
-    from vgp.backtest.runner import EvalConfig, evaluate
     import random
+
+    from deap import creator, gp
+
+    from vgp.backtest.runner import EvalConfig, evaluate
     random.seed(2025)
 
     ind = creator.Individual(gp.genHalfAndHalf(pset, min_=1, max_=3))
@@ -299,9 +303,11 @@ def test_worst_fitness_is_rankable_eval03(pset, feature_matrix, close_prices):
     NSGA-II domination check requires fitness.values to contain floats that
     support < comparison. -inf < valid_sharpe must be True.
     """
-    from deap import creator, gp
-    from vgp.backtest.runner import EvalConfig, evaluate
     import random
+
+    from deap import creator, gp
+
+    from vgp.backtest.runner import EvalConfig, evaluate
     random.seed(77)
 
     # Two different-sized individuals, both hitting worst-fitness path
