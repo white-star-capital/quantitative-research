@@ -65,7 +65,10 @@ dev = [
   # used by tests/test_smoke.py to check the dependency set resolves
   "packaging>=24.0",
   "pytest-benchmark>=4.0",
-  "black>=24.0",
+  # Pinned to a major series for the same reason as ruff below: CI gates on
+  # `black --check`, and black versions its stable style by calendar year, so
+  # an unpinned formatter reformats the whole tree the January it rolls over.
+  "black>=26.5.1,<27",
   # Pinned to a minor series because CI gates on `ruff check`: ruff is pre-1.0 and
   # adds rules in minor releases, which would turn the gate red on unchanged code.
   "ruff>=0.16.6,<0.17",

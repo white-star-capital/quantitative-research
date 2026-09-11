@@ -73,6 +73,16 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      # Formatting gate. Black and ruff's linter agree on this tree — `ruff check`
+      # passes on black's output — so the two can be enforced together without one
+      # undoing the other. Formatting was applied in its own commit, which
+      # .git-blame-ignore-revs points at so `git blame` skips it.
+      #
+      # Pinned to a major series in the dev extra: black versions its stable style
+      # by calendar year, so an unpinned gate reformats the tree at the rollover.
+      - name: Check formatting
+        run: black --check --diff .
+
       # The full suite, not a smoke subset. Two properties make this safe to run
       # unattended on a hosted runner, both measured rather than assumed:
       #
