@@ -4,24 +4,27 @@ TreeEvaluator tests — GP-05 (vectorized execution), GP-06 (fshift), GP-07 (loo
 All tests use synthetic [T x 12] float32 feature matrices.
 No network access. No parquet files required.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-_T = 300   # timesteps for tree evaluator fixtures
-_F = 12    # feature columns — must match FEATURE_NAMES length
+_T = 300  # timesteps for tree evaluator fixtures
+_F = 12  # feature columns — must match FEATURE_NAMES length
 
 
 @pytest.fixture(scope="module")
 def pset():
     from vgp.gp.gp_types import build_pset as _build
+
     return _build()
 
 
 @pytest.fixture(scope="module")
 def evaluator(pset):
     from vgp.gp.tree_evaluator import TreeEvaluator
+
     return TreeEvaluator(pset)
 
 
@@ -36,6 +39,7 @@ def random_individual(pset):
     import random
 
     from deap import creator, gp
+
     random.seed(7)
     expr = gp.genHalfAndHalf(pset, min_=1, max_=3)
     return creator.Individual(expr)
@@ -44,6 +48,7 @@ def random_individual(pset):
 # ---------------------------------------------------------------------------
 # GP-05: Vectorized execution
 # ---------------------------------------------------------------------------
+
 
 def test_execute_output_shape_gp05(evaluator, random_individual, feature_matrix):
     """execute() returns a 1-D array of length T (GP-05)."""
@@ -61,21 +66,20 @@ def test_execute_output_values_gp05(evaluator, random_individual, feature_matrix
     """execute() output values are in {-1.0, 0.0, +1.0} (GP-05)."""
     sig = evaluator.execute(random_individual, feature_matrix)
     unique = set(np.unique(sig))
-    assert unique.issubset({-1.0, 0.0, 1.0}), (
-        f"Signal values outside {{-1, 0, 1}}: {unique}"
-    )
+    assert unique.issubset({-1.0, 0.0, 1.0}), f"Signal values outside {{-1, 0, 1}}: {unique}"
 
 
 # ---------------------------------------------------------------------------
 # GP-06: Structural fshift(1)
 # ---------------------------------------------------------------------------
 
+
 def test_fshift_index0_is_zero_gp06(evaluator, random_individual, feature_matrix):
     """Signal at index 0 must be 0.0 — no prior output on the first bar (GP-06)."""
     sig = evaluator.execute(random_individual, feature_matrix)
-    assert sig[0] == 0.0, (
-        f"signal[0] = {sig[0]} but must be 0.0 after structural fshift zero-out (D-05)"
-    )
+    assert (
+        sig[0] == 0.0
+    ), f"signal[0] = {sig[0]} but must be 0.0 after structural fshift zero-out (D-05)"
 
 
 def test_fshift_roll_boundary_no_lookahead_gp06(evaluator, feature_matrix):
@@ -98,7 +102,7 @@ def test_fshift_roll_boundary_no_lookahead_gp06(evaluator, feature_matrix):
         expr = gp.genFull(local_pset, min_=0, max_=0)
         candidate = creator.Individual(expr)
         # Check it's NOT a scalar constant terminal (which has a .value float attribute)
-        if hasattr(candidate[0], 'value') and isinstance(candidate[0].value, float):
+        if hasattr(candidate[0], "value") and isinstance(candidate[0].value, float):
             continue  # skip ephemeral scalar constant terminals
         ind = candidate
         break
@@ -134,6 +138,7 @@ def test_shape_assertion_wrong_F(evaluator, random_individual):
 # ---------------------------------------------------------------------------
 # GP-07: Lookahead detection
 # ---------------------------------------------------------------------------
+
 
 def test_lookahead_detection_gp07():
     """Injecting a future-leak primitive produces higher in-sample fitness (GP-07).

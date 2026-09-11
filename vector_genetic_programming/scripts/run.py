@@ -16,6 +16,7 @@ Output
     results/equity_curves.png    — IS/OOS equity curves for top 3 individuals
     results/tree_graph.png       — GP tree for best individual overall
 """
+
 from __future__ import annotations
 
 import json
@@ -32,11 +33,11 @@ from tqdm import tqdm
 # Config — edit these to scale up or point at different data
 # ---------------------------------------------------------------------------
 
-CACHE_DIR     = Path("data_pipeline_example/cache")   # {SYMBOL}_1d.parquet, see results/README.md
-RESULTS_DIR   = Path("results")
-SEEDS         = [0, 1, 2]
-POP_SIZE      = 200       # individuals per generation
-N_GENERATIONS = 30        # generations per seed
+CACHE_DIR = Path("data_pipeline_example/cache")  # {SYMBOL}_1d.parquet, see results/README.md
+RESULTS_DIR = Path("results")
+SEEDS = [0, 1, 2]
+POP_SIZE = 200  # individuals per generation
+N_GENERATIONS = 30  # generations per seed
 
 # Walk-forward geometry. THE SAME DICT IS USED FOR THE NULL CONTROL BELOW —
 # if the null ran a different number of windows, or different lengths, it would
@@ -62,9 +63,9 @@ WINDOW_KW = dict(train_months=9, val_months=2, oos_months=2, step_months=2)
 # 37.3 eval/s serial vs 104.9 eval/s warm (2.81x), with a ~11.5s one-time
 # warmup. Before hoisting that warmup was paid 66 times and the experiment ran
 # faster serially than on 3 cores.
-N_JOBS        = max(1, (os.cpu_count() or 2) - 1)
-FEE_BPS       = 10.0
-MIN_TRADES    = 50
+N_JOBS = max(1, (os.cpu_count() or 2) - 1)
+FEE_BPS = 10.0
+MIN_TRADES = 50
 
 # Universe tolerance. fetch_ohlcv() raises by default when any symbol fails,
 # because a silently shrunken universe changes the experiment and is invisible
@@ -73,7 +74,7 @@ MIN_TRADES    = 50
 # here — but it is DECLARED, floored, and recorded in results/universe.json,
 # not discovered later from a log line.
 ALLOW_PARTIAL_UNIVERSE = True
-MIN_ASSETS    = 10        # below this the run aborts rather than reporting
+MIN_ASSETS = 10  # below this the run aborts rather than reporting
 
 # Null control (see vgp/analysis/null_control.py). DSR cannot detect bias shared
 # by every trial — a lookahead, a reused training window, a survivor-biased
@@ -85,9 +86,9 @@ MIN_ASSETS    = 10        # below this the run aborts rather than reporting
 # to represent the same procedure, not the same compute budget.
 # A p-value cannot resolve below 1/(1+N_NULL_RUNS); 20 runs buys p >= 0.048.
 # Set N_NULL_RUNS = 0 to skip, and then do not describe the result as validated.
-N_NULL_RUNS   = 19        # 1/(1+19) = 0.05, the smallest p-value worth claiming
-NULL_SEEDS    = [0]
-NULL_BLOCK    = 20        # bootstrap block length in bars
+N_NULL_RUNS = 19  # 1/(1+19) = 0.05, the smallest p-value worth claiming
+NULL_SEEDS = [0]
+NULL_BLOCK = 20  # bootstrap block length in bars
 
 # ---------------------------------------------------------------------------
 # Logging — INFO for setup steps, suppressed during evolution (tqdm handles it)
@@ -140,6 +141,7 @@ def main() -> None:
     print(f"  Cache: {CACHE_DIR.resolve()}")
 
     from vgp.data import DataLoader, FeatureEngine
+
     loader = DataLoader(cache_dir=CACHE_DIR)
     ohlcv = loader.fetch_ohlcv(
         start_date="2024-01-01",
@@ -157,14 +159,18 @@ def main() -> None:
     fm = fe.fit_transform(ohlcv)
 
     import pandas as pd
-    close_prices = pd.DataFrame(
-        {ticker: ohlcv[ticker]["close"] for ticker in fe.retained_assets_}
-    ).reindex(fe.dates_).ffill(limit=3)
+
+    close_prices = (
+        pd.DataFrame({ticker: ohlcv[ticker]["close"] for ticker in fe.retained_assets_})
+        .reindex(fe.dates_)
+        .ffill(limit=3)
+    )
 
     # The realized universe is a property of the run, not a log line: two
     # stages narrow it (fetch failures, then min_obs_fraction), and results
     # from different compositions are not comparable.
     from vgp.data import UniverseRecord
+
     universe = UniverseRecord.from_pipeline(loader.last_fetch_report_, fe)
 
     print(
@@ -183,32 +189,28 @@ def main() -> None:
     from vgp.analysis import generate_windows
 
     total_start = str(fe.dates_.min().date())
-    total_end   = str(fe.dates_.max().date())
+    total_end = str(fe.dates_.max().date())
     windows = generate_windows(total_start, total_end, **WINDOW_KW)
 
     if not windows:
         print(f"  ERROR: no windows from {total_start} → {total_end}")
         need = sum(WINDOW_KW[k] for k in ("train_months", "val_months", "oos_months"))
-        print(f"  Need at least {need} months ({WINDOW_KW['train_months']}m train + "
-              f"{WINDOW_KW['val_months']}m val + {WINDOW_KW['oos_months']}m OOS).")
+        print(
+            f"  Need at least {need} months ({WINDOW_KW['train_months']}m train + "
+            f"{WINDOW_KW['val_months']}m val + {WINDOW_KW['oos_months']}m OOS)."
+        )
         sys.exit(1)
 
     for w in windows:
-        print(
-            f"  W{w.window_id}  train → {w.train_end}"
-            f"   OOS {w.test_start} → {w.test_end}"
-        )
+        print(f"  W{w.window_id}  train → {w.train_end}" f"   OOS {w.test_start} → {w.test_end}")
 
     # ------------------------------------------------------------------
     # 4. Run walk-forward evolution
     # ------------------------------------------------------------------
     _banner(
-        f"4 / 6  Evolution  ({len(windows)} windows × {len(SEEDS)} seeds "
-        f"× {N_GENERATIONS} gen)"
+        f"4 / 6  Evolution  ({len(windows)} windows × {len(SEEDS)} seeds " f"× {N_GENERATIONS} gen)"
     )
-    print(
-        f"  pop={POP_SIZE}  jobs={N_JOBS}  fee={FEE_BPS}bps  min_trades={MIN_TRADES}\n"
-    )
+    print(f"  pop={POP_SIZE}  jobs={N_JOBS}  fee={FEE_BPS}bps  min_trades={MIN_TRADES}\n")
 
     from vgp.analysis.runner import WalkForwardRunner
     from vgp.backtest.runner import EvalConfig
@@ -221,7 +223,7 @@ def main() -> None:
         n_jobs=N_JOBS,
         checkpoint_freq=999,
     )
-    runner   = WalkForwardRunner(dates=fe.dates_)
+    runner = WalkForwardRunner(dates=fe.dates_)
     all_results: list[dict] = []
 
     # ONE warm pool for the entire experiment — every window, every seed, and
@@ -266,6 +268,7 @@ def main() -> None:
         # correction scales with the cross-sectional spread of trial Sharpes, which
         # is not knowable one row at a time.
         from vgp.analysis import attach_dsr
+
         attach_dsr(all_results)
 
         # ------------------------------------------------------------------
@@ -284,8 +287,9 @@ def main() -> None:
                 """One full experiment on surrogate data — same code path as above."""
                 null_runner = WalkForwardRunner(dates=null_dates)
                 null_windows = generate_windows(
-                    str(null_dates.min().date()), str(null_dates.max().date()),
-                    **WINDOW_KW,          # MUST match the observed run
+                    str(null_dates.min().date()),
+                    str(null_dates.max().date()),
+                    **WINDOW_KW,  # MUST match the observed run
                 )
                 rows: list[dict] = []
                 for nw in null_windows:
@@ -371,15 +375,19 @@ def main() -> None:
     if measured:
         best = max(measured, key=lambda r: r["oos_sharpe"])
     else:
-        print("  WARNING: no seed produced a measurable OOS Sharpe — "
-              "plotting the best IS row instead")
+        print(
+            "  WARNING: no seed produced a measurable OOS Sharpe — "
+            "plotting the best IS row instead"
+        )
         is_measured = [r for r in all_results if math.isfinite(r["is_sharpe"])]
         best = max(is_measured, key=lambda r: r["is_sharpe"]) if is_measured else all_results[0]
     best_window = windows[best["window_id"]]
 
     with tqdm(
         ["pareto_front", "tree_graph", "equity_curves"],
-        desc="  Plots", unit="plot", leave=True,
+        desc="  Plots",
+        unit="plot",
+        leave=True,
     ) as pbar:
         from vgp.analysis import plot_equity_curves, plot_pareto_front, plot_tree_graph
         from vgp.backtest.runner import EvalConfig as EC
@@ -397,7 +405,7 @@ def main() -> None:
             dates=fe.dates_,
         )
         train_close = close_prices.loc[close_prices.index <= best_window.train_end].copy()
-        train_cfg   = EC(fee_bps=FEE_BPS, min_trades=MIN_TRADES, close_prices=train_close)
+        train_cfg = EC(fee_bps=FEE_BPS, min_trades=MIN_TRADES, close_prices=train_close)
 
         cfg = EvolutionConfig(seed=best["seed"], **evo_kwargs)
         _, hof, _ = run_evolution(cfg, train_fm, train_cfg, desc="  best re-run")
@@ -412,7 +420,9 @@ def main() -> None:
 
         full_cfg = EC(fee_bps=FEE_BPS, min_trades=MIN_TRADES, close_prices=close_prices)
         plot_equity_curves(
-            list(hof[: min(3, len(hof))]), fm, full_cfg,
+            list(hof[: min(3, len(hof))]),
+            fm,
+            full_cfg,
             best_window.train_end,
             str(RESULTS_DIR / "equity_curves.png"),
         )
@@ -451,9 +461,11 @@ def main() -> None:
         )
     print("\n  NaN / n/a = not measured (see OOS status), not a bad result.")
 
-    print(f"\n  Universe [{universe.fingerprint}]: {universe.n_retained}/"
-          f"{universe.n_requested} assets"
-          + ("" if universe.is_complete else " — INCOMPLETE, see universe.json"))
+    print(
+        f"\n  Universe [{universe.fingerprint}]: {universe.n_retained}/"
+        f"{universe.n_requested} assets"
+        + ("" if universe.is_complete else " — INCOMPLETE, see universe.json")
+    )
 
     r0 = all_results[0]
     print(
@@ -466,16 +478,22 @@ def main() -> None:
         default=float("nan"),
     )
     best_dsr_bests = max(
-        (r["dsr_bests_only"] for r in all_results
-         if math.isfinite(r.get("dsr_bests_only", float("nan")))),
+        (
+            r["dsr_bests_only"]
+            for r in all_results
+            if math.isfinite(r.get("dsr_bests_only", float("nan")))
+        ),
         default=float("nan"),
     )
     print(
         f"  Best DSR {_fmt(best_dsr, '.4f')} (all evaluations, conservative)"
         f"  vs {_fmt(best_dsr_bests, '.4f')} (reported bests, optimistic)."
     )
-    if (math.isfinite(best_dsr) and math.isfinite(best_dsr_bests)
-            and best_dsr < 0.95 <= best_dsr_bests):
+    if (
+        math.isfinite(best_dsr)
+        and math.isfinite(best_dsr_bests)
+        and best_dsr < 0.95 <= best_dsr_bests
+    ):
         print("  These straddle 0.95: significance depends on how trials are counted.")
 
     if null_result is not None:

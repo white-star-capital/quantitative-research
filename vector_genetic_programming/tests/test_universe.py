@@ -8,6 +8,7 @@ universe that varies between runs is a survivorship-bias channel that neither
 DSR nor the null control can detect: every trial and every surrogate inherits
 the same universe, so nothing in the statistics reveals that it moved.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -41,6 +42,7 @@ def _report(requested, realized, failed=()):
 # Construction from the pipeline
 # ---------------------------------------------------------------------------
 
+
 def test_from_pipeline_captures_both_narrowing_stages():
     """Fetch losses and feature-engine drops are distinct and both recorded."""
     from vgp.data import UniverseRecord
@@ -56,9 +58,7 @@ def test_from_pipeline_captures_both_narrowing_stages():
 
     assert rec.requested == ("BTC", "ETH", "SOL", "NOPE"), "symbols must map to tickers"
     assert rec.fetched == ("BTC", "ETH", "SOL")
-    assert dict(rec.fetch_failed) == {
-        "NOPEUSDT": "no rows returned for the requested range"
-    }
+    assert dict(rec.fetch_failed) == {"NOPEUSDT": "no rows returned for the requested range"}
     assert rec.dropped_by_features == ("SOL",)
     assert rec.retained == ("BTC", "ETH")
     assert rec.n_requested == 4
@@ -81,9 +81,7 @@ def test_complete_universe_is_flagged_complete():
 def test_incomplete_universe_says_results_are_not_comparable():
     from vgp.data import UniverseRecord
 
-    report = _report(
-        ["BTCUSDT", "ETHUSDT"], ["BTC"], failed=[("ETHUSDT", "ConnectionError: down")]
-    )
+    report = _report(["BTCUSDT", "ETHUSDT"], ["BTC"], failed=[("ETHUSDT", "ConnectionError: down")])
     rec = UniverseRecord.from_pipeline(report, _FakeEngine(["BTC"], []))
 
     summary = rec.summary()
@@ -95,6 +93,7 @@ def test_incomplete_universe_says_results_are_not_comparable():
 # ---------------------------------------------------------------------------
 # Fingerprint: the mechanism that makes drift detectable
 # ---------------------------------------------------------------------------
+
 
 def test_fingerprint_is_stable_and_order_independent():
     """Same composition, same id — regardless of the order it was listed in.
@@ -119,9 +118,9 @@ def test_fingerprint_changes_when_composition_changes():
     full = UniverseRecord((), (), (), (), ("BTC", "ETH", "SOL"))
     shrunk = UniverseRecord((), (), (), (), ("BTC", "ETH"))
 
-    assert full.fingerprint != shrunk.fingerprint, (
-        "a smaller universe produced the same fingerprint — drift would be invisible"
-    )
+    assert (
+        full.fingerprint != shrunk.fingerprint
+    ), "a smaller universe produced the same fingerprint — drift would be invisible"
 
 
 def test_fingerprint_of_empty_universe_is_labelled():
@@ -139,11 +138,18 @@ def test_fingerprint_ignores_the_lost_assets():
     from vgp.data import UniverseRecord
 
     via_fetch = UniverseRecord(
-        ("BTC", "ETH", "SOL"), ("BTC", "ETH"),
-        (("SOLUSDT", "ConnectionError"),), (), ("BTC", "ETH"),
+        ("BTC", "ETH", "SOL"),
+        ("BTC", "ETH"),
+        (("SOLUSDT", "ConnectionError"),),
+        (),
+        ("BTC", "ETH"),
     )
     via_features = UniverseRecord(
-        ("BTC", "ETH", "SOL"), ("BTC", "ETH", "SOL"), (), ("SOL",), ("BTC", "ETH"),
+        ("BTC", "ETH", "SOL"),
+        ("BTC", "ETH", "SOL"),
+        (),
+        ("SOL",),
+        ("BTC", "ETH"),
     )
 
     assert via_fetch.fingerprint == via_features.fingerprint
@@ -152,6 +158,7 @@ def test_fingerprint_ignores_the_lost_assets():
 # ---------------------------------------------------------------------------
 # Stamping and serialization
 # ---------------------------------------------------------------------------
+
 
 def test_stamp_rows_tags_every_row():
     from vgp.data import UniverseRecord
@@ -179,8 +186,9 @@ def test_to_dict_is_json_serializable_and_complete():
     from vgp.data import UniverseRecord
 
     rec = UniverseRecord.from_pipeline(
-        _report(["BTCUSDT", "ETHUSDT", "NOPEUSDT"], ["BTC", "ETH"],
-                failed=[("NOPEUSDT", "no rows")]),
+        _report(
+            ["BTCUSDT", "ETHUSDT", "NOPEUSDT"], ["BTC", "ETH"], failed=[("NOPEUSDT", "no rows")]
+        ),
         _FakeEngine(["BTC"], ["ETH"], n_dates=500),
     )
 
@@ -210,6 +218,7 @@ def test_record_is_immutable():
 # Against the real pipeline
 # ---------------------------------------------------------------------------
 
+
 def test_record_matches_the_real_pipeline(synthetic_ohlcv_cache, block_network):
     """End to end: the record must agree with what FeatureEngine actually used."""
     from vgp.data import BinanceFetcher, FeatureEngine, UniverseRecord
@@ -221,9 +230,9 @@ def test_record_matches_the_real_pipeline(synthetic_ohlcv_cache, block_network):
 
     rec = UniverseRecord.from_pipeline(fetcher.last_fetch_report_, engine)
 
-    assert rec.n_retained == arr.shape[2], (
-        f"record says {rec.n_retained} assets, feature matrix has {arr.shape[2]}"
-    )
+    assert (
+        rec.n_retained == arr.shape[2]
+    ), f"record says {rec.n_retained} assets, feature matrix has {arr.shape[2]}"
     assert rec.n_dates == arr.shape[0]
     assert not rec.fetch_failed, "the synthetic cache is complete"
     # The fixture gives two tickers short history, so the filter must have bitten

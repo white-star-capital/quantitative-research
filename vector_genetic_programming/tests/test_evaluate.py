@@ -10,6 +10,7 @@ EVAL-02: Transaction costs applied inside evaluate() via fees parameter, not pos
 EVAL-03: Individuals with < 50 trades receive worst-possible fitness (not NaN, not exception)
 EVAL-04: Fitness tuple is (Sharpe, total_return, -tree_size)
 """
+
 from __future__ import annotations
 
 import sys
@@ -22,14 +23,15 @@ import pytest
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
-_T = 400     # timesteps — enough for meaningful Sharpe calculation
-_F = 12      # feature columns (must match FEATURE_NAMES length)
-_A = 3       # assets — use a small number to keep tests fast
+_T = 400  # timesteps — enough for meaningful Sharpe calculation
+_F = 12  # feature columns (must match FEATURE_NAMES length)
+_A = 3  # assets — use a small number to keep tests fast
 
 
 @pytest.fixture(scope="module")
 def pset():
     from vgp.gp.gp_types import build_pset as _build
+
     return _build()
 
 
@@ -61,6 +63,7 @@ def close_prices():
 def eval_config(close_prices):
     """Standard EvalConfig with default fees and the synthetic close prices."""
     from vgp.backtest.runner import EvalConfig
+
     return EvalConfig(
         fee_bps=10.0,
         min_trades=50,
@@ -76,6 +79,7 @@ def valid_individual(pset):
     import random
 
     from deap import creator, gp
+
     random.seed(55)
     expr = gp.genHalfAndHalf(pset, min_=2, max_=4)
     return creator.Individual(expr)
@@ -84,6 +88,7 @@ def valid_individual(pset):
 # ---------------------------------------------------------------------------
 # EVAL-01: evaluate() interface + import boundary audit (D-15)
 # ---------------------------------------------------------------------------
+
 
 def test_backtest_runner_does_not_import_deap_eval01():
     """vgp.backtest.runner must NOT import deap at module level (EVAL-01, D-15).
@@ -115,6 +120,7 @@ def test_backtest_runner_does_not_import_deap_eval01():
 
         mods_before = set(sys.modules.keys())
         import vgp.backtest.runner  # noqa: F401
+
         mods_after = set(sys.modules.keys())
 
         new_deap_mods = [m for m in (mods_after - mods_before) if "deap" in m]
@@ -164,14 +170,13 @@ def test_evaluate_returns_tuple_eval01(valid_individual, feature_matrix, eval_co
     assert isinstance(result, tuple), f"Expected tuple, got {type(result)}"
     assert len(result) == 3, f"Expected 3-tuple, got {len(result)}-tuple"
     for i, val in enumerate(result):
-        assert isinstance(val, float), (
-            f"Fitness tuple element {i} is {type(val)}, expected float"
-        )
+        assert isinstance(val, float), f"Fitness tuple element {i} is {type(val)}, expected float"
 
 
 # ---------------------------------------------------------------------------
 # EVAL-04: Fitness tuple is (Sharpe, total_return, -tree_size)
 # ---------------------------------------------------------------------------
+
 
 def test_negative_tree_size_in_fitness_eval04(valid_individual, feature_matrix, eval_config):
     """Third fitness element must be -len(individual) (EVAL-04)."""
@@ -180,9 +185,9 @@ def test_negative_tree_size_in_fitness_eval04(valid_individual, feature_matrix, 
     result = evaluate(valid_individual, feature_matrix, eval_config)
     expected_neg_tree_size = float(-len(valid_individual))
 
-    assert result[2] == expected_neg_tree_size, (
-        f"Fitness[2] = {result[2]}, expected -tree_size = {expected_neg_tree_size}"
-    )
+    assert (
+        result[2] == expected_neg_tree_size
+    ), f"Fitness[2] = {result[2]}, expected -tree_size = {expected_neg_tree_size}"
 
 
 def test_sharpe_not_nan_valid_portfolio_eval04(valid_individual, feature_matrix, eval_config):
@@ -198,14 +203,15 @@ def test_sharpe_not_nan_valid_portfolio_eval04(valid_individual, feature_matrix,
             "sharpe_ratio() returned NaN — check that freq='1D' is set in Portfolio.from_signals. "
             "This is the silent failure mode documented in test_smoke.py."
         )
-        assert not np.isnan(result[1]), (
-            f"total_return() returned NaN for valid individual: {result}"
-        )
+        assert not np.isnan(
+            result[1]
+        ), f"total_return() returned NaN for valid individual: {result}"
 
 
 # ---------------------------------------------------------------------------
 # EVAL-02: Transaction costs applied inside evaluate() — not post-hoc
 # ---------------------------------------------------------------------------
+
 
 def test_transaction_costs_applied_inside_eval02(pset, feature_matrix, close_prices):
     """Evaluating with fee_bps=0 vs fee_bps=200 produces different fitness (EVAL-02).
@@ -224,10 +230,12 @@ def test_transaction_costs_applied_inside_eval02(pset, feature_matrix, close_pri
     expr = gp.genHalfAndHalf(pset, min_=2, max_=4)
     ind = creator.Individual(expr)
 
-    cfg_zero_fees = EvalConfig(fee_bps=0.0, min_trades=1, freq="1D",
-                               init_cash=10_000.0, close_prices=close_prices)
-    cfg_high_fees = EvalConfig(fee_bps=200.0, min_trades=1, freq="1D",
-                               init_cash=10_000.0, close_prices=close_prices)
+    cfg_zero_fees = EvalConfig(
+        fee_bps=0.0, min_trades=1, freq="1D", init_cash=10_000.0, close_prices=close_prices
+    )
+    cfg_high_fees = EvalConfig(
+        fee_bps=200.0, min_trades=1, freq="1D", init_cash=10_000.0, close_prices=close_prices
+    )
 
     result_zero = evaluate(ind, feature_matrix, cfg_zero_fees)
     result_high = evaluate(ind, feature_matrix, cfg_high_fees)
@@ -257,6 +265,7 @@ def test_transaction_costs_applied_inside_eval02(pset, feature_matrix, close_pri
 # EVAL-03: < 50 trades → worst-possible fitness (not NaN, not exception)
 # ---------------------------------------------------------------------------
 
+
 def test_below_50_trades_returns_worst_fitness_eval03(pset, feature_matrix, close_prices):
     """An individual with < min_trades sign changes returns (-inf, -inf, -size) (EVAL-03).
 
@@ -267,12 +276,13 @@ def test_below_50_trades_returns_worst_fitness_eval03(pset, feature_matrix, clos
     from deap import creator, gp
 
     from vgp.backtest.runner import EvalConfig, evaluate
+
     random.seed(2025)
 
     ind = creator.Individual(gp.genHalfAndHalf(pset, min_=1, max_=3))
     cfg_high_threshold = EvalConfig(
         fee_bps=10.0,
-        min_trades=99999,   # impossibly high — forces worst-fitness path
+        min_trades=99999,  # impossibly high — forces worst-fitness path
         freq="1D",
         init_cash=10_000.0,
         close_prices=close_prices,
@@ -280,15 +290,15 @@ def test_below_50_trades_returns_worst_fitness_eval03(pset, feature_matrix, clos
     result = evaluate(ind, feature_matrix, cfg_high_threshold)
 
     expected_neg_size = float(-len(ind))
-    assert result[0] == -np.inf, (
-        f"Fitness[0] = {result[0]}, expected -inf for < min_trades individual (EVAL-03)"
-    )
-    assert result[1] == -np.inf, (
-        f"Fitness[1] = {result[1]}, expected -inf for < min_trades individual (EVAL-03)"
-    )
-    assert result[2] == expected_neg_size, (
-        f"Fitness[2] = {result[2]}, expected {expected_neg_size} (-tree_size preserved)"
-    )
+    assert (
+        result[0] == -np.inf
+    ), f"Fitness[0] = {result[0]}, expected -inf for < min_trades individual (EVAL-03)"
+    assert (
+        result[1] == -np.inf
+    ), f"Fitness[1] = {result[1]}, expected -inf for < min_trades individual (EVAL-03)"
+    assert (
+        result[2] == expected_neg_size
+    ), f"Fitness[2] = {result[2]}, expected {expected_neg_size} (-tree_size preserved)"
     # Must be a tuple of Python floats, not NaN — rankable by NSGA-II
     for i, val in enumerate(result):
         assert not np.isnan(val), (
@@ -308,6 +318,7 @@ def test_worst_fitness_is_rankable_eval03(pset, feature_matrix, close_prices):
     from deap import creator, gp
 
     from vgp.backtest.runner import EvalConfig, evaluate
+
     random.seed(77)
 
     # Two different-sized individuals, both hitting worst-fitness path
@@ -317,8 +328,7 @@ def test_worst_fitness_is_rankable_eval03(pset, feature_matrix, close_prices):
     ind2 = creator.Individual(expr2)
 
     cfg = EvalConfig(
-        fee_bps=10.0, min_trades=99999, freq="1D",
-        init_cash=10_000.0, close_prices=close_prices
+        fee_bps=10.0, min_trades=99999, freq="1D", init_cash=10_000.0, close_prices=close_prices
     )
     r1 = evaluate(ind1, feature_matrix, cfg)
     r2 = evaluate(ind2, feature_matrix, cfg)
@@ -340,6 +350,7 @@ def test_worst_fitness_is_rankable_eval03(pset, feature_matrix, close_prices):
 # from a real measurement
 # ---------------------------------------------------------------------------
 
+
 def test_evaluate_with_status_flags_below_min_trades(pset, feature_matrix, close_prices):
     """evaluate_with_status must report WHY fitness is the worst-fitness tuple.
 
@@ -357,19 +368,23 @@ def test_evaluate_with_status_flags_below_min_trades(pset, feature_matrix, close
         evaluate,
         evaluate_with_status,
     )
+
     random.seed(2025)
 
     ind = creator.Individual(gp.genHalfAndHalf(pset, min_=1, max_=3))
     cfg = EvalConfig(
-        fee_bps=10.0, min_trades=99999, freq="1D",
-        init_cash=10_000.0, close_prices=close_prices,
+        fee_bps=10.0,
+        min_trades=99999,
+        freq="1D",
+        init_cash=10_000.0,
+        close_prices=close_prices,
     )
 
     fitness, status, n_trades = evaluate_with_status(ind, feature_matrix, cfg)
 
-    assert status == EVAL_BELOW_MIN_TRADES, (
-        f"status = {status!r}, expected {EVAL_BELOW_MIN_TRADES!r}"
-    )
+    assert (
+        status == EVAL_BELOW_MIN_TRADES
+    ), f"status = {status!r}, expected {EVAL_BELOW_MIN_TRADES!r}"
     assert fitness[0] == -np.inf, "fitness contract unchanged — still -inf for NSGA-II"
     assert fitness[2] == float(-len(ind)), "-tree_size preserved"
     assert n_trades < 99999, f"observed trade count must be reported, got {n_trades}"
@@ -378,20 +393,22 @@ def test_evaluate_with_status_flags_below_min_trades(pset, feature_matrix, close
     assert evaluate(ind, feature_matrix, cfg) == fitness
 
 
-def test_evaluate_with_status_reports_ok_for_valid_individual(
-    pset, feature_matrix, close_prices
-):
+def test_evaluate_with_status_reports_ok_for_valid_individual(pset, feature_matrix, close_prices):
     """A measurable individual gets EVAL_OK and a finite Sharpe."""
     import random
 
     from deap import creator, gp
 
     from vgp.backtest.runner import EVAL_OK, EvalConfig, evaluate_with_status
+
     random.seed(11)
 
     cfg = EvalConfig(
-        fee_bps=10.0, min_trades=1, freq="1D",
-        init_cash=10_000.0, close_prices=close_prices,
+        fee_bps=10.0,
+        min_trades=1,
+        freq="1D",
+        init_cash=10_000.0,
+        close_prices=close_prices,
     )
 
     # Try a handful of random trees until one is measurable on synthetic data
@@ -416,6 +433,7 @@ def test_evaluate_with_status_reports_ok_for_valid_individual(
 # every DSR by a constant factor.
 # ---------------------------------------------------------------------------
 
+
 def test_vectorbt_daily_sharpe_uses_the_documented_annualization(
     pset, feature_matrix, close_prices
 ):
@@ -426,10 +444,12 @@ def test_vectorbt_daily_sharpe_uses_the_documented_annualization(
 
     from vgp.analysis.dsr import PERIODS_PER_YEAR_DAILY
     from vgp.backtest.runner import EVAL_OK, EvalConfig, evaluate_with_status
+
     random.seed(3)
 
-    cfg = EvalConfig(fee_bps=10.0, min_trades=1, freq="1D",
-                     init_cash=10_000.0, close_prices=close_prices)
+    cfg = EvalConfig(
+        fee_bps=10.0, min_trades=1, freq="1D", init_cash=10_000.0, close_prices=close_prices
+    )
 
     for _ in range(40):
         ind = creator.Individual(gp.genHalfAndHalf(pset, min_=2, max_=4))
@@ -439,6 +459,7 @@ def test_vectorbt_daily_sharpe_uses_the_documented_annualization(
 
         # Rebuild the same portfolio's return series via the DSR helper
         from vgp.analysis.runner import _get_is_returns
+
         rets = _get_is_returns(ind, feature_matrix, cfg)
         sd = float(np.std(rets, ddof=1))
         if sd == 0.0:

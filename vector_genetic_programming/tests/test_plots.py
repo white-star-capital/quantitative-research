@@ -7,6 +7,7 @@ Visual correctness is a human review item (checkpoint in Plan 03).
 All tests use synthetic data — no parquet files, no actual evolution.
 matplotlib.use('Agg') must be called before any pyplot import.
 """
+
 from __future__ import annotations
 
 import os
@@ -14,7 +15,7 @@ import tempfile
 
 import matplotlib
 
-matplotlib.use('Agg')  # headless safety — must precede any pyplot import
+matplotlib.use("Agg")  # headless safety — must precede any pyplot import
 
 from unittest.mock import MagicMock
 
@@ -26,13 +27,14 @@ from deap import base, gp, tools
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_T = 100    # small T for fast test runtime
+_T = 100  # small T for fast test runtime
 _F = 12
 _A = 2
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def tmp_dir():
@@ -46,6 +48,7 @@ def tmp_dir():
 def real_individual():
     """A real DEAP creator.Individual for tree visualization tests."""
     from vgp.gp.gp_types import build_pset, creator
+
     pset = build_pset()
     tb = base.Toolbox()
     tb.register("expr", gp.genHalfAndHalf, pset=pset, min_=1, max_=3)
@@ -66,6 +69,7 @@ def synthetic_feature_matrix():
 def synthetic_eval_config(synthetic_feature_matrix):
     """EvalConfig with synthetic close prices covering _T timesteps."""
     from vgp.backtest.runner import EvalConfig
+
     dates = pd.date_range("2024-01-01", periods=_T, freq="D")
     close = pd.DataFrame(
         np.ones((_T, _A)) * 100.0,
@@ -80,9 +84,11 @@ def synthetic_eval_config(synthetic_feature_matrix):
         close_prices=close,
     )
 
+
 # ---------------------------------------------------------------------------
 # VAL-05: Pareto front plot
 # ---------------------------------------------------------------------------
+
 
 def _make_synthetic_hof(n: int = 5) -> list:
     """List of mock individuals with .fitness.values for plot_pareto_front."""
@@ -91,9 +97,9 @@ def _make_synthetic_hof(n: int = 5) -> list:
     for _ in range(n):
         ind = MagicMock()
         ind.fitness.values = (
-            float(rng.uniform(-0.5, 2.0)),   # sharpe
-            float(rng.uniform(-0.2, 1.5)),   # total_return
-            float(-rng.integers(5, 30)),      # -tree_size (stored negative)
+            float(rng.uniform(-0.5, 2.0)),  # sharpe
+            float(rng.uniform(-0.2, 1.5)),  # total_return
+            float(-rng.integers(5, 30)),  # -tree_size (stored negative)
         )
         hof.append(ind)
     return hof
@@ -102,6 +108,7 @@ def _make_synthetic_hof(n: int = 5) -> list:
 def test_plot_pareto_front_creates_png(tmp_dir):
     """VAL-05: plot_pareto_front() creates a non-empty PNG file."""
     from vgp.analysis.plots import plot_pareto_front
+
     out = os.path.join(tmp_dir, "pareto_front.png")
     hof = _make_synthetic_hof(5)
     plot_pareto_front(hof, output_path=out)
@@ -112,19 +119,23 @@ def test_plot_pareto_front_creates_png(tmp_dir):
 def test_plot_pareto_front_empty_hof_raises(tmp_dir):
     """VAL-05: empty hof raises ValueError."""
     from vgp.analysis.plots import plot_pareto_front
+
     out = os.path.join(tmp_dir, "pareto_empty.png")
     with pytest.raises(ValueError, match="empty"):
         plot_pareto_front([], output_path=out)
 
+
 # ---------------------------------------------------------------------------
 # VAL-06: Equity curve plot
 # ---------------------------------------------------------------------------
+
 
 def test_plot_equity_curves_creates_png(
     tmp_dir, real_individual, synthetic_feature_matrix, synthetic_eval_config
 ):
     """VAL-06: plot_equity_curves() creates a non-empty PNG file with IS/OOS boundary."""
     from vgp.analysis.plots import plot_equity_curves
+
     out = os.path.join(tmp_dir, "equity_curves.png")
     # train_end_date within the _T=100-day range (day 60 of 100)
     train_end_date = "2024-03-01"
@@ -144,6 +155,7 @@ def test_plot_equity_curves_empty_individuals(
 ):
     """VAL-06: empty individuals list logs warning and returns without error."""
     from vgp.analysis.plots import plot_equity_curves
+
     out = os.path.join(tmp_dir, "equity_empty.png")
     # Should not raise — just logs warning
     plot_equity_curves(
@@ -156,13 +168,16 @@ def test_plot_equity_curves_empty_individuals(
     # File should NOT be created (function returns early)
     assert not os.path.exists(out)
 
+
 # ---------------------------------------------------------------------------
 # VAL-07: GP tree graph export
 # ---------------------------------------------------------------------------
 
+
 def test_plot_tree_graph_creates_png(tmp_dir, real_individual):
     """VAL-07: plot_tree_graph() creates a non-empty PNG file with readable node labels."""
     from vgp.analysis.plots import plot_tree_graph
+
     out = os.path.join(tmp_dir, "tree_graph.png")
     plot_tree_graph(real_individual, output_path=out, title="Test Tree")
     assert os.path.exists(out), "PNG file not created"

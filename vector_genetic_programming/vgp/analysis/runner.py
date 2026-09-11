@@ -7,6 +7,7 @@ it is only used in the single evaluate() call after evolution completes.
 python-dateutil is a pandas transitive dependency (not in pyproject.toml directly).
 Available in all environments that have pandas>=3.0.0 installed.
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,11 +34,11 @@ class WindowSpec:
     """One walk-forward window's date boundaries."""
 
     window_id: int
-    train_end: str        # inclusive ISO e.g. "2024-12-31"
+    train_end: str  # inclusive ISO e.g. "2024-12-31"
     val_start: str
     val_end: str
-    test_start: str       # stored; NEVER passed to run_evolution()
-    test_end: str         # stored; NEVER passed to run_evolution()
+    test_start: str  # stored; NEVER passed to run_evolution()
+    test_end: str  # stored; NEVER passed to run_evolution()
 
 
 def generate_windows(
@@ -80,14 +81,16 @@ def generate_windows(
         if test_end_ts > total_end_ts:
             break
 
-        windows.append(WindowSpec(
-            window_id=window_id,
-            train_end=train_end_ts.strftime("%Y-%m-%d"),
-            val_start=val_start_ts.strftime("%Y-%m-%d"),
-            val_end=val_end_ts.strftime("%Y-%m-%d"),
-            test_start=test_start_ts.strftime("%Y-%m-%d"),
-            test_end=test_end_ts.strftime("%Y-%m-%d"),
-        ))
+        windows.append(
+            WindowSpec(
+                window_id=window_id,
+                train_end=train_end_ts.strftime("%Y-%m-%d"),
+                val_start=val_start_ts.strftime("%Y-%m-%d"),
+                val_end=val_end_ts.strftime("%Y-%m-%d"),
+                test_start=test_start_ts.strftime("%Y-%m-%d"),
+                test_end=test_end_ts.strftime("%Y-%m-%d"),
+            )
+        )
         window_id += 1
         start = start + relativedelta(months=step_months)
 
@@ -158,8 +161,8 @@ class WalkForwardRunner:
     def run_window(
         self,
         window: WindowSpec,
-        feature_matrix: np.ndarray,    # full [T x F x A] float32
-        close_prices: pd.DataFrame,    # full [T x A] with DatetimeIndex
+        feature_matrix: np.ndarray,  # full [T x F x A] float32
+        close_prices: pd.DataFrame,  # full [T x A] with DatetimeIndex
         base_eval_config: EvalConfig,
         seeds: list[int],
         evo_config_kwargs: dict,
@@ -213,7 +216,11 @@ class WalkForwardRunner:
         """
         logger.info(
             "Window %d: train_end=%s test_start=%s test_end=%s n_seeds=%d",
-            window.window_id, window.train_end, window.test_start, window.test_end, len(seeds),
+            window.window_id,
+            window.train_end,
+            window.test_start,
+            window.test_end,
+            len(seeds),
         )
 
         # --- Split feature matrix (ndarray) --- #
@@ -254,8 +261,11 @@ class WalkForwardRunner:
             oos_min_trades = max(1, int(round(base_eval_config.min_trades * ratio)))
             logger.info(
                 "Window %d: OOS min_trades scaled %d -> %d (T_test=%d / T_train=%d)",
-                window.window_id, base_eval_config.min_trades, oos_min_trades,
-                T_test, T_train,
+                window.window_id,
+                base_eval_config.min_trades,
+                oos_min_trades,
+                T_test,
+                T_train,
             )
 
         test_eval_cfg = EvalConfig(
@@ -271,14 +281,13 @@ class WalkForwardRunner:
             cfg = EvolutionConfig(seed=seed, **evo_config_kwargs)
 
             # --- Evolution on train data ONLY --- #
-            pop, hof, logbook = run_evolution(
-                cfg, train_fm, train_eval_cfg, pool=pool
-            )
+            pop, hof, logbook = run_evolution(cfg, train_fm, train_eval_cfg, pool=pool)
 
             if not hof:
                 logger.warning(
                     "Window %d seed %d: HOF is empty — skipping OOS eval",
-                    window.window_id, seed,
+                    window.window_id,
+                    seed,
                 )
                 continue
 
@@ -295,7 +304,8 @@ class WalkForwardRunner:
                 logger.warning(
                     "Window %d seed %d: no trial accumulator on the logbook — "
                     "this seed's evaluations will not size the DSR correction",
-                    window.window_id, seed,
+                    window.window_id,
+                    seed,
                 )
 
             # A non-finite value here is the worst-fitness sentinel, not a
@@ -305,7 +315,9 @@ class WalkForwardRunner:
                 logger.warning(
                     "Window %d seed %d: best individual carries worst-fitness IS Sharpe "
                     "(%s) — recording NaN, not a measurement",
-                    window.window_id, seed, is_sharpe,
+                    window.window_id,
+                    seed,
+                    is_sharpe,
                 )
                 is_sharpe = float("nan")
 
@@ -325,7 +337,11 @@ class WalkForwardRunner:
                 logger.info(
                     "Window %d seed %d: OOS not measured (status=%s, n_trades=%d, "
                     "min_trades=%d)",
-                    window.window_id, seed, oos_status, oos_n_trades, oos_min_trades,
+                    window.window_id,
+                    seed,
+                    oos_status,
+                    oos_n_trades,
+                    oos_min_trades,
                 )
 
             # Per-period IS returns for DSR. Uses train data only (no OOS leakage).
@@ -338,29 +354,33 @@ class WalkForwardRunner:
             except Exception as exc:  # pragma: no cover — only fires if vbt/eval fails
                 logger.warning(
                     "Window %d seed %d: IS returns unavailable (%s) — DSR will be NaN",
-                    window.window_id, seed, exc,
+                    window.window_id,
+                    seed,
+                    exc,
                 )
                 is_returns = None
 
-            seed_results.append({
-                "window_id": window.window_id,
-                "seed": seed,
-                "train_end": window.train_end,
-                "test_start": window.test_start,
-                "test_end": window.test_end,
-                "is_sharpe": is_sharpe,
-                "oos_sharpe": oos_sharpe,
-                "oos_status": oos_status,
-                "oos_n_trades": oos_n_trades,
-                "oos_min_trades": oos_min_trades,
-                "dsr": float("nan"),   # filled in by attach_dsr()
-                "n_nodes_best": len(best_ind),
-                # Every individual this seed evaluated is a trial for the
-                # multiple-testing correction; attach_dsr() merges these across
-                # seeds and windows. See vgp/trials.py.
-                "n_evaluations": trial_acc.n_evaluations if trial_acc else 0,
-                IS_RETURNS_KEY: is_returns,
-                TRIALS_KEY: trial_acc,
-            })
+            seed_results.append(
+                {
+                    "window_id": window.window_id,
+                    "seed": seed,
+                    "train_end": window.train_end,
+                    "test_start": window.test_start,
+                    "test_end": window.test_end,
+                    "is_sharpe": is_sharpe,
+                    "oos_sharpe": oos_sharpe,
+                    "oos_status": oos_status,
+                    "oos_n_trades": oos_n_trades,
+                    "oos_min_trades": oos_min_trades,
+                    "dsr": float("nan"),  # filled in by attach_dsr()
+                    "n_nodes_best": len(best_ind),
+                    # Every individual this seed evaluated is a trial for the
+                    # multiple-testing correction; attach_dsr() merges these across
+                    # seeds and windows. See vgp/trials.py.
+                    "n_evaluations": trial_acc.n_evaluations if trial_acc else 0,
+                    IS_RETURNS_KEY: is_returns,
+                    TRIALS_KEY: trial_acc,
+                }
+            )
 
         return seed_results

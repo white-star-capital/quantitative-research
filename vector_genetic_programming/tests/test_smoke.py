@@ -93,7 +93,7 @@ def test_project_dependencies_are_satisfied_by_environment():
         "pyproject.toml dependencies are not satisfied by this environment:\n  "
         + "\n  ".join(unmet)
         + "\nEither the pins are wrong or the environment is stale; run "
-          "`pip install -e .` and re-check."
+        "`pip install -e .` and re-check."
     )
 
 
@@ -131,9 +131,8 @@ def test_dependency_set_is_mutually_consistent():
                     f"{dist} requires {req.name}{req.specifier} but {req.name} {have} is installed"
                 )
 
-    assert not conflicts, (
-        "Installed dependencies conflict with each other:\n  "
-        + "\n  ".join(conflicts)
+    assert not conflicts, "Installed dependencies conflict with each other:\n  " + "\n  ".join(
+        conflicts
     )
 
 
@@ -144,6 +143,7 @@ def test_numba_jit_compiles():
     that causes an ImportError or RuntimeError at JIT compilation time, not at
     import time.
     """
+
     @numba.njit
     def _sum(x: np.ndarray) -> float:
         return np.sum(x)

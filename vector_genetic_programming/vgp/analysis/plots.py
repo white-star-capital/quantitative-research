@@ -10,13 +10,14 @@ graphviz binary is NOT required — nx.bfs_layout() is used for tree layout.
 evaluate() does NOT return a Portfolio object; plot_equity_curves calls
 vbt.Portfolio.from_signals() directly with the same params as evaluate().
 """
+
 from __future__ import annotations
 
 import logging
 
 import matplotlib
 
-matplotlib.use('Agg')  # Must be called before any pyplot import — headless safety
+matplotlib.use("Agg")  # Must be called before any pyplot import — headless safety
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
@@ -57,15 +58,15 @@ def plot_pareto_front(
     sizes = [-ind.fitness.values[2] for ind in hof]  # stored as negative; negate for node count
 
     fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    sc = ax.scatter(sharpes, returns, sizes, c=sharpes, cmap='viridis', s=60, alpha=0.8)
-    ax.set_xlabel('Sharpe Ratio', labelpad=10)
-    ax.set_ylabel('Total Return', labelpad=10)
-    ax.set_zlabel('Tree Size (nodes)', labelpad=10)
-    ax.set_title('NSGA-II Pareto Front — Top Generation', fontsize=13)
-    plt.colorbar(sc, ax=ax, label='Sharpe Ratio', shrink=0.5)
+    ax = fig.add_subplot(111, projection="3d")
+    sc = ax.scatter(sharpes, returns, sizes, c=sharpes, cmap="viridis", s=60, alpha=0.8)
+    ax.set_xlabel("Sharpe Ratio", labelpad=10)
+    ax.set_ylabel("Total Return", labelpad=10)
+    ax.set_zlabel("Tree Size (nodes)", labelpad=10)
+    ax.set_title("NSGA-II Pareto Front — Top Generation", fontsize=13)
+    plt.colorbar(sc, ax=ax, label="Sharpe Ratio", shrink=0.5)
     plt.tight_layout()
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info("Pareto front plot saved to %s (%d individuals)", output_path, len(hof))
 
@@ -141,22 +142,23 @@ def plot_equity_curves(
             cash_sharing=True,
         )
 
-        nav = pf.value()       # pd.Series with DatetimeIndex
-        ax.plot(nav.index, nav.to_numpy(), linewidth=1.2, label=f'HOF rank {rank}')
-        ax.axvline(x=train_end_ts, color='red', linestyle='--', linewidth=1.5,
-                   label='IS / OOS boundary')
-        ax.axvspan(nav.index[0], train_end_ts, alpha=0.05, color='blue', label='IS period')
-        ax.set_ylabel('Portfolio NAV')
+        nav = pf.value()  # pd.Series with DatetimeIndex
+        ax.plot(nav.index, nav.to_numpy(), linewidth=1.2, label=f"HOF rank {rank}")
+        ax.axvline(
+            x=train_end_ts, color="red", linestyle="--", linewidth=1.5, label="IS / OOS boundary"
+        )
+        ax.axvspan(nav.index[0], train_end_ts, alpha=0.05, color="blue", label="IS period")
+        ax.set_ylabel("Portfolio NAV")
         ax.set_title(
-            f'Rank {rank} — height={ind.height} nodes={len(ind)} '
-            f'SR={ind.fitness.values[0]:.3f}',
+            f"Rank {rank} — height={ind.height} nodes={len(ind)} "
+            f"SR={ind.fitness.values[0]:.3f}",
             fontsize=10,
         )
-        ax.legend(loc='upper left', fontsize=8)
+        ax.legend(loc="upper left", fontsize=8)
 
-    axes[-1].set_xlabel('Date')
+    axes[-1].set_xlabel("Date")
     plt.tight_layout()
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info("Equity curve plot saved to %s (%d individuals)", output_path, len(individuals))
 
@@ -199,23 +201,25 @@ def plot_tree_graph(
         pos=pos,
         labels=labels,
         ax=ax,
-        node_color='lightblue',
+        node_color="lightblue",
         node_size=1800,
         font_size=9,
-        font_weight='bold',
+        font_weight="bold",
         arrows=True,
         arrowsize=15,
-        edge_color='gray',
+        edge_color="gray",
     )
     ax.set_title(
-        f'{title} (height={individual.height}, nodes={len(individual)})',
+        f"{title} (height={individual.height}, nodes={len(individual)})",
         fontsize=12,
         pad=20,
     )
     plt.tight_layout()
-    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     logger.info(
         "Tree graph saved to %s (height=%d, nodes=%d)",
-        output_path, individual.height, len(individual),
+        output_path,
+        individual.height,
+        len(individual),
     )

@@ -63,6 +63,7 @@ Because the null dominates the runtime, share ONE warm worker pool
 by capturing it in the `experiment_fn` closure. A pool created per run re-pays
 the numba JIT warmup each time, and there are `n_runs x n_windows` of them.
 """
+
 from __future__ import annotations
 
 import logging
@@ -95,6 +96,7 @@ def _circular_block_indices(
     offsets = (starts[:, None] + np.arange(block_size)[None, :]) % n
     return offsets.reshape(-1)[:n].astype(np.int64)
 
+
 # One experiment: features + close + dates in, result rows out.
 ExperimentFn = Callable[[np.ndarray, pd.DataFrame, pd.DatetimeIndex], list[dict]]
 
@@ -102,6 +104,7 @@ ExperimentFn = Callable[[np.ndarray, pd.DataFrame, pd.DatetimeIndex], list[dict]
 # ---------------------------------------------------------------------------
 # Surrogate data
 # ---------------------------------------------------------------------------
+
 
 def block_bootstrap_ohlcv(
     ohlcv: dict[str, pd.DataFrame],
@@ -251,7 +254,7 @@ def block_bootstrap_ohlcv(
         for t in alive:
             idx = indices[t]
             out_pos = idx.get_indexer(out_dates)
-            keep = out_pos >= 1              # slot i - 1 arrives at idx[i]
+            keep = out_pos >= 1  # slot i - 1 arrives at idx[i]
             if not keep.any():
                 continue
             tgt_pos = out_pos[keep]
@@ -265,7 +268,8 @@ def block_bootstrap_ohlcv(
             "block_bootstrap_ohlcv: %d asset(s) had a stratum with no shared "
             "source window (%s) — cross-asset co-movement is not preserved "
             "there and the null will be easier to beat than it should be",
-            len(degraded), ", ".join(degraded[:5]),
+            len(degraded),
+            ", ".join(degraded[:5]),
         )
 
     out: dict[str, pd.DataFrame] = {}
@@ -319,13 +323,13 @@ def block_bootstrap_ohlcv(
             surrogate["volume"] = vol[geom_src]
 
         cols = [c for c in _OHLCV_COLUMNS if c in surrogate]
-        out[ticker] = pd.DataFrame(
-            {c: surrogate[c] for c in cols}, index=index
-        )
+        out[ticker] = pd.DataFrame({c: surrogate[c] for c in cols}, index=index)
 
     logger.debug(
         "block_bootstrap_ohlcv: %d assets, %d strata, block_size=%d",
-        len(tickers), len(starts), block_size,
+        len(tickers),
+        len(starts),
+        block_size,
     )
     return out
 
@@ -364,10 +368,9 @@ def _window_stats(ohlcv: dict[str, pd.DataFrame], window: pd.DatetimeIndex) -> d
     tickers = [t for t in sorted(ohlcv) if window.isin(ohlcv[t].index).all()]
     if len(tickers) < 2:
         return {}
-    rets = np.column_stack([
-        np.diff(np.log(ohlcv[t].loc[window, "close"].to_numpy(dtype=np.float64)))
-        for t in tickers
-    ])
+    rets = np.column_stack(
+        [np.diff(np.log(ohlcv[t].loc[window, "close"].to_numpy(dtype=np.float64))) for t in tickers]
+    )
     if rets.shape[0] < 3:
         return {}
     corr = np.corrcoef(rets, rowvar=False)
@@ -377,7 +380,7 @@ def _window_stats(ohlcv: dict[str, pd.DataFrame], window: pd.DatetimeIndex) -> d
     eig = np.linalg.eigvalsh(corr)
     return {
         "mean_corr": float(off.mean()),
-        "n_eff_bets": float((eig.sum() ** 2) / (eig ** 2).sum()),
+        "n_eff_bets": float((eig.sum() ** 2) / (eig**2).sum()),
         "ew_vol": float(rets.mean(axis=1).std() * np.sqrt(252)),
         "mean_abs_ret": float(np.abs(rets).mean()),
         "n_assets": len(tickers),
@@ -419,7 +422,7 @@ def window_fidelity_report(
     edges = np.linspace(0, len(calendar), n_windows + 1).astype(int)
     report: list[dict] = []
     for i in range(n_windows):
-        window = calendar[edges[i]:edges[i + 1]]
+        window = calendar[edges[i] : edges[i + 1]]
         obs = _window_stats(observed, window)
         sur = _window_stats(surrogate, window)
         if not obs or not sur:
@@ -458,9 +461,7 @@ def check_surrogate_fidelity(
     report = window_fidelity_report(observed, surrogate, n_windows=n_windows)
     breached = [r for r in report if r["breaches"]]
     if not report:
-        logger.warning(
-            "check_surrogate_fidelity: no comparable windows — fidelity unverified"
-        )
+        logger.warning("check_surrogate_fidelity: no comparable windows — fidelity unverified")
         return report
     if not breached:
         logger.info(
@@ -474,14 +475,19 @@ def check_surrogate_fidelity(
         "SURROGATE FIDELITY BREACH in %d of %d windows — the null control is "
         "not the same problem as the observed run and its p-value is not "
         "trustworthy",
-        len(breached), len(report),
+        len(breached),
+        len(report),
     )
     for r in breached:
         for key in r["breaches"]:
             d = r[key]
             logger.error(
                 "  %s  %s: observed %.4f vs surrogate %.4f (%+.0f%%)",
-                r["window"], key, d["observed"], d["surrogate"], 100 * d["rel"],
+                r["window"],
+                key,
+                d["observed"],
+                d["surrogate"],
+                100 * d["rel"],
             )
     return report
 
@@ -489,6 +495,7 @@ def check_surrogate_fidelity(
 # ---------------------------------------------------------------------------
 # Empirical p-value
 # ---------------------------------------------------------------------------
+
 
 def empirical_p_value(observed: float, null_samples: Sequence[float]) -> float:
     """One-sided empirical p-value: P(null >= observed).
@@ -512,6 +519,7 @@ def empirical_p_value(observed: float, null_samples: Sequence[float]) -> float:
 # ---------------------------------------------------------------------------
 # Result container
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class NullControlResult:
@@ -538,8 +546,9 @@ class NullControlResult:
     @property
     def fidelity_breaches(self) -> list[str]:
         """Windows where the surrogate did not match the observed panel."""
-        return [f"{r['window']}: {', '.join(r['breaches'])}"
-                for r in self.fidelity if r.get("breaches")]
+        return [
+            f"{r['window']}: {', '.join(r['breaches'])}" for r in self.fidelity if r.get("breaches")
+        ]
 
     @property
     def p_value_is(self) -> float:
@@ -551,9 +560,7 @@ class NullControlResult:
 
     @property
     def p_value_typical_is(self) -> float:
-        return empirical_p_value(
-            self.observed_typical_is_sharpe, self.null_typical_is_sharpe
-        )
+        return empirical_p_value(self.observed_typical_is_sharpe, self.null_typical_is_sharpe)
 
     @property
     def p_value_typical_oos(self) -> float:
@@ -562,9 +569,7 @@ class NullControlResult:
         A regime-dependent artifact can clear the max test on one lucky window
         while failing here.
         """
-        return empirical_p_value(
-            self.observed_typical_oos_sharpe, self.null_typical_oos_sharpe
-        )
+        return empirical_p_value(self.observed_typical_oos_sharpe, self.null_typical_oos_sharpe)
 
     @property
     def resolution(self) -> float:
@@ -574,33 +579,52 @@ class NullControlResult:
 
     def summary(self) -> str:
         """Human-readable verdict, honest about what the run count supports."""
+
         def _pct(a: np.ndarray, q: float) -> float:
             a = a[np.isfinite(a)]
             return float(np.percentile(a, q)) if a.size else float("nan")
 
         def _row(label, obs, null, p):
-            return (f"  {label:<24}{obs:+.3f}"
-                    f"   null median {_pct(null, 50):+.3f}"
-                    f"   null p95 {_pct(null, 95):+.3f}"
-                    f"   p = {p:.3f}")
+            return (
+                f"  {label:<24}{obs:+.3f}"
+                f"   null median {_pct(null, 50):+.3f}"
+                f"   null p95 {_pct(null, 95):+.3f}"
+                f"   p = {p:.3f}"
+            )
 
         lines = [
             f"Null control: {self.n_runs} signal-free run(s), "
             f"block_size={self.block_size} bars"
             + (f", {self.n_runs_failed} failed" if self.n_runs_failed else ""),
             "  MAX statistic — could the search stumble on this by chance?",
-            _row("best IS Sharpe", self.observed_best_is_sharpe,
-                 self.null_best_is_sharpe, self.p_value_is),
-            _row("best OOS Sharpe", self.observed_best_oos_sharpe,
-                 self.null_best_oos_sharpe, self.p_value_oos),
+            _row(
+                "best IS Sharpe",
+                self.observed_best_is_sharpe,
+                self.null_best_is_sharpe,
+                self.p_value_is,
+            ),
+            _row(
+                "best OOS Sharpe",
+                self.observed_best_oos_sharpe,
+                self.null_best_oos_sharpe,
+                self.p_value_oos,
+            ),
         ]
         if np.isfinite(self.observed_typical_oos_sharpe):
             lines += [
                 "  TYPICAL statistic — does the median window beat chance?",
-                _row("typical IS Sharpe", self.observed_typical_is_sharpe,
-                     self.null_typical_is_sharpe, self.p_value_typical_is),
-                _row("typical OOS Sharpe", self.observed_typical_oos_sharpe,
-                     self.null_typical_oos_sharpe, self.p_value_typical_oos),
+                _row(
+                    "typical IS Sharpe",
+                    self.observed_typical_is_sharpe,
+                    self.null_typical_is_sharpe,
+                    self.p_value_typical_is,
+                ),
+                _row(
+                    "typical OOS Sharpe",
+                    self.observed_typical_oos_sharpe,
+                    self.null_typical_oos_sharpe,
+                    self.p_value_typical_oos,
+                ),
             ]
             p_max, p_typ = self.p_value_oos, self.p_value_typical_oos
             if np.isfinite(p_max) and np.isfinite(p_typ) and p_max <= 0.05 < p_typ:
@@ -634,9 +658,7 @@ class NullControlResult:
             )
             lines.extend(f"    {b}" for b in self.fidelity_breaches)
         elif self.fidelity:
-            lines.append(
-                f"  surrogate fidelity verified across {len(self.fidelity)} windows"
-            )
+            lines.append(f"  surrogate fidelity verified across {len(self.fidelity)} windows")
         if np.isfinite(self.resolution) and self.resolution > 0.05:
             lines.append(
                 f"  NOTE: {self.n_runs - self.n_runs_failed} usable run(s) cannot "
@@ -650,11 +672,9 @@ class NullControlResult:
 # Runner
 # ---------------------------------------------------------------------------
 
+
 def _measurable(results: list[dict], key: str) -> list[float]:
-    return [
-        float(r[key]) for r in results
-        if key in r and np.isfinite(float(r.get(key, np.nan)))
-    ]
+    return [float(r[key]) for r in results if key in r and np.isfinite(float(r.get(key, np.nan)))]
 
 
 def _typical(results: list[dict], key: str) -> float:
@@ -796,8 +816,12 @@ def run_null_control(
         null_typ_oos.append(st["typical_oos"])
         logger.info(
             "Null run %d/%d: best IS %+.3f / OOS %+.3f | typical IS %+.3f / OOS %+.3f",
-            r + 1, n_runs, st["max_is"], st["max_oos"],
-            st["typical_is"], st["typical_oos"],
+            r + 1,
+            n_runs,
+            st["max_is"],
+            st["max_oos"],
+            st["typical_is"],
+            st["typical_oos"],
         )
 
     return NullControlResult(
@@ -824,7 +848,9 @@ def _default_feature_builder(
 
     fe = FeatureEngine()
     fm = fe.fit_transform(ohlcv)
-    close_prices = pd.DataFrame(
-        {ticker: ohlcv[ticker]["close"] for ticker in fe.retained_assets_}
-    ).reindex(fe.dates_).ffill(limit=3)
+    close_prices = (
+        pd.DataFrame({ticker: ohlcv[ticker]["close"] for ticker in fe.retained_assets_})
+        .reindex(fe.dates_)
+        .ffill(limit=3)
+    )
     return fm, close_prices, fe.dates_

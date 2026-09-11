@@ -6,6 +6,7 @@ evaluated (N in the thousands) shrinks the hurdle multiplier from ~3.2 to ~1.5,
 which is the difference between rejecting a noise-derived strategy and
 certifying it. These tests pin the accounting.
 """
+
 from __future__ import annotations
 
 import math
@@ -16,6 +17,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # TrialAccumulator: streaming statistics must match the batch computation
 # ---------------------------------------------------------------------------
+
 
 def test_accumulator_matches_numpy_std():
     """Welford's algorithm must agree with numpy to floating-point precision."""
@@ -87,7 +89,7 @@ def test_accumulator_merge_with_empty():
     before = (acc.n_finite, acc.sr_std)
 
     empty = TrialAccumulator()
-    empty.add(-np.inf)          # nonfinite only
+    empty.add(-np.inf)  # nonfinite only
     acc.merge(empty)
 
     assert (acc.n_finite, acc.sr_std) == pytest.approx(before)
@@ -111,14 +113,15 @@ def test_accumulator_memory_is_constant():
     # __slots__ with only scalar state: no container can grow with input size
     assert not hasattr(small, "__dict__"), "accumulator must use __slots__"
     for name in TrialAccumulator.__slots__:
-        assert isinstance(getattr(large, name), (int, float)), (
-            f"slot {name!r} is not a scalar — samples are being retained"
-        )
+        assert isinstance(
+            getattr(large, name), (int, float)
+        ), f"slot {name!r} is not a scalar — samples are being retained"
 
 
 # ---------------------------------------------------------------------------
 # TrialSet: usability gating
 # ---------------------------------------------------------------------------
+
 
 def test_trial_set_from_sharpes_drops_nonfinite():
     from vgp.trials import TrialSet

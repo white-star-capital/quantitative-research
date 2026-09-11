@@ -8,6 +8,7 @@ excludes (`*.parquet`), so on a fresh clone the directory was empty and the
 fetcher silently fell through to the Binance REST API. The `block_network`
 fixture now makes the no-network promise enforceable rather than aspirational.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -21,9 +22,7 @@ def test_pipeline_no_nan(synthetic_ohlcv_cache, block_network):
 
     fetcher = BinanceFetcher(cache_dir=synthetic_ohlcv_cache)
     ohlcv = fetcher.fetch_ohlcv(start_date="2021-01-01", end_date="2025-12-31", force_refresh=False)
-    assert len(ohlcv) > 0, (
-        f"fetch_ohlcv returned empty dict; cache_dir={synthetic_ohlcv_cache}"
-    )
+    assert len(ohlcv) > 0, f"fetch_ohlcv returned empty dict; cache_dir={synthetic_ohlcv_cache}"
 
     engine = FeatureEngine()
     arr = engine.fit_transform(ohlcv)
@@ -42,9 +41,9 @@ def test_pipeline_dataloader_returns_dateindex(synthetic_ohlcv_cache, block_netw
     fetcher = DataLoader(cache_dir=synthetic_ohlcv_cache)
     ohlcv = fetcher.fetch_ohlcv(force_refresh=False)
     assert "BTC" in ohlcv, "BTC not found in fetched OHLCV dict"
-    assert isinstance(ohlcv["BTC"].index, pd.DatetimeIndex), (
-        f"Expected DatetimeIndex, got {type(ohlcv['BTC'].index)}"
-    )
+    assert isinstance(
+        ohlcv["BTC"].index, pd.DatetimeIndex
+    ), f"Expected DatetimeIndex, got {type(ohlcv['BTC'].index)}"
     # Verify OHLCV columns present (not close-only)
     for col in ("open", "high", "low", "close", "volume"):
         assert col in ohlcv["BTC"].columns, f"Column '{col}' missing from BTC DataFrame"
@@ -59,7 +58,7 @@ def test_splitter_ordering_assertion():
         splitter.split(
             data=pd.DataFrame(),
             train_end="2024-01-01",
-            val_start="2023-06-01",   # before train_end -- must raise
+            val_start="2023-06-01",  # before train_end -- must raise
             val_end="2024-06-30",
             test_start="2024-07-01",
         )
@@ -97,15 +96,15 @@ def test_splitter_valid_split_dataframe():
     assert len(train) > 0, "Train slice is empty"
     assert len(val) > 0, "Val slice is empty"
     assert len(test) > 0, "Test slice is empty"
-    assert train.index.max() <= pd.Timestamp("2023-12-31"), (
-        f"Train extends past train_end: {train.index.max()}"
-    )
-    assert val.index.min() >= pd.Timestamp("2024-01-01"), (
-        f"Val starts before val_start: {val.index.min()}"
-    )
-    assert test.index.min() >= pd.Timestamp("2024-07-01"), (
-        f"Test starts before test_start: {test.index.min()}"
-    )
+    assert train.index.max() <= pd.Timestamp(
+        "2023-12-31"
+    ), f"Train extends past train_end: {train.index.max()}"
+    assert val.index.min() >= pd.Timestamp(
+        "2024-01-01"
+    ), f"Val starts before val_start: {val.index.min()}"
+    assert test.index.min() >= pd.Timestamp(
+        "2024-07-01"
+    ), f"Test starts before test_start: {test.index.min()}"
     # Non-overlapping
     assert train.index.max() < val.index.min(), "Train and val overlap"
     assert val.index.max() < test.index.min(), "Val and test overlap"
@@ -127,9 +126,9 @@ def test_full_pipeline_split_array(synthetic_ohlcv_cache, block_network):
     arr = engine.fit_transform(ohlcv)
 
     dates = engine.dates_
-    assert dates is not None and len(dates) >= 20, (
-        f"need enough aligned dates to split, got {0 if dates is None else len(dates)}"
-    )
+    assert (
+        dates is not None and len(dates) >= 20
+    ), f"need enough aligned dates to split, got {0 if dates is None else len(dates)}"
     # Quarter the available span: train | val | test, in order, non-overlapping.
     q = len(dates) // 4
     train_end = dates[2 * q - 1]
@@ -145,9 +144,9 @@ def test_full_pipeline_split_array(synthetic_ohlcv_cache, block_network):
         test_start=str(test_start.date()),
         dates=dates,
     )
-    assert train.shape[0] > 0, (
-        f"Train array is empty; engine.dates_ range: {dates.min()} to {dates.max()}"
-    )
+    assert (
+        train.shape[0] > 0
+    ), f"Train array is empty; engine.dates_ range: {dates.min()} to {dates.max()}"
     assert val.shape[0] > 0, "Val array is empty"
     assert test.shape[0] > 0, "Test array is empty"
     # Shapes consistent along F and A axes
@@ -155,9 +154,9 @@ def test_full_pipeline_split_array(synthetic_ohlcv_cache, block_network):
     assert val.shape[1:] == arr.shape[1:], "Val slice has wrong F or A dimension"
     assert test.shape[1:] == arr.shape[1:], "Test slice has wrong F or A dimension"
     # The three slices must partition without overlap and without losing rows
-    assert train.shape[0] + val.shape[0] + test.shape[0] <= arr.shape[0], (
-        "slices sum to more rows than the source array — they overlap"
-    )
+    assert (
+        train.shape[0] + val.shape[0] + test.shape[0] <= arr.shape[0]
+    ), "slices sum to more rows than the source array — they overlap"
 
 
 def test_vgp_submodule_imports():
@@ -184,6 +183,7 @@ def test_vgp_submodule_imports():
 # ---------------------------------------------------------------------------
 # Hermeticity and fetcher failure semantics
 # ---------------------------------------------------------------------------
+
 
 def test_cache_hit_requires_no_network(synthetic_ohlcv_cache, block_network):
     """The whole universe must come from cache — DATA-01.
@@ -232,9 +232,7 @@ def test_force_refresh_bypasses_cache(synthetic_ohlcv_cache, block_network):
         fetcher.fetch_ohlcv(force_refresh=True)
 
 
-def test_partial_fetch_failure_raises_by_default(
-    synthetic_ohlcv_cache, tmp_path, monkeypatch
-):
+def test_partial_fetch_failure_raises_by_default(synthetic_ohlcv_cache, tmp_path, monkeypatch):
     """A partial fetch must raise, not quietly return a smaller universe.
 
     This is the behaviour that used to be silent: `fetch_ohlcv()` wrapped every
@@ -291,7 +289,8 @@ def test_allow_partial_permits_a_declared_smaller_universe(
         shutil.copy(synthetic_ohlcv_cache / f"{symbol}_1d.parquet", partial)
 
     monkeypatch.setattr(
-        requests, "get",
+        requests,
+        "get",
         lambda *a, **k: (_ for _ in ()).throw(
             requests.exceptions.ConnectionError("synthetic failure")
         ),
@@ -322,7 +321,8 @@ def test_min_assets_floor_raises_even_when_partial_allowed(
         shutil.copy(synthetic_ohlcv_cache / f"{symbol}_1d.parquet", partial)
 
     monkeypatch.setattr(
-        requests, "get",
+        requests,
+        "get",
         lambda *a, **k: (_ for _ in ()).throw(
             requests.exceptions.ConnectionError("synthetic failure")
         ),
@@ -340,7 +340,8 @@ def test_empty_universe_always_raises(tmp_path, monkeypatch):
     from vgp.data import BinanceFetcher, FetchError
 
     monkeypatch.setattr(
-        requests, "get",
+        requests,
+        "get",
         lambda *a, **k: (_ for _ in ()).throw(
             requests.exceptions.ConnectionError("synthetic failure")
         ),
@@ -369,13 +370,11 @@ def test_symbol_returning_no_rows_counts_as_a_failure(tmp_path, monkeypatch):
             return None
 
         def json(self):
-            return []          # a real Binance reply for an unlisted pair
+            return []  # a real Binance reply for an unlisted pair
 
     monkeypatch.setattr(requests, "get", lambda *a, **k: _EmptyOkResponse())
 
-    fetcher = BinanceFetcher(
-        cache_dir=tmp_path, symbols=["NOPEUSDT"], use_ccxt_fallback=False
-    )
+    fetcher = BinanceFetcher(cache_dir=tmp_path, symbols=["NOPEUSDT"], use_ccxt_fallback=False)
     with pytest.raises(FetchError) as exc:
         fetcher.fetch_ohlcv(force_refresh=True)
 
@@ -405,9 +404,7 @@ def test_empty_cached_file_triggers_a_refetch(synthetic_ohlcv_cache, tmp_path, b
     empty.index = pd.DatetimeIndex([], name="date")
     empty.to_parquet(cache / "BTCUSDT_1d.parquet")
 
-    fetcher = BinanceFetcher(
-        cache_dir=cache, symbols=["BTCUSDT"], use_ccxt_fallback=False
-    )
+    fetcher = BinanceFetcher(cache_dir=cache, symbols=["BTCUSDT"], use_ccxt_fallback=False)
     with pytest.raises(NetworkAccessAttempted):
         fetcher.fetch_ohlcv(force_refresh=False)
 
@@ -511,7 +508,7 @@ def test_every_feature_is_causal_under_truncation():
     from vgp.data.feature_engine import _compute_features
 
     df = _one_asset()
-    k = 300                                  # truncate here
+    k = 300  # truncate here
     full = _compute_features(df)
     trunc = _compute_features(df.iloc[:k])
 
@@ -522,8 +519,7 @@ def test_every_feature_is_causal_under_truncation():
         a = full[col].iloc[:k].to_numpy(dtype=np.float64)
         b = trunc[col].to_numpy(dtype=np.float64)
         both_nan = np.isnan(a) & np.isnan(b)
-        if not np.allclose(a[~both_nan], b[~both_nan], rtol=0, atol=0,
-                           equal_nan=True):
+        if not np.allclose(a[~both_nan], b[~both_nan], rtol=0, atol=0, equal_nan=True):
             worst = np.nanmax(np.abs(a[~both_nan] - b[~both_nan]))
             leaky.append(f"{col} (max abs diff {worst:.3e})")
 
@@ -547,7 +543,10 @@ def test_causality_holds_at_several_truncation_points(k):
         b = trunc[col].to_numpy(dtype=np.float64)
         both_nan = np.isnan(a) & np.isnan(b)
         np.testing.assert_allclose(
-            a[~both_nan], b[~both_nan], rtol=0, atol=0,
+            a[~both_nan],
+            b[~both_nan],
+            rtol=0,
+            atol=0,
             err_msg=f"{col} is not causal at truncation k={k}",
         )
 
@@ -570,7 +569,10 @@ def test_appending_future_bars_does_not_change_past_features():
         b = tomorrow[col].iloc[:400].to_numpy(dtype=np.float64)
         both_nan = np.isnan(a) & np.isnan(b)
         np.testing.assert_allclose(
-            a[~both_nan], b[~both_nan], rtol=0, atol=0,
+            a[~both_nan],
+            b[~both_nan],
+            rtol=0,
+            atol=0,
             err_msg=(
                 f"{col} was revised by the arrival of future bars — a backtest "
                 f"and a live system would disagree about the past"

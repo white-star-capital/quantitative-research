@@ -6,6 +6,7 @@ selected for availability over the full January 2021 – December 2025
 sample period. These correspond to the most widely recognised coins
 at the start of the sample.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,10 +14,36 @@ from dataclasses import dataclass
 
 # Canonical short tickers
 UNIVERSE_30: list[str] = [
-    "BTC", "ETH", "BNB", "HYPE", "XRP", "PENDLE", "UNI", "JUP", "TAO",
-    "LINK", "ZEC", "DOGE", "MORPHO", "AERO", "SOL", "AVAX", "POL", "WLFI",
-    "WIF", "PEPE", "AAVE", "COMP", "FLUID", "SHIB", "SUSHI", "CRV",
-    "SYRUP", "ENA", "ONDO", "EUL",
+    "BTC",
+    "ETH",
+    "BNB",
+    "HYPE",
+    "XRP",
+    "PENDLE",
+    "UNI",
+    "JUP",
+    "TAO",
+    "LINK",
+    "ZEC",
+    "DOGE",
+    "MORPHO",
+    "AERO",
+    "SOL",
+    "AVAX",
+    "POL",
+    "WLFI",
+    "WIF",
+    "PEPE",
+    "AAVE",
+    "COMP",
+    "FLUID",
+    "SHIB",
+    "SUSHI",
+    "CRV",
+    "SYRUP",
+    "ENA",
+    "ONDO",
+    "EUL",
 ]
 
 assert len(UNIVERSE_30) == 30, "Universe must contain exactly 30 assets."
@@ -50,12 +77,12 @@ class UniverseRecord:
     rather than by reading a log.
     """
 
-    requested: tuple[str, ...]                 # short tickers, as declared
-    fetched: tuple[str, ...]                   # survived the fetch
+    requested: tuple[str, ...]  # short tickers, as declared
+    fetched: tuple[str, ...]  # survived the fetch
     fetch_failed: tuple[tuple[str, str], ...]  # (symbol, reason)
-    dropped_by_features: tuple[str, ...]       # below min_obs_fraction
-    retained: tuple[str, ...]                  # actually used
-    n_dates: int = 0                           # rows in the aligned panel
+    dropped_by_features: tuple[str, ...]  # below min_obs_fraction
+    retained: tuple[str, ...]  # actually used
+    n_dates: int = 0  # rows in the aligned panel
 
     @classmethod
     def from_pipeline(cls, fetch_report, engine) -> UniverseRecord:
@@ -67,9 +94,7 @@ class UniverseRecord:
         """
         dates = getattr(engine, "dates_", None)
         return cls(
-            requested=tuple(
-                s.replace("USDT", "") for s in getattr(fetch_report, "requested", ())
-            ),
+            requested=tuple(s.replace("USDT", "") for s in getattr(fetch_report, "requested", ())),
             fetched=tuple(getattr(fetch_report, "realized", ())),
             fetch_failed=tuple(getattr(fetch_report, "failed", ())),
             dropped_by_features=tuple(getattr(engine, "dropped_assets_", ()) or ()),
@@ -133,8 +158,7 @@ class UniverseRecord:
     def summary(self) -> str:
         lines = [
             f"Universe: {self.n_retained}/{self.n_requested} assets retained "
-            f"[{self.fingerprint}]"
-            + (f", {self.n_dates} aligned dates" if self.n_dates else ""),
+            f"[{self.fingerprint}]" + (f", {self.n_dates} aligned dates" if self.n_dates else ""),
         ]
         if self.fetch_failed:
             lines.append(

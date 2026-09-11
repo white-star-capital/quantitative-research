@@ -5,6 +5,7 @@ not inside functions. multiprocessing.Pool workers re-import this module; if
 creator.create() is inside a function it will not run in workers, causing
 AttributeError on Individual.fitness.
 """
+
 from __future__ import annotations
 
 import random

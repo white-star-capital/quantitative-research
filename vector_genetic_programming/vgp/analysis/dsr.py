@@ -35,6 +35,7 @@ over few, tightly-clustered trials is weak evidence, not strong evidence. Read i
 alongside n_trials and the spread of the trial Sharpes, both of which
 attach_dsr() records.
 """
+
 from __future__ import annotations
 
 import logging
@@ -154,9 +155,10 @@ def compute_dsr(
     )
     if not trial_set.is_usable:
         logger.debug(
-            "compute_dsr: unusable trial set (n=%d, sr_std=%s, label=%s) — "
-            "returning NaN",
-            trial_set.n_trials, trial_set.sr_std, trial_set.label,
+            "compute_dsr: unusable trial set (n=%d, sr_std=%s, label=%s) — " "returning NaN",
+            trial_set.n_trials,
+            trial_set.sr_std,
+            trial_set.label,
         )
         return float("nan")
 
@@ -269,7 +271,8 @@ def attach_dsr(
             "to the %d reported best(s) as the trial set. The multiple-testing "
             "correction is then sized to the winners, not to the search, and "
             "understates N by orders of magnitude",
-            len(results), bests_set.n_trials,
+            len(results),
+            bests_set.n_trials,
         )
 
     for row in results:
@@ -289,26 +292,33 @@ def attach_dsr(
             continue
 
         row["dsr"] = compute_dsr(
-            is_returns, sr_hat=sr_hat,
-            trial_sharpes=evaluated_set, periods_per_year=periods_per_year,
+            is_returns,
+            sr_hat=sr_hat,
+            trial_sharpes=evaluated_set,
+            periods_per_year=periods_per_year,
         )
         row["dsr_bests_only"] = compute_dsr(
-            is_returns, sr_hat=sr_hat,
-            trial_sharpes=bests_set, periods_per_year=periods_per_year,
+            is_returns,
+            sr_hat=sr_hat,
+            trial_sharpes=bests_set,
+            periods_per_year=periods_per_year,
         )
 
     logger.info(
         "attach_dsr: %d rows | primary trial set '%s' n=%d sr_std=%.4f "
         "(%d evaluations) | bests-only n=%d sr_std=%.4f",
-        len(results), evaluated_set.label, evaluated_set.n_trials,
-        evaluated_set.sr_std, evaluated.n_evaluations,
-        bests_set.n_trials, bests_set.sr_std,
+        len(results),
+        evaluated_set.label,
+        evaluated_set.n_trials,
+        evaluated_set.sr_std,
+        evaluated.n_evaluations,
+        bests_set.n_trials,
+        bests_set.sr_std,
     )
 
     finite_primary = [r["dsr"] for r in results if np.isfinite(r.get("dsr", np.nan))]
     finite_bests = [
-        r["dsr_bests_only"] for r in results
-        if np.isfinite(r.get("dsr_bests_only", np.nan))
+        r["dsr_bests_only"] for r in results if np.isfinite(r.get("dsr_bests_only", np.nan))
     ]
     if finite_primary and finite_bests:
         lo, hi = max(finite_primary), max(finite_bests)
@@ -317,7 +327,8 @@ def attach_dsr(
                 "attach_dsr: the two trial-set conventions straddle 0.95 "
                 "(best dsr=%.4f, best dsr_bests_only=%.4f) — significance is "
                 "an artifact of how trials are counted, not a result",
-                lo, hi,
+                lo,
+                hi,
             )
 
     if evaluated_set.n_trials < 100:
@@ -372,8 +383,7 @@ def aggregate_seeds(seed_results: list[dict]) -> dict:
 
     if valid_oos.size == 0:
         logger.warning(
-            "aggregate_seeds: no seed produced a valid OOS Sharpe (%d rows) — "
-            "medians are NaN",
+            "aggregate_seeds: no seed produced a valid OOS Sharpe (%d rows) — " "medians are NaN",
             len(seed_results),
         )
         out = dict(empty)
@@ -411,9 +421,7 @@ def save_results_csv(results: list[dict], path: str) -> None:
     path : str
         Output file path. Parent directory must exist.
     """
-    public = [
-        {k: v for k, v in row.items() if not k.startswith("_")} for row in results
-    ]
+    public = [{k: v for k, v in row.items() if not k.startswith("_")} for row in results]
     df = pd.DataFrame(public)
 
     # A -inf here would mean a worst-fitness sentinel leaked into reporting.
@@ -424,7 +432,8 @@ def save_results_csv(results: list[dict], path: str) -> None:
                 logger.error(
                     "save_results_csv: %d infinite value(s) in '%s' — a worst-fitness "
                     "sentinel leaked into reporting; these are not measurements",
-                    n_inf, col,
+                    n_inf,
+                    col,
                 )
 
     df.to_csv(path, index=False)

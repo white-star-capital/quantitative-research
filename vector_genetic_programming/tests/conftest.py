@@ -19,6 +19,7 @@ the real cache-read path with no network and no repository binaries.
 test that reaches for HTTP fails immediately with a clear message instead of
 hanging, flaking, or quietly depending on someone's local cache.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

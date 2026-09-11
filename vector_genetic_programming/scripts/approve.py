@@ -15,6 +15,7 @@ Exit codes
     0 — all scenarios passed
     1 — one or more scenarios failed
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,6 +28,7 @@ from dataclasses import dataclass
 # ---------------------------------------------------------------------------
 # Minimal scenario registry
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Scenario:
@@ -41,15 +43,18 @@ _registry: list[Scenario] = []
 
 def scenario(phase: int, name: str, description: str):
     """Decorator that registers a verification scenario for a phase."""
+
     def decorator(fn: Callable[[], None]) -> Callable[[], None]:
         _registry.append(Scenario(phase=phase, name=name, description=description, fn=fn))
         return fn
+
     return decorator
 
 
 # ---------------------------------------------------------------------------
 # Phase 4 scenarios
 # ---------------------------------------------------------------------------
+
 
 @scenario(
     phase=4,
@@ -119,9 +124,11 @@ def verify_phase4_parallel_eval() -> None:
 # Runner
 # ---------------------------------------------------------------------------
 
+
 def _current_phase() -> int | None:
     """Read current phase from STATE.md, return None if unreadable."""
     from pathlib import Path
+
     state = Path(__file__).parent.parent / ".planning" / "STATE.md"
     if not state.exists():
         return None
@@ -142,8 +149,11 @@ def run_scenarios(phase_filter: int | None) -> bool:
         print(f"No scenarios registered for {target}.")
         return True
 
-    print(f"\nRunning {len(scenarios)} scenario(s)" +
-          (f" for phase {phase_filter}" if phase_filter else "") + ":\n")
+    print(
+        f"\nRunning {len(scenarios)} scenario(s)"
+        + (f" for phase {phase_filter}" if phase_filter else "")
+        + ":\n"
+    )
 
     passed = failed = 0
     for s in scenarios:
@@ -180,7 +190,9 @@ def run_scenarios(phase_filter: int | None) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run human verification scenarios.")
     parser.add_argument(
-        "--phase", type=int, default=None,
+        "--phase",
+        type=int,
+        default=None,
         help="Phase number to verify (default: current phase from STATE.md)",
     )
     args = parser.parse_args()

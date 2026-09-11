@@ -11,6 +11,7 @@ only the exploitable ordering destroyed. A surrogate that is too easy to beat
 manufactures significance; one that is too hard hides real signal. These tests
 pin those properties.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -51,6 +52,7 @@ def _log_returns(data: dict, ticker: str) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Surrogate shape and validity
 # ---------------------------------------------------------------------------
+
 
 def test_surrogate_preserves_shape_index_and_columns(ohlcv):
     """The surrogate must be a drop-in replacement for the real data."""
@@ -96,14 +98,14 @@ def test_surrogate_preserves_return_distribution(ohlcv):
 
     for t in ohlcv:
         real, fake = _log_returns(ohlcv, t), _log_returns(sur, t)
-        assert fake.std() == pytest.approx(real.std(), rel=0.20), (
-            f"{t}: surrogate volatility {fake.std():.5f} vs real {real.std():.5f}"
-        )
+        assert fake.std() == pytest.approx(
+            real.std(), rel=0.20
+        ), f"{t}: surrogate volatility {fake.std():.5f} vs real {real.std():.5f}"
         real_kurt = float(pd.Series(real).kurt())
         fake_kurt = float(pd.Series(fake).kurt())
-        assert abs(fake_kurt - real_kurt) < 1.5, (
-            f"{t}: tail shape changed materially ({real_kurt:.2f} -> {fake_kurt:.2f})"
-        )
+        assert (
+            abs(fake_kurt - real_kurt) < 1.5
+        ), f"{t}: tail shape changed materially ({real_kurt:.2f} -> {fake_kurt:.2f})"
 
 
 def test_surrogate_preserves_cross_asset_correlation(ohlcv):
@@ -158,12 +160,17 @@ def test_surrogate_serial_structure_decays_with_block_size(ohlcv):
     idx = pd.date_range("2024-01-01", periods=_T, freq="D")
     ret = np.zeros(_T)
     for i in range(1, _T):
-        ret[i] = 0.85 * ret[i - 1] + rng.standard_normal() * 0.004   # AR(1)
+        ret[i] = 0.85 * ret[i - 1] + rng.standard_normal() * 0.004  # AR(1)
     close = 100.0 * np.exp(np.cumsum(ret))
     trending = {
         "T": pd.DataFrame(
-            {"open": close, "high": close * 1.002, "low": close * 0.998,
-             "close": close, "volume": np.ones(_T)},
+            {
+                "open": close,
+                "high": close * 1.002,
+                "low": close * 0.998,
+                "close": close,
+                "volume": np.ones(_T),
+            },
             index=idx,
         )
     }
@@ -183,12 +190,12 @@ def test_surrogate_serial_structure_decays_with_block_size(ohlcv):
         f"block_size=1 is a full iid shuffle and must destroy serial structure, "
         f"got autocorrelation {acs[1]:.3f}"
     )
-    assert acs[1] < acs[5] < acs[50], (
-        f"predictability must increase monotonically with block size, got {acs}"
-    )
-    assert acs[50] < real_ac, (
-        f"even long blocks must break some structure ({real_ac:.3f} -> {acs[50]:.3f})"
-    )
+    assert (
+        acs[1] < acs[5] < acs[50]
+    ), f"predictability must increase monotonically with block size, got {acs}"
+    assert (
+        acs[50] < real_ac
+    ), f"even long blocks must break some structure ({real_ac:.3f} -> {acs[50]:.3f})"
 
 
 def test_surrogate_rejects_bad_block_size(ohlcv):
@@ -213,9 +220,9 @@ def test_surrogate_handles_ragged_asset_histories(ohlcv):
 
     ragged = {k: v.copy() for k, v in ohlcv.items()}
     short = sorted(ragged)[0]
-    ragged[short] = ragged[short].iloc[-60:]        # late listing
+    ragged[short] = ragged[short].iloc[-60:]  # late listing
     tiny = sorted(ragged)[1]
-    ragged[tiny] = ragged[tiny].iloc[-1:]           # single bar, degenerate
+    ragged[tiny] = ragged[tiny].iloc[-1:]  # single bar, degenerate
 
     sur = block_bootstrap_ohlcv(ragged, np.random.default_rng(0), block_size=20)
 
@@ -259,9 +266,11 @@ def test_surrogate_handles_empty_and_tiny_input():
     assert block_bootstrap_ohlcv({}, np.random.default_rng(0)) == {}
 
     idx = pd.date_range("2024-01-01", periods=1, freq="D")
-    tiny = {"X": pd.DataFrame(
-        {"open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0], "volume": [1.0]},
-        index=idx)}
+    tiny = {
+        "X": pd.DataFrame(
+            {"open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0], "volume": [1.0]}, index=idx
+        )
+    }
     out = block_bootstrap_ohlcv(tiny, np.random.default_rng(0), block_size=20)
     assert len(out["X"]) == 1
 
@@ -269,6 +278,7 @@ def test_surrogate_handles_empty_and_tiny_input():
 # ---------------------------------------------------------------------------
 # Empirical p-value
 # ---------------------------------------------------------------------------
+
 
 def test_empirical_p_value_never_zero():
     """The (1+k)/(1+n) form must not claim more resolution than n runs support."""
@@ -311,14 +321,17 @@ def test_empirical_p_value_ignores_nonfinite_null_samples():
 # best_sharpes: unmeasured rows are not bad rows
 # ---------------------------------------------------------------------------
 
+
 def test_best_sharpes_skips_unmeasured_rows():
     from vgp.analysis import best_sharpes
 
-    is_sr, oos_sr = best_sharpes([
-        {"is_sharpe": 1.0, "oos_sharpe": float("nan")},
-        {"is_sharpe": 2.0, "oos_sharpe": 0.4},
-        {"is_sharpe": float("nan"), "oos_sharpe": -np.inf},
-    ])
+    is_sr, oos_sr = best_sharpes(
+        [
+            {"is_sharpe": 1.0, "oos_sharpe": float("nan")},
+            {"is_sharpe": 2.0, "oos_sharpe": 0.4},
+            {"is_sharpe": float("nan"), "oos_sharpe": -np.inf},
+        ]
+    )
     assert is_sr == pytest.approx(2.0)
     assert oos_sr == pytest.approx(0.4)
 
@@ -333,6 +346,7 @@ def test_best_sharpes_all_unmeasured_is_nan():
 # ---------------------------------------------------------------------------
 # run_null_control orchestration (stubbed experiment — no evolution runs)
 # ---------------------------------------------------------------------------
+
 
 def test_run_null_control_detects_noise_mimicking_the_real_run(ohlcv):
     """When the null matches the observed result, p must be large.
@@ -435,9 +449,11 @@ def test_run_null_control_uses_a_fresh_surrogate_each_run(ohlcv):
         return float(surrogate[t]["close"].to_numpy().sum()), None, None
 
     run_null_control(
-        ohlcv=ohlcv, experiment_fn=recorder,
+        ohlcv=ohlcv,
+        experiment_fn=recorder,
         observed_results=[{"is_sharpe": 1.0, "oos_sharpe": 0.0}],
-        n_runs=5, feature_builder=builder,
+        n_runs=5,
+        feature_builder=builder,
     )
 
     assert len(set(seen)) == 5, f"surrogates repeated across runs: {seen}"
@@ -448,8 +464,10 @@ def test_run_null_control_rejects_zero_runs(ohlcv):
 
     with pytest.raises(ValueError, match="n_runs"):
         run_null_control(
-            ohlcv=ohlcv, experiment_fn=lambda *a: [],
-            observed_results=[], n_runs=0,
+            ohlcv=ohlcv,
+            experiment_fn=lambda *a: [],
+            observed_results=[],
+            n_runs=0,
             feature_builder=lambda o: (None, None, None),
         )
 
@@ -534,8 +552,13 @@ def test_ragged_surrogate_draws_the_same_source_date_for_every_asset():
     rng = np.random.default_rng(5)
     close = 100.0 * np.exp(np.cumsum(rng.standard_normal(300) * 0.01))
     base = pd.DataFrame(
-        {"open": close, "high": close * 1.002, "low": close * 0.998,
-         "close": close, "volume": np.full(300, 1e6)},
+        {
+            "open": close,
+            "high": close * 1.002,
+            "low": close * 0.998,
+            "close": close,
+            "volume": np.full(300, 1e6),
+        },
         index=idx,
     )
     panel = {"LONG": base, "SHORT": base.iloc[-120:].copy()}
@@ -543,15 +566,18 @@ def test_ragged_surrogate_draws_the_same_source_date_for_every_asset():
     sur = block_bootstrap_ohlcv(panel, np.random.default_rng(1), block_size=15)
 
     overlap = panel["SHORT"].index
-    long_ret = np.diff(np.log(
-        sur["LONG"].loc[overlap, "close"].to_numpy(dtype=np.float64)))
-    short_ret = np.diff(np.log(
-        sur["SHORT"].loc[overlap, "close"].to_numpy(dtype=np.float64)))
+    long_ret = np.diff(np.log(sur["LONG"].loc[overlap, "close"].to_numpy(dtype=np.float64)))
+    short_ret = np.diff(np.log(sur["SHORT"].loc[overlap, "close"].to_numpy(dtype=np.float64)))
 
-    np.testing.assert_allclose(long_ret, short_ret, atol=1e-9, err_msg=(
-        "assets with identical source returns produced different surrogate "
-        "returns over the overlap — they are not drawing the same source date"
-    ))
+    np.testing.assert_allclose(
+        long_ret,
+        short_ret,
+        atol=1e-9,
+        err_msg=(
+            "assets with identical source returns produced different surrogate "
+            "returns over the overlap — they are not drawing the same source date"
+        ),
+    )
 
 
 def test_ragged_surrogate_keeps_pre_overlap_history_out_of_the_overlap():
@@ -569,8 +595,13 @@ def test_ragged_surrogate_keeps_pre_overlap_history_out_of_the_overlap():
     late = rng.standard_normal(200) * 0.05
     close = 100.0 * np.exp(np.cumsum(np.concatenate([early, late])))
     long_df = pd.DataFrame(
-        {"open": close, "high": close * 1.002, "low": close * 0.998,
-         "close": close, "volume": np.full(400, 1e6)},
+        {
+            "open": close,
+            "high": close * 1.002,
+            "low": close * 0.998,
+            "close": close,
+            "volume": np.full(400, 1e6),
+        },
         index=idx,
     )
     panel = {"LONG": long_df, "SHORT": long_df.iloc[-200:].copy()}
@@ -597,7 +628,7 @@ def test_ragged_surrogate_retention_decision_matches_real_data():
     from vgp.analysis import block_bootstrap_ohlcv
     from vgp.data import FeatureEngine
 
-    panel = _ragged_panel(n_short=60)   # short enough to be dropped
+    panel = _ragged_panel(n_short=60)  # short enough to be dropped
     sur = block_bootstrap_ohlcv(panel, np.random.default_rng(4), block_size=20)
 
     real_engine, sur_engine = FeatureEngine(), FeatureEngine()
@@ -609,9 +640,9 @@ def test_ragged_surrogate_retention_decision_matches_real_data():
         f"{sur_engine.retained_assets_}"
     )
     assert real_engine.dropped_assets_ == sur_engine.dropped_assets_
-    assert real_arr.shape == sur_arr.shape, (
-        f"panel shape differs: {real_arr.shape} vs {sur_arr.shape}"
-    )
+    assert (
+        real_arr.shape == sur_arr.shape
+    ), f"panel shape differs: {real_arr.shape} vs {sur_arr.shape}"
 
 
 # ---------------------------------------------------------------------------
@@ -633,22 +664,20 @@ def test_ragged_surrogate_retention_decision_matches_real_data():
 
 
 def _mean_pairwise_corr(data: dict, tickers, window) -> float:
-    rets = np.column_stack([
-        np.diff(np.log(data[t].loc[window, "close"].to_numpy(dtype=np.float64)))
-        for t in tickers
-    ])
+    rets = np.column_stack(
+        [np.diff(np.log(data[t].loc[window, "close"].to_numpy(dtype=np.float64))) for t in tickers]
+    )
     c = np.corrcoef(rets, rowvar=False)
     return float(c[~np.eye(c.shape[0], dtype=bool)].mean())
 
 
 def _effective_bets(data: dict, tickers, window) -> float:
     """Participation ratio of the correlation spectrum: independent directions."""
-    rets = np.column_stack([
-        np.diff(np.log(data[t].loc[window, "close"].to_numpy(dtype=np.float64)))
-        for t in tickers
-    ])
+    rets = np.column_stack(
+        [np.diff(np.log(data[t].loc[window, "close"].to_numpy(dtype=np.float64))) for t in tickers]
+    )
     eig = np.linalg.eigvalsh(np.corrcoef(rets, rowvar=False))
-    return float((eig.sum() ** 2) / (eig ** 2).sum())
+    return float((eig.sum() ** 2) / (eig**2).sum())
 
 
 @pytest.fixture
@@ -665,11 +694,16 @@ def late_listing_panel():
     market = rng.standard_normal(T) * 0.02
     panel = {}
     for a in range(5):
-        ret = 0.9 * market + rng.standard_normal(T) * 0.005   # strongly correlated
+        ret = 0.9 * market + rng.standard_normal(T) * 0.005  # strongly correlated
         close = 100.0 * np.exp(np.cumsum(ret))
         df = pd.DataFrame(
-            {"open": close, "high": close * 1.004, "low": close * 0.996,
-             "close": close, "volume": np.full(T, 1e6)},
+            {
+                "open": close,
+                "high": close * 1.004,
+                "low": close * 0.996,
+                "close": close,
+                "volume": np.full(T, 1e6),
+            },
             index=idx,
         )
         panel[f"LONG{a}"] = df
@@ -690,7 +724,7 @@ def test_correlation_preserved_in_an_early_window_despite_a_late_listing(
 
     panel, idx = late_listing_panel
     long_tickers = [t for t in panel if t.startswith("LONG")]
-    early = idx[:400]                     # ends long before LATE lists
+    early = idx[:400]  # ends long before LATE lists
 
     sur = block_bootstrap_ohlcv(panel, np.random.default_rng(0), block_size=20)
 
@@ -780,6 +814,7 @@ def test_full_sample_correlation_alone_would_not_catch_this(late_listing_panel):
 # itself, rather than relying on someone running the diagnostic script.
 # ---------------------------------------------------------------------------
 
+
 def test_fidelity_report_passes_for_a_faithful_surrogate(late_listing_panel):
     """A correct surrogate must clear the check in every window."""
     from vgp.analysis import block_bootstrap_ohlcv, window_fidelity_report
@@ -811,13 +846,18 @@ def test_fidelity_report_catches_decorrelated_surrogate(late_listing_panel):
     for t, df in panel.items():
         close = df["close"].to_numpy(dtype=np.float64)
         r = np.diff(np.log(close))
-        rng.shuffle(r)                      # per-asset, independent
+        rng.shuffle(r)  # per-asset, independent
         new = np.empty_like(close)
         new[0] = close[0]
         new[1:] = close[0] * np.exp(np.cumsum(r))
         broken[t] = pd.DataFrame(
-            {"open": new, "high": new * 1.004, "low": new * 0.996,
-             "close": new, "volume": df["volume"].to_numpy()},
+            {
+                "open": new,
+                "high": new * 1.004,
+                "low": new * 0.996,
+                "close": new,
+                "volume": df["volume"].to_numpy(),
+            },
             index=df.index,
         )
 
@@ -826,9 +866,9 @@ def test_fidelity_report_catches_decorrelated_surrogate(late_listing_panel):
 
     assert breached, "a fully decorrelated surrogate was not flagged"
     flagged = {k for r in breached for k in r["breaches"]}
-    assert "mean_corr" in flagged or "n_eff_bets" in flagged, (
-        f"the cross-sectional statistics did not trip; flagged only {flagged}"
-    )
+    assert (
+        "mean_corr" in flagged or "n_eff_bets" in flagged
+    ), f"the cross-sectional statistics did not trip; flagged only {flagged}"
 
 
 def test_check_surrogate_fidelity_logs_breaches(late_listing_panel, caplog):
@@ -848,17 +888,22 @@ def test_check_surrogate_fidelity_logs_breaches(late_listing_panel, caplog):
         new[0] = close[0]
         new[1:] = close[0] * np.exp(np.cumsum(r))
         broken[t] = pd.DataFrame(
-            {"open": new, "high": new * 1.004, "low": new * 0.996,
-             "close": new, "volume": df["volume"].to_numpy()},
+            {
+                "open": new,
+                "high": new * 1.004,
+                "low": new * 0.996,
+                "close": new,
+                "volume": df["volume"].to_numpy(),
+            },
             index=df.index,
         )
 
     with caplog.at_level(logging.ERROR, logger="vgp.analysis.null_control"):
         check_surrogate_fidelity(panel, broken)
 
-    assert any("FIDELITY BREACH" in m for m in caplog.messages), (
-        "an unfaithful surrogate did not produce an ERROR-level log"
-    )
+    assert any(
+        "FIDELITY BREACH" in m for m in caplog.messages
+    ), "an unfaithful surrogate did not produce an ERROR-level log"
 
 
 def test_null_result_summary_surfaces_a_fidelity_breach():
@@ -866,20 +911,19 @@ def test_null_result_summary_surfaces_a_fidelity_breach():
     from vgp.analysis import NullControlResult
 
     res = NullControlResult(
-        n_runs=19, block_size=20,
-        observed_best_is_sharpe=3.7, observed_best_oos_sharpe=1.0,
+        n_runs=19,
+        block_size=20,
+        observed_best_is_sharpe=3.7,
+        observed_best_oos_sharpe=1.0,
         null_best_is_sharpe=np.full(19, 1.0),
         null_best_oos_sharpe=np.full(19, 0.0),
-        fidelity=[{"window": "2024-01-01..2024-06-30",
-                   "breaches": ["mean_corr", "n_eff_bets"]}],
+        fidelity=[{"window": "2024-01-01..2024-06-30", "breaches": ["mean_corr", "n_eff_bets"]}],
     )
 
     summary = res.summary()
     assert "FIDELITY BREACH" in summary
     assert "not trustworthy" in summary
-    assert res.fidelity_breaches == [
-        "2024-01-01..2024-06-30: mean_corr, n_eff_bets"
-    ]
+    assert res.fidelity_breaches == ["2024-01-01..2024-06-30: mean_corr, n_eff_bets"]
 
 
 def test_null_result_summary_confirms_verified_fidelity():
@@ -887,12 +931,13 @@ def test_null_result_summary_confirms_verified_fidelity():
     from vgp.analysis import NullControlResult
 
     res = NullControlResult(
-        n_runs=19, block_size=20,
-        observed_best_is_sharpe=3.7, observed_best_oos_sharpe=1.0,
+        n_runs=19,
+        block_size=20,
+        observed_best_is_sharpe=3.7,
+        observed_best_oos_sharpe=1.0,
         null_best_is_sharpe=np.full(19, 1.0),
         null_best_oos_sharpe=np.full(19, 0.0),
-        fidelity=[{"window": "w1", "breaches": []},
-                  {"window": "w2", "breaches": []}],
+        fidelity=[{"window": "w1", "breaches": []}, {"window": "w2", "breaches": []}],
     )
 
     assert "fidelity verified across 2 windows" in res.summary()
@@ -917,8 +962,7 @@ def _rows(per_window):
     out = []
     for wid, seeds in per_window.items():
         for i, v in enumerate(seeds):
-            out.append({"window_id": wid, "seed": i,
-                        "is_sharpe": 3.0, "oos_sharpe": v})
+            out.append({"window_id": wid, "seed": i, "is_sharpe": 3.0, "oos_sharpe": v})
     return out
 
 
@@ -926,16 +970,19 @@ def test_typical_is_median_of_per_window_medians():
     """Reduce within a window first, then across windows."""
     from vgp.analysis import summary_sharpes
 
-    stats = summary_sharpes(_rows({
-        0: [1.0, 1.2, 1.1],     # median 1.1
-        1: [0.0, 0.2, 0.1],     # median 0.1
-        2: [-1.0, -0.8, -0.9],  # median -0.9
-    }))
+    stats = summary_sharpes(
+        _rows(
+            {
+                0: [1.0, 1.2, 1.1],  # median 1.1
+                1: [0.0, 0.2, 0.1],  # median 0.1
+                2: [-1.0, -0.8, -0.9],  # median -0.9
+            }
+        )
+    )
 
     assert stats["max_oos"] == pytest.approx(1.2)
     assert stats["typical_oos"] == pytest.approx(0.1), (
-        f"typical should be the median of (1.1, 0.1, -0.9) = 0.1, got "
-        f"{stats['typical_oos']}"
+        f"typical should be the median of (1.1, 0.1, -0.9) = 0.1, got " f"{stats['typical_oos']}"
     )
 
 
@@ -967,24 +1014,25 @@ def test_max_can_pass_while_typical_fails():
     from vgp.analysis import NullControlResult
 
     res = NullControlResult(
-        n_runs=19, block_size=20,
-        observed_best_is_sharpe=3.0, observed_best_oos_sharpe=2.5,
-        observed_typical_is_sharpe=3.0, observed_typical_oos_sharpe=0.1,
+        n_runs=19,
+        block_size=20,
+        observed_best_is_sharpe=3.0,
+        observed_best_oos_sharpe=2.5,
+        observed_typical_is_sharpe=3.0,
+        observed_typical_oos_sharpe=0.1,
         null_best_is_sharpe=np.full(19, 2.0),
-        null_best_oos_sharpe=np.full(19, 1.0),      # observed max 2.5 beats all
+        null_best_oos_sharpe=np.full(19, 1.0),  # observed max 2.5 beats all
         null_typical_is_sharpe=np.full(19, 3.0),
-        null_typical_oos_sharpe=np.full(19, 0.5),   # observed typical 0.1 beats none
+        null_typical_oos_sharpe=np.full(19, 0.5),  # observed typical 0.1 beats none
     )
 
     assert res.p_value_oos < 0.06, f"max should clear, got {res.p_value_oos}"
-    assert res.p_value_typical_oos > 0.9, (
-        f"typical should fail, got {res.p_value_typical_oos}"
-    )
+    assert res.p_value_typical_oos > 0.9, f"typical should fail, got {res.p_value_typical_oos}"
     summary = res.summary()
     assert "TYPICAL statistic" in summary
-    assert "regime-dependent artifact" in summary, (
-        "the summary must call out max-passes/typical-fails explicitly"
-    )
+    assert (
+        "regime-dependent artifact" in summary
+    ), "the summary must call out max-passes/typical-fails explicitly"
 
 
 def test_summary_omits_typical_when_not_computed():
@@ -992,8 +1040,10 @@ def test_summary_omits_typical_when_not_computed():
     from vgp.analysis import NullControlResult
 
     res = NullControlResult(
-        n_runs=19, block_size=20,
-        observed_best_is_sharpe=3.0, observed_best_oos_sharpe=1.0,
+        n_runs=19,
+        block_size=20,
+        observed_best_is_sharpe=3.0,
+        observed_best_oos_sharpe=1.0,
         null_best_is_sharpe=np.full(19, 1.0),
         null_best_oos_sharpe=np.full(19, 0.0),
     )
@@ -1010,13 +1060,15 @@ def test_run_null_control_records_both_statistics(ohlcv):
         return _rows({0: [0.4, 0.5, 0.6], 1: [-0.1, 0.0, 0.1]})
 
     res = run_null_control(
-        ohlcv=ohlcv, experiment_fn=stub,
+        ohlcv=ohlcv,
+        experiment_fn=stub,
         observed_results=_rows({0: [1.0, 1.1, 1.2], 1: [0.8, 0.9, 1.0]}),
-        n_runs=5, feature_builder=lambda o: (None, None, None),
+        n_runs=5,
+        feature_builder=lambda o: (None, None, None),
     )
 
     assert res.null_typical_oos_sharpe.size == 5
     # per-window medians are 1.1 and 0.9, so the typical is their median: 1.0
     assert res.observed_typical_oos_sharpe == pytest.approx(1.0)
     assert np.isfinite(res.p_value_typical_oos)
-    assert res.p_value_typical_oos == pytest.approx(1 / 6)   # observed beats all 5
+    assert res.p_value_typical_oos == pytest.approx(1 / 6)  # observed beats all 5

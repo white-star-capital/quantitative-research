@@ -13,6 +13,7 @@ IMPORTANT: eaMuPlusLambda is NOT used directly because it has no per-generation
 callback hook required for checkpointing. The loop replicates eaMuPlusLambda's
 body using algorithms.varOr() — identical logic, full checkpoint control.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -50,6 +51,7 @@ logger = logging.getLogger(__name__)
 # CLAUDE.md constraint #8: runs in each spawn worker before any evaluation.
 # ---------------------------------------------------------------------------
 
+
 def _jit_warmup() -> None:
     """Trigger numba JIT compilation in spawn worker before evaluation begins.
 
@@ -84,6 +86,7 @@ def _jit_warmup() -> None:
 # ---------------------------------------------------------------------------
 # Toolbox builder
 # ---------------------------------------------------------------------------
+
 
 def _build_toolbox(
     pset: gp.PrimitiveSetTyped,
@@ -154,6 +157,7 @@ def _build_toolbox(
 # Worker pool — create ONCE and reuse across windows, seeds and null runs
 # ---------------------------------------------------------------------------
 
+
 @contextlib.contextmanager
 def evolution_pool(n_jobs: int) -> Iterator[object | None]:
     """A spawn Pool with numba JIT already warm, reusable across runs.
@@ -221,6 +225,7 @@ def evolution_pool(n_jobs: int) -> Iterator[object | None]:
 # Statistics builder
 # ---------------------------------------------------------------------------
 
+
 def _build_stats() -> tools.MultiStatistics:
     """Build MultiStatistics capturing Sharpe and tree size per generation (EVO-06).
 
@@ -249,6 +254,7 @@ def _build_stats() -> tools.MultiStatistics:
 # Logbook flattening for MLflow
 # ---------------------------------------------------------------------------
 
+
 def _flatten_record(record: dict) -> dict:
     """Flatten a MultiStatistics logbook record to a flat {chapter__key: value} dict.
 
@@ -268,6 +274,7 @@ def _flatten_record(record: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Main evolution function
 # ---------------------------------------------------------------------------
+
 
 def run_evolution(
     config: EvolutionConfig,
@@ -323,9 +330,7 @@ def run_evolution(
         )
     T, F, A = feature_matrix.shape
     if F != 12:
-        raise ValueError(
-            f"Expected F=12 feature columns (FEATURE_NAMES), got {F}"
-        )
+        raise ValueError(f"Expected F=12 feature columns (FEATURE_NAMES), got {F}")
 
     # Seed all RNGs before anything else (EXP-03 — reproducibility)
     random.seed(config.seed)
@@ -464,11 +469,15 @@ def run_evolution(
                 tracker.log_metrics(_flatten_record(record), step=gen)
 
                 sharpe_max = record.get("fitness", {}).get("sharpe_max", float("nan"))
-                size_mean  = record.get("size", {}).get("size_mean", float("nan"))
+                size_mean = record.get("size", {}).get("size_mean", float("nan"))
                 pbar.set_postfix(SR=f"{sharpe_max:+.3f}", nodes=f"{size_mean:.1f}")
                 logger.debug(
                     "Gen %d/%d | nevals=%d | sharpe_max=%.4f | size_mean=%.1f",
-                    gen, config.n_generations, len(invalid_ind), sharpe_max, size_mean,
+                    gen,
+                    config.n_generations,
+                    len(invalid_ind),
+                    sharpe_max,
+                    size_mean,
                 )
 
                 # Checkpoint every checkpoint_freq generations (EVO-05, D-08)
@@ -497,7 +506,9 @@ def run_evolution(
     logger.info(
         "Evolution complete: %d individuals evaluated, %d with a measurable "
         "Sharpe (annualized std %.4f)",
-        trials.n_evaluations, trials.n_finite, trials.sr_std,
+        trials.n_evaluations,
+        trials.n_finite,
+        trials.sr_std,
     )
 
     return population, hof, logbook

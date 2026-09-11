@@ -16,6 +16,7 @@ VAL-04: compute_dsr() returns float in [0.0, 1.0]; returns 0.0 for flat returns;
 All evolution tests (VAL-02, VAL-03) use unittest.mock.patch so no actual
 DEAP/vectorbt runs occur. VAL-04 uses compute_dsr() directly with numpy arrays.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -28,9 +29,9 @@ import pytest
 # Synthetic data constants
 # ---------------------------------------------------------------------------
 
-_T = 600   # timesteps — covers 2024-01-01 to ~2025-08-22, enough for window splits
-_F = 12    # feature columns (FEATURE_NAMES count)
-_A = 3     # assets
+_T = 600  # timesteps — covers 2024-01-01 to ~2025-08-22, enough for window splits
+_F = 12  # feature columns (FEATURE_NAMES count)
+_A = 3  # assets
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -54,9 +55,7 @@ def dates():
 def close_prices(dates):
     """Synthetic [T x A] close price DataFrame with DatetimeIndex."""
     rng = np.random.default_rng(7)
-    prices = 100.0 * np.exp(
-        np.cumsum(rng.standard_normal((_T, _A)) * 0.01, axis=0)
-    )
+    prices = 100.0 * np.exp(np.cumsum(rng.standard_normal((_T, _A)) * 0.01, axis=0))
     return pd.DataFrame(
         prices.astype(np.float64),
         index=dates,
@@ -68,6 +67,7 @@ def close_prices(dates):
 def eval_cfg(close_prices):
     """EvalConfig template with relaxed min_trades for test data."""
     from vgp.backtest.runner import EvalConfig
+
     return EvalConfig(
         close_prices=close_prices,
         min_trades=1,  # relax so mock individuals are not all worst-fitness
@@ -88,6 +88,7 @@ def base_evo_kwargs():
 # ---------------------------------------------------------------------------
 # Mock helper: build a mock HOF, logbook, and individual for VAL-02/VAL-03
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_evolution_return():
     """Return (pop=[], mock_hof, mock_logbook) for patching run_evolution().
@@ -158,15 +159,9 @@ def test_generate_windows_dates():
     w0 = windows[0]
 
     assert w0.window_id == 0
-    assert w0.train_end == "2024-12-31", (
-        f"Expected train_end='2024-12-31', got '{w0.train_end}'"
-    )
-    assert w0.test_start == "2025-03-01", (
-        f"Expected test_start='2025-03-01', got '{w0.test_start}'"
-    )
-    assert w0.test_end == "2025-05-31", (
-        f"Expected test_end='2025-05-31', got '{w0.test_end}'"
-    )
+    assert w0.train_end == "2024-12-31", f"Expected train_end='2024-12-31', got '{w0.train_end}'"
+    assert w0.test_start == "2025-03-01", f"Expected test_start='2025-03-01', got '{w0.test_start}'"
+    assert w0.test_end == "2025-05-31", f"Expected test_end='2025-05-31', got '{w0.test_end}'"
 
 
 # ---------------------------------------------------------------------------
@@ -190,11 +185,16 @@ def test_runner_oos_not_passed_to_evolution(
 
     mock_return = _make_mock_evolution_return()
 
-    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return) as mock_run_evo, \
-         patch("vgp.analysis.runner.evaluate_with_status",
-               return_value=((0.3, 0.05, -5.0), "ok", 120)), \
-         patch("vgp.analysis.runner._get_is_returns",
-               return_value=np.random.default_rng(0).standard_normal(250)):
+    with (
+        patch("vgp.analysis.runner.run_evolution", return_value=mock_return) as mock_run_evo,
+        patch(
+            "vgp.analysis.runner.evaluate_with_status", return_value=((0.3, 0.05, -5.0), "ok", 120)
+        ),
+        patch(
+            "vgp.analysis.runner._get_is_returns",
+            return_value=np.random.default_rng(0).standard_normal(250),
+        ),
+    ):
 
         runner.run_window(
             window=window,
@@ -239,11 +239,16 @@ def test_runner_iterates_seeds(feature_matrix, close_prices, dates, eval_cfg, ba
     mock_return = _make_mock_evolution_return()
     seeds = [0, 1, 2]
 
-    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
-         patch("vgp.analysis.runner.evaluate_with_status",
-               return_value=((0.3, 0.05, -5.0), "ok", 120)), \
-         patch("vgp.analysis.runner._get_is_returns",
-               return_value=np.random.default_rng(0).standard_normal(250)):
+    with (
+        patch("vgp.analysis.runner.run_evolution", return_value=mock_return),
+        patch(
+            "vgp.analysis.runner.evaluate_with_status", return_value=((0.3, 0.05, -5.0), "ok", 120)
+        ),
+        patch(
+            "vgp.analysis.runner._get_is_returns",
+            return_value=np.random.default_rng(0).standard_normal(250),
+        ),
+    ):
 
         results = runner.run_window(
             window=window,
@@ -254,20 +259,25 @@ def test_runner_iterates_seeds(feature_matrix, close_prices, dates, eval_cfg, ba
             evo_config_kwargs=base_evo_kwargs,
         )
 
-    assert len(results) == 3, (
-        f"Expected 3 result dicts (one per seed), got {len(results)}"
-    )
+    assert len(results) == 3, f"Expected 3 result dicts (one per seed), got {len(results)}"
 
     result_seeds = [r["seed"] for r in results]
-    assert result_seeds == seeds, (
-        f"Expected seed values {seeds}, got {result_seeds}"
-    )
+    assert result_seeds == seeds, f"Expected seed values {seeds}, got {result_seeds}"
 
     # Verify each result dict has all required keys
     required_keys = {
-        "window_id", "seed", "train_end", "test_start", "test_end",
-        "is_sharpe", "oos_sharpe", "oos_status", "oos_n_trades", "oos_min_trades",
-        "dsr", "n_nodes_best",
+        "window_id",
+        "seed",
+        "train_end",
+        "test_start",
+        "test_end",
+        "is_sharpe",
+        "oos_sharpe",
+        "oos_status",
+        "oos_n_trades",
+        "oos_min_trades",
+        "dsr",
+        "n_nodes_best",
     }
     for r in results:
         missing = required_keys - set(r.keys())
@@ -289,12 +299,8 @@ def test_compute_dsr_returns_float_in_range():
         returns, sr_hat=1.0, trial_sharpes=[0.4, 1.0, 0.7, 1.3, 0.2, 0.9, 1.1, 0.5, 0.8, 0.6]
     )
 
-    assert isinstance(result, float), (
-        f"compute_dsr must return float, got {type(result)}"
-    )
-    assert 0.0 <= result <= 1.0, (
-        f"compute_dsr must return value in [0.0, 1.0], got {result}"
-    )
+    assert isinstance(result, float), f"compute_dsr must return float, got {type(result)}"
+    assert 0.0 <= result <= 1.0, f"compute_dsr must return value in [0.0, 1.0], got {result}"
 
 
 def test_compute_dsr_flat_returns_zero():
@@ -302,9 +308,7 @@ def test_compute_dsr_flat_returns_zero():
     from vgp.analysis import compute_dsr
 
     result = compute_dsr(np.zeros(100), sr_hat=0.0, trial_sharpes=[0.0, 1.0, 2.0])
-    assert result == 0.0, (
-        f"compute_dsr with flat returns (std=0) must return 0.0, got {result}"
-    )
+    assert result == 0.0, f"compute_dsr with flat returns (std=0) must return 0.0, got {result}"
 
 
 def test_aggregate_seeds_positive_count():
@@ -318,16 +322,16 @@ def test_aggregate_seeds_positive_count():
     agg = aggregate_seeds(seed_results)
 
     assert "n_seeds_positive_oos" in agg, "aggregate_seeds must return n_seeds_positive_oos"
-    assert agg["n_seeds_positive_oos"] == 1, (
-        f"Expected 1 seed with positive OOS Sharpe, got {agg['n_seeds_positive_oos']}"
-    )
+    assert (
+        agg["n_seeds_positive_oos"] == 1
+    ), f"Expected 1 seed with positive OOS Sharpe, got {agg['n_seeds_positive_oos']}"
     assert "median_oos_sharpe" in agg
     assert "iqr_oos_sharpe" in agg
     assert "median_dsr" in agg
     # Median of [1.0, -0.5] = 0.25
-    assert abs(agg["median_oos_sharpe"] - 0.25) < 1e-9, (
-        f"Expected median_oos_sharpe=0.25, got {agg['median_oos_sharpe']}"
-    )
+    assert (
+        abs(agg["median_oos_sharpe"] - 0.25) < 1e-9
+    ), f"Expected median_oos_sharpe=0.25, got {agg['median_oos_sharpe']}"
 
 
 # ---------------------------------------------------------------------------
@@ -374,10 +378,10 @@ def test_compute_dsr_decreases_with_trial_spread():
 
     returns = _synthetic_returns(4.0)
     tight = [3.8, 4.0, 4.2, 3.9, 4.1, 4.05, 3.95, 4.15, 3.85]
-    wide  = [0.5, 8.0, 1.5, 7.0, 2.5, 6.5, 3.5, 7.5, 4.0]
+    wide = [0.5, 8.0, 1.5, 7.0, 2.5, 6.5, 3.5, 7.5, 4.0]
 
     dsr_tight = compute_dsr(returns, sr_hat=4.0, trial_sharpes=tight)
-    dsr_wide  = compute_dsr(returns, sr_hat=4.0, trial_sharpes=wide)
+    dsr_wide = compute_dsr(returns, sr_hat=4.0, trial_sharpes=wide)
 
     assert dsr_tight > dsr_wide, (
         f"DSR must fall as the trial Sharpe spread grows (more scope for "
@@ -444,8 +448,12 @@ def test_attach_dsr_fills_rows_and_drops_returns():
 
     sharpes = [4.0, 3.6, 3.9, 3.2, 3.7, 3.5]
     results = [
-        {"is_sharpe": sr, "oos_sharpe": 0.5, "dsr": float("nan"),
-         IS_RETURNS_KEY: _synthetic_returns(sr, seed=i)}
+        {
+            "is_sharpe": sr,
+            "oos_sharpe": 0.5,
+            "dsr": float("nan"),
+            IS_RETURNS_KEY: _synthetic_returns(sr, seed=i),
+        }
         for i, sr in enumerate(sharpes)
     ]
 
@@ -455,9 +463,9 @@ def test_attach_dsr_fills_rows_and_drops_returns():
         assert IS_RETURNS_KEY not in row, "scratch IS returns must be popped"
         assert np.isfinite(row["dsr"]), f"dsr not filled in: {row['dsr']}"
         assert 0.0 <= row["dsr"] <= 1.0
-        assert row["dsr_n_trials"] == len(sharpes), (
-            "n_trials must be the whole trial set, not one row"
-        )
+        assert row["dsr_n_trials"] == len(
+            sharpes
+        ), "n_trials must be the whole trial set, not one row"
         assert row["dsr_trial_sr_std"] == pytest.approx(np.std(sharpes, ddof=1))
 
 
@@ -469,15 +477,18 @@ def test_attach_dsr_excludes_sentinel_rows():
         {"is_sharpe": 4.0, "dsr": float("nan"), IS_RETURNS_KEY: _synthetic_returns(4.0, seed=1)},
         {"is_sharpe": 3.6, "dsr": float("nan"), IS_RETURNS_KEY: _synthetic_returns(3.6, seed=2)},
         {"is_sharpe": 3.8, "dsr": float("nan"), IS_RETURNS_KEY: _synthetic_returns(3.8, seed=3)},
-        {"is_sharpe": float("nan"), "dsr": float("nan"),
-         IS_RETURNS_KEY: _synthetic_returns(1.0, seed=4)},
+        {
+            "is_sharpe": float("nan"),
+            "dsr": float("nan"),
+            IS_RETURNS_KEY: _synthetic_returns(1.0, seed=4),
+        },
     ]
 
     attach_dsr(results)
 
-    assert all(r["dsr_n_trials"] == 3 for r in results), (
-        "the unmeasured row must not be counted as a trial"
-    )
+    assert all(
+        r["dsr_n_trials"] == 3 for r in results
+    ), "the unmeasured row must not be counted as a trial"
     assert np.isnan(results[-1]["dsr"]), "unmeasured IS Sharpe must give NaN DSR"
     assert all(np.isfinite(r["dsr"]) for r in results[:3])
 
@@ -486,8 +497,7 @@ def test_attach_dsr_row_without_returns_is_nan():
     """VAL-04: a row whose IS backtest failed gets NaN DSR, not 0.0."""
     from vgp.analysis import attach_dsr
 
-    results = [{"is_sharpe": 4.0, "dsr": float("nan")},
-               {"is_sharpe": 3.5, "dsr": float("nan")}]
+    results = [{"is_sharpe": 4.0, "dsr": float("nan")}, {"is_sharpe": 3.5, "dsr": float("nan")}]
     attach_dsr(results)
     assert all(np.isnan(r["dsr"]) for r in results)
 
@@ -518,10 +528,14 @@ def test_run_window_records_nan_not_inf_when_oos_unmeasurable(
     # evaluate_with_status reports the sentinel plus the reason for it
     sentinel = ((-np.inf, -np.inf, -5.0), "below_min_trades", 3)
 
-    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
-         patch("vgp.analysis.runner.evaluate_with_status", return_value=sentinel), \
-         patch("vgp.analysis.runner._get_is_returns",
-               return_value=np.random.default_rng(0).standard_normal(250)):
+    with (
+        patch("vgp.analysis.runner.run_evolution", return_value=mock_return),
+        patch("vgp.analysis.runner.evaluate_with_status", return_value=sentinel),
+        patch(
+            "vgp.analysis.runner._get_is_returns",
+            return_value=np.random.default_rng(0).standard_normal(250),
+        ),
+    ):
 
         results = runner.run_window(
             window=window,
@@ -556,15 +570,24 @@ def test_run_window_reports_ok_status_and_real_sharpe(
     window = generate_windows("2024-01-01", "2026-04-01")[0]
     mock_return = _make_mock_evolution_return()
 
-    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
-         patch("vgp.analysis.runner.evaluate_with_status",
-               return_value=((1.23, 0.05, -5.0), "ok", 87)), \
-         patch("vgp.analysis.runner._get_is_returns",
-               return_value=np.random.default_rng(0).standard_normal(250)):
+    with (
+        patch("vgp.analysis.runner.run_evolution", return_value=mock_return),
+        patch(
+            "vgp.analysis.runner.evaluate_with_status", return_value=((1.23, 0.05, -5.0), "ok", 87)
+        ),
+        patch(
+            "vgp.analysis.runner._get_is_returns",
+            return_value=np.random.default_rng(0).standard_normal(250),
+        ),
+    ):
 
         results = runner.run_window(
-            window=window, feature_matrix=feature_matrix, close_prices=close_prices,
-            base_eval_config=eval_cfg, seeds=[0], evo_config_kwargs=base_evo_kwargs,
+            window=window,
+            feature_matrix=feature_matrix,
+            close_prices=close_prices,
+            base_eval_config=eval_cfg,
+            seeds=[0],
+            evo_config_kwargs=base_evo_kwargs,
         )
 
     assert results[0]["oos_sharpe"] == pytest.approx(1.23)
@@ -585,15 +608,24 @@ def test_run_window_records_nan_for_worst_fitness_is_sharpe(
     runner = WalkForwardRunner(dates=dates)
     window = generate_windows("2024-01-01", "2026-04-01")[0]
 
-    with patch("vgp.analysis.runner.run_evolution", return_value=([], mock_hof, mock_logbook)), \
-         patch("vgp.analysis.runner.evaluate_with_status",
-               return_value=((0.3, 0.05, -5.0), "ok", 90)), \
-         patch("vgp.analysis.runner._get_is_returns",
-               return_value=np.random.default_rng(0).standard_normal(250)):
+    with (
+        patch("vgp.analysis.runner.run_evolution", return_value=([], mock_hof, mock_logbook)),
+        patch(
+            "vgp.analysis.runner.evaluate_with_status", return_value=((0.3, 0.05, -5.0), "ok", 90)
+        ),
+        patch(
+            "vgp.analysis.runner._get_is_returns",
+            return_value=np.random.default_rng(0).standard_normal(250),
+        ),
+    ):
 
         results = runner.run_window(
-            window=window, feature_matrix=feature_matrix, close_prices=close_prices,
-            base_eval_config=eval_cfg, seeds=[0], evo_config_kwargs=base_evo_kwargs,
+            window=window,
+            feature_matrix=feature_matrix,
+            close_prices=close_prices,
+            base_eval_config=eval_cfg,
+            seeds=[0],
+            evo_config_kwargs=base_evo_kwargs,
         )
 
     assert np.isnan(results[0]["is_sharpe"]), (
@@ -602,9 +634,7 @@ def test_run_window_records_nan_for_worst_fitness_is_sharpe(
     )
 
 
-def test_run_window_scales_oos_min_trades(
-    feature_matrix, close_prices, dates, base_evo_kwargs
-):
+def test_run_window_scales_oos_min_trades(feature_matrix, close_prices, dates, base_evo_kwargs):
     """VAL-03: the OOS trade threshold scales to the OOS window length.
 
     min_trades is a RATE requirement written for the ~12-month train window.
@@ -621,15 +651,24 @@ def test_run_window_scales_oos_min_trades(
     base_cfg = EvalConfig(close_prices=close_prices, min_trades=50)
     mock_return = _make_mock_evolution_return()
 
-    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
-         patch("vgp.analysis.runner.evaluate_with_status",
-               return_value=((0.3, 0.05, -5.0), "ok", 90)) as mock_eval, \
-         patch("vgp.analysis.runner._get_is_returns",
-               return_value=np.random.default_rng(0).standard_normal(250)):
+    with (
+        patch("vgp.analysis.runner.run_evolution", return_value=mock_return),
+        patch(
+            "vgp.analysis.runner.evaluate_with_status", return_value=((0.3, 0.05, -5.0), "ok", 90)
+        ) as mock_eval,
+        patch(
+            "vgp.analysis.runner._get_is_returns",
+            return_value=np.random.default_rng(0).standard_normal(250),
+        ),
+    ):
 
         results = runner.run_window(
-            window=window, feature_matrix=feature_matrix, close_prices=close_prices,
-            base_eval_config=base_cfg, seeds=[0], evo_config_kwargs=base_evo_kwargs,
+            window=window,
+            feature_matrix=feature_matrix,
+            close_prices=close_prices,
+            base_eval_config=base_cfg,
+            seeds=[0],
+            evo_config_kwargs=base_evo_kwargs,
         )
 
     oos_cfg = mock_eval.call_args.args[2]
@@ -638,9 +677,9 @@ def test_run_window_scales_oos_min_trades(
         f"50 was applied verbatim to a 3-month OOS window"
     )
     assert oos_cfg.min_trades >= 1, "threshold must stay at least 1"
-    assert results[0]["oos_min_trades"] == oos_cfg.min_trades, (
-        "the threshold actually applied must be recorded alongside the result"
-    )
+    assert (
+        results[0]["oos_min_trades"] == oos_cfg.min_trades
+    ), "the threshold actually applied must be recorded alongside the result"
 
 
 def test_run_window_honours_explicit_oos_min_trades(
@@ -656,15 +695,24 @@ def test_run_window_honours_explicit_oos_min_trades(
     base_cfg = EvalConfig(close_prices=close_prices, min_trades=50)
     mock_return = _make_mock_evolution_return()
 
-    with patch("vgp.analysis.runner.run_evolution", return_value=mock_return), \
-         patch("vgp.analysis.runner.evaluate_with_status",
-               return_value=((0.3, 0.05, -5.0), "ok", 4)) as mock_eval, \
-         patch("vgp.analysis.runner._get_is_returns",
-               return_value=np.random.default_rng(0).standard_normal(250)):
+    with (
+        patch("vgp.analysis.runner.run_evolution", return_value=mock_return),
+        patch(
+            "vgp.analysis.runner.evaluate_with_status", return_value=((0.3, 0.05, -5.0), "ok", 4)
+        ) as mock_eval,
+        patch(
+            "vgp.analysis.runner._get_is_returns",
+            return_value=np.random.default_rng(0).standard_normal(250),
+        ),
+    ):
 
         runner.run_window(
-            window=window, feature_matrix=feature_matrix, close_prices=close_prices,
-            base_eval_config=base_cfg, seeds=[0], evo_config_kwargs=base_evo_kwargs,
+            window=window,
+            feature_matrix=feature_matrix,
+            close_prices=close_prices,
+            base_eval_config=base_cfg,
+            seeds=[0],
+            evo_config_kwargs=base_evo_kwargs,
             oos_min_trades=0,
         )
 
@@ -681,18 +729,20 @@ def test_aggregate_seeds_ignores_unmeasured_oos():
     """VAL-04: NaN OOS Sharpes are excluded from median, IQR and positive count."""
     from vgp.analysis import aggregate_seeds
 
-    agg = aggregate_seeds([
-        {"oos_sharpe": 1.0, "dsr": 0.9},
-        {"oos_sharpe": float("nan"), "dsr": float("nan")},
-        {"oos_sharpe": 0.5, "dsr": 0.8},
-    ])
+    agg = aggregate_seeds(
+        [
+            {"oos_sharpe": 1.0, "dsr": 0.9},
+            {"oos_sharpe": float("nan"), "dsr": float("nan")},
+            {"oos_sharpe": 0.5, "dsr": 0.8},
+        ]
+    )
 
     assert agg["n_seeds_valid_oos"] == 2, "only measured seeds count as valid"
     assert agg["n_seeds"] == 3
     assert agg["n_seeds_positive_oos"] == 2
-    assert agg["median_oos_sharpe"] == pytest.approx(0.75), (
-        f"median must be over measured seeds only, got {agg['median_oos_sharpe']}"
-    )
+    assert agg["median_oos_sharpe"] == pytest.approx(
+        0.75
+    ), f"median must be over measured seeds only, got {agg['median_oos_sharpe']}"
     assert np.isfinite(agg["iqr_oos_sharpe"])
     assert agg["median_dsr"] == pytest.approx(0.85)
 
@@ -701,10 +751,12 @@ def test_aggregate_seeds_all_unmeasured():
     """VAL-04: when no seed was measurable, medians are NaN and counts are 0."""
     from vgp.analysis import aggregate_seeds
 
-    agg = aggregate_seeds([
-        {"oos_sharpe": float("nan"), "dsr": float("nan")},
-        {"oos_sharpe": float("nan"), "dsr": float("nan")},
-    ])
+    agg = aggregate_seeds(
+        [
+            {"oos_sharpe": float("nan"), "dsr": float("nan")},
+            {"oos_sharpe": float("nan"), "dsr": float("nan")},
+        ]
+    )
 
     assert np.isnan(agg["median_oos_sharpe"])
     assert np.isnan(agg["iqr_oos_sharpe"])
@@ -718,11 +770,13 @@ def test_aggregate_seeds_would_be_poisoned_by_inf():
     produce -inf / NaN summaries for the whole window."""
     from vgp.analysis import aggregate_seeds
 
-    agg = aggregate_seeds([
-        {"oos_sharpe": 1.0, "dsr": 0.9},
-        {"oos_sharpe": -np.inf, "dsr": 0.1},
-        {"oos_sharpe": 1.4, "dsr": 0.8},
-    ])
+    agg = aggregate_seeds(
+        [
+            {"oos_sharpe": 1.0, "dsr": 0.9},
+            {"oos_sharpe": -np.inf, "dsr": 0.1},
+            {"oos_sharpe": 1.4, "dsr": 0.8},
+        ]
+    )
 
     assert np.isfinite(agg["median_oos_sharpe"]), (
         f"median_oos_sharpe = {agg['median_oos_sharpe']} — an infinite sentinel "
@@ -737,11 +791,20 @@ def test_save_results_csv_drops_scratch_keys(tmp_path):
     from vgp.analysis import IS_RETURNS_KEY, save_results_csv
 
     path = tmp_path / "results.csv"
-    save_results_csv([{
-        "window_id": 0, "seed": 0, "is_sharpe": 4.0, "oos_sharpe": float("nan"),
-        "oos_status": "below_min_trades", "dsr": 0.9,
-        IS_RETURNS_KEY: np.zeros(10),
-    }], str(path))
+    save_results_csv(
+        [
+            {
+                "window_id": 0,
+                "seed": 0,
+                "is_sharpe": 4.0,
+                "oos_sharpe": float("nan"),
+                "oos_status": "below_min_trades",
+                "dsr": 0.9,
+                IS_RETURNS_KEY: np.zeros(10),
+            }
+        ],
+        str(path),
+    )
 
     header = path.read_text().splitlines()[0]
     assert IS_RETURNS_KEY not in header, f"scratch key written to CSV: {header}"
@@ -763,8 +826,11 @@ def _row(is_sharpe: float, seed: int = 0, acc=None) -> dict:
     from vgp.analysis.dsr import IS_RETURNS_KEY, TRIALS_KEY
 
     row = {
-        "window_id": 0, "seed": seed, "is_sharpe": is_sharpe,
-        "oos_sharpe": 0.5, "dsr": float("nan"),
+        "window_id": 0,
+        "seed": seed,
+        "is_sharpe": is_sharpe,
+        "oos_sharpe": 0.5,
+        "dsr": float("nan"),
         IS_RETURNS_KEY: _synthetic_returns(is_sharpe, seed=seed + 1),
     }
     if acc is not None:
@@ -848,9 +914,9 @@ def test_attach_dsr_evaluation_count_rejects_what_winners_only_certifies():
 
     assert rows[0]["dsr_n_trials"] > 1000
     assert best_bests > best_primary, "the two conventions must differ materially"
-    assert best_primary < 0.95, (
-        f"the evaluation-sized correction still certifies this at {best_primary:.4f}"
-    )
+    assert (
+        best_primary < 0.95
+    ), f"the evaluation-sized correction still certifies this at {best_primary:.4f}"
 
 
 def test_attach_dsr_falls_back_to_bests_and_warns(caplog):
@@ -872,9 +938,9 @@ def test_attach_dsr_falls_back_to_bests_and_warns(caplog):
     assert rows[0]["dsr_trial_source"] == "reported_bests"
     assert rows[0]["dsr_n_trials"] == 3
     assert rows[0]["dsr_n_evaluations"] == 0
-    assert any("no trial accumulators" in m for m in caplog.messages), (
-        "falling back to the winners must be logged — it changes what DSR means"
-    )
+    assert any(
+        "no trial accumulators" in m for m in caplog.messages
+    ), "falling back to the winners must be logged — it changes what DSR means"
 
 
 def test_run_evolution_records_every_evaluation():
@@ -888,14 +954,13 @@ def test_run_evolution_records_every_evaluation():
     dates = pd.date_range("2024-01-01", periods=T, freq="D")
     close = pd.DataFrame(
         (100.0 * np.exp(np.cumsum(rng.standard_normal((T, A)) * 0.01, axis=0))),
-        index=dates, columns=[f"a{i}" for i in range(A)],
+        index=dates,
+        columns=[f"a{i}" for i in range(A)],
     )
     fm = rng.standard_normal((T, F, A)).astype(np.float32)
 
     cfg = EvolutionConfig(pop_size=12, n_generations=3, seed=0, n_jobs=1, checkpoint_freq=999)
-    _pop, _hof, logbook = run_evolution(
-        cfg, fm, EvalConfig(close_prices=close, min_trades=1)
-    )
+    _pop, _hof, logbook = run_evolution(cfg, fm, EvalConfig(close_prices=close, min_trades=1))
 
     acc = getattr(logbook, "trial_accumulator", None)
     assert acc is not None, "run_evolution must attach a trial accumulator to the logbook"
@@ -932,8 +997,12 @@ def test_generate_windows_oos_never_overlaps_at_any_geometry(train, val, oos):
     from vgp.analysis import generate_windows
 
     windows = generate_windows(
-        "2024-05-01", "2026-04-01",
-        train_months=train, val_months=val, oos_months=oos, step_months=oos,
+        "2024-05-01",
+        "2026-04-01",
+        train_months=train,
+        val_months=val,
+        oos_months=oos,
+        step_months=oos,
     )
     assert windows, f"no windows for {train}/{val}/{oos} — geometry unusable"
 
@@ -958,19 +1027,23 @@ def test_generate_windows_respects_requested_lengths(train, val, oos):
     from vgp.analysis import generate_windows
 
     windows = generate_windows(
-        "2024-05-01", "2026-04-01",
-        train_months=train, val_months=val, oos_months=oos, step_months=oos,
+        "2024-05-01",
+        "2026-04-01",
+        train_months=train,
+        val_months=val,
+        oos_months=oos,
+        step_months=oos,
     )
     for w in windows:
         val_span = (pd.Timestamp(w.val_end) - pd.Timestamp(w.val_start)).days
         oos_span = (pd.Timestamp(w.test_end) - pd.Timestamp(w.test_start)).days
         # Calendar months vary in length; allow a few days of slack
-        assert abs(val_span - val * 30.44) < 8, (
-            f"window {w.window_id} val span {val_span}d, expected ~{val * 30.44:.0f}d"
-        )
-        assert abs(oos_span - oos * 30.44) < 8, (
-            f"window {w.window_id} OOS span {oos_span}d, expected ~{oos * 30.44:.0f}d"
-        )
+        assert (
+            abs(val_span - val * 30.44) < 8
+        ), f"window {w.window_id} val span {val_span}d, expected ~{val * 30.44:.0f}d"
+        assert (
+            abs(oos_span - oos * 30.44) < 8
+        ), f"window {w.window_id} OOS span {oos_span}d, expected ~{oos * 30.44:.0f}d"
         # train_end must precede val_start, which must precede test_start
         assert pd.Timestamp(w.train_end) < pd.Timestamp(w.val_start)
         assert pd.Timestamp(w.val_end) < pd.Timestamp(w.test_start)
@@ -985,18 +1058,19 @@ def test_more_windows_from_a_shorter_train_window():
     """
     from vgp.analysis import generate_windows
 
-    wide = generate_windows("2024-05-01", "2026-04-01", train_months=12,
-                            val_months=2, oos_months=3, step_months=3)
-    narrow = generate_windows("2024-05-01", "2026-04-01", train_months=9,
-                              val_months=2, oos_months=2, step_months=2)
+    wide = generate_windows(
+        "2024-05-01", "2026-04-01", train_months=12, val_months=2, oos_months=3, step_months=3
+    )
+    narrow = generate_windows(
+        "2024-05-01", "2026-04-01", train_months=9, val_months=2, oos_months=2, step_months=2
+    )
 
     assert len(wide) == 3, f"expected 3 wide windows, got {len(wide)}"
     assert len(narrow) == 6, f"expected 6 narrow windows, got {len(narrow)}"
 
     # And the narrow geometry must cover more OOS calendar in total
     def coverage(ws):
-        return sum((pd.Timestamp(w.test_end) - pd.Timestamp(w.test_start)).days
-                   for w in ws)
+        return sum((pd.Timestamp(w.test_end) - pd.Timestamp(w.test_start)).days for w in ws)
 
     assert coverage(narrow) > coverage(wide), (
         f"narrow geometry covers {coverage(narrow)}d of OOS vs {coverage(wide)}d "
@@ -1043,13 +1117,12 @@ def test_de_annualization_is_self_consistent():
     for ppy in (252, 365):
         scale = np.sqrt(ppy)
         annualized = compute_dsr(
-            returns, sr_hat=sr_pp * scale,
+            returns,
+            sr_hat=sr_pp * scale,
             trial_sharpes=[t * scale for t in trials_pp],
             periods_per_year=ppy,
         )
-        per_period = compute_dsr(
-            returns, sr_hat=sr_pp, trial_sharpes=trials_pp, periods_per_year=1
-        )
+        per_period = compute_dsr(returns, sr_hat=sr_pp, trial_sharpes=trials_pp, periods_per_year=1)
         assert annualized == pytest.approx(per_period, rel=1e-9), (
             f"ppy={ppy}: annualized path gave {annualized}, per-period path "
             f"gave {per_period} — de-annualization is not the inverse"
@@ -1070,10 +1143,8 @@ def test_wrong_periods_per_year_changes_the_answer_materially():
     sr_ann = 3.0
     trials = [2.6, 2.8, 3.0, 3.1, 2.7, 2.9, 3.2, 2.5, 3.05]
 
-    correct = compute_dsr(returns, sr_hat=sr_ann, trial_sharpes=trials,
-                          periods_per_year=365)
-    wrong = compute_dsr(returns, sr_hat=sr_ann, trial_sharpes=trials,
-                        periods_per_year=252)
+    correct = compute_dsr(returns, sr_hat=sr_ann, trial_sharpes=trials, periods_per_year=365)
+    wrong = compute_dsr(returns, sr_hat=sr_ann, trial_sharpes=trials, periods_per_year=252)
 
     assert correct != pytest.approx(wrong, rel=1e-6), (
         "the annualization constant made no difference; the de-annualization "

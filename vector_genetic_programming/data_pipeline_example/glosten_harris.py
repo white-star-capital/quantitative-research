@@ -26,6 +26,7 @@ The full Glosten-Harris estimator requires trade-level data available from
 Binance Vision (data.binance.vision).  For quick-start / OHLCV-only mode,
 a Roll (1984) spread approximation is provided instead.
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,6 +40,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Full Glosten-Harris estimator (trade-level data)
 # ---------------------------------------------------------------------------
+
 
 class GlostenHarris:
     """
@@ -54,8 +56,8 @@ class GlostenHarris:
         self.min_trades = min_trades
 
         # Fitted parameters
-        self.c0_: float | None = None   # transient component (half-spread)
-        self.z1_: float | None = None   # permanent component
+        self.c0_: float | None = None  # transient component (half-spread)
+        self.z1_: float | None = None  # permanent component
         self.spread_: float | None = None  # effective spread = c0 + 2*z1
         self.r_squared_: float | None = None
 
@@ -81,14 +83,12 @@ class GlostenHarris:
         assert len(prices) == len(directions), "prices and directions must match"
 
         if len(prices) < self.min_trades:
-            raise ValueError(
-                f"Need at least {self.min_trades} trades, got {len(prices)}."
-            )
+            raise ValueError(f"Need at least {self.min_trades} trades, got {len(prices)}.")
 
         # Construct regression variables (drop first observation)
-        dP = np.diff(prices)              # ΔP_t
-        Q = directions[1:]                # Q_t  (aligned with ΔP_t)
-        dQ = np.diff(directions)          # ΔQ_t
+        dP = np.diff(prices)  # ΔP_t
+        Q = directions[1:]  # Q_t  (aligned with ΔP_t)
+        dQ = np.diff(directions)  # ΔQ_t
 
         # OLS: ΔP_t = β₁·ΔQ_t + β₂·Q_t + ε_t
         # β₁ = c₀/2,  β₂ = z₁
@@ -96,8 +96,8 @@ class GlostenHarris:
         result = np.linalg.lstsq(X, dP, rcond=None)
         beta = result[0]
 
-        self.c0_ = 2.0 * beta[0]   # c₀ = 2·β₁
-        self.z1_ = beta[1]         # z₁ = β₂
+        self.c0_ = 2.0 * beta[0]  # c₀ = 2·β₁
+        self.z1_ = beta[1]  # z₁ = β₂
         self.spread_ = self.c0_ + 2.0 * self.z1_
 
         # R²
@@ -108,9 +108,7 @@ class GlostenHarris:
 
         return self
 
-    def recover_midprices(
-        self, prices: np.ndarray, directions: np.ndarray
-    ) -> np.ndarray:
+    def recover_midprices(self, prices: np.ndarray, directions: np.ndarray) -> np.ndarray:
         """
         Recover mid-prices: m_t = P_t − (c₀/2) · Q_t.
 
@@ -126,6 +124,7 @@ class GlostenHarris:
 # ---------------------------------------------------------------------------
 # Roll (1984) estimator — OHLCV approximation
 # ---------------------------------------------------------------------------
+
 
 def roll_spread(close_prices: pd.Series) -> float:
     """
@@ -156,6 +155,7 @@ def roll_spread_all(prices: pd.DataFrame) -> pd.Series:
 # Binance Vision trade-data loader (for full Glosten-Harris)
 # ---------------------------------------------------------------------------
 
+
 def load_binance_vision_trades(filepath: str) -> pd.DataFrame:
     """
     Load a Binance Vision daily trades CSV/ZIP file.
@@ -170,8 +170,13 @@ def load_binance_vision_trades(filepath: str) -> pd.DataFrame:
     df = pd.read_csv(
         filepath,
         names=[
-            "trade_id", "price", "qty", "quote_qty",
-            "time", "is_buyer_maker", "is_best_match",
+            "trade_id",
+            "price",
+            "qty",
+            "quote_qty",
+            "time",
+            "is_buyer_maker",
+            "is_best_match",
         ],
         dtype={
             "trade_id": int,
@@ -217,17 +222,17 @@ def estimate_daily_spread(
             gh.fit(group["price"].values, group["direction"].values)
             last_price = group["price"].iloc[-1]
             last_dir = group["direction"].iloc[-1]
-            mid = gh.recover_midprices(
-                np.array([last_price]), np.array([last_dir])
-            )[0]
-            records.append({
-                "date": date,
-                "spread": gh.spread_,
-                "c0": gh.c0_,
-                "z1": gh.z1_,
-                "mid_price": mid,
-                "r_squared": gh.r_squared_,
-            })
+            mid = gh.recover_midprices(np.array([last_price]), np.array([last_dir]))[0]
+            records.append(
+                {
+                    "date": date,
+                    "spread": gh.spread_,
+                    "c0": gh.c0_,
+                    "z1": gh.z1_,
+                    "mid_price": mid,
+                    "r_squared": gh.r_squared_,
+                }
+            )
         except (ValueError, np.linalg.LinAlgError) as exc:
             logger.debug("GH fit failed for %s: %s", date, exc)
 

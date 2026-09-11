@@ -25,6 +25,7 @@ the effective number of independent trials is somewhere below the evaluation
 count and far above the winner count. Report both bounds rather than one point
 estimate; `vgp.analysis.dsr.attach_dsr()` does that.
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,17 +61,14 @@ class TrialSet:
     @property
     def is_usable(self) -> bool:
         """True when the set can support a DSR hurdle at all."""
-        return (
-            self.n_trials >= 2
-            and math.isfinite(self.sr_std)
-            and self.sr_std > 0.0
-        )
+        return self.n_trials >= 2 and math.isfinite(self.sr_std) and self.sr_std > 0.0
 
     @classmethod
     def from_sharpes(cls, sharpes, label: str = "sharpes") -> TrialSet:
         """Build from an array of Sharpe ratios, dropping non-finite entries."""
-        arr = np.asarray(list(sharpes) if not hasattr(sharpes, "dtype") else sharpes,
-                         dtype=np.float64).ravel()
+        arr = np.asarray(
+            list(sharpes) if not hasattr(sharpes, "dtype") else sharpes, dtype=np.float64
+        ).ravel()
         finite = arr[np.isfinite(arr)]
         n = int(finite.size)
         std = float(np.std(finite, ddof=1)) if n >= 2 else float("nan")

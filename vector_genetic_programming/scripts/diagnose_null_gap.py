@@ -63,6 +63,7 @@ Usage
 -----
     python scripts/diagnose_null_gap.py
 """
+
 from __future__ import annotations
 
 import logging
@@ -74,9 +75,9 @@ import numpy as np
 import pandas as pd
 
 CACHE_DIR = Path("data_pipeline_example/cache")
-N_TREES = 400          # random trees evaluated per dataset
-N_REPS = 3             # surrogate replicates per block size
-BLOCK_SIZES = (1, 5, 20, 60, 100_000)   # last one exceeds T -> pure rotation
+N_TREES = 400  # random trees evaluated per dataset
+N_REPS = 3  # surrogate replicates per block size
+BLOCK_SIZES = (1, 5, 20, 60, 100_000)  # last one exceeds T -> pure rotation
 SEED = 20260910
 
 logging.basicConfig(level=logging.ERROR)
@@ -88,14 +89,18 @@ def _panel():
 
     loader = DataLoader(cache_dir=CACHE_DIR)
     ohlcv = loader.fetch_ohlcv(
-        start_date="2024-01-01", end_date="2026-04-01",
-        allow_partial=True, min_assets=10,
+        start_date="2024-01-01",
+        end_date="2026-04-01",
+        allow_partial=True,
+        min_assets=10,
     )
     fe = FeatureEngine()
     fm = fe.fit_transform(ohlcv)
-    close = pd.DataFrame(
-        {t: ohlcv[t]["close"] for t in fe.retained_assets_}
-    ).reindex(fe.dates_).ffill(limit=3)
+    close = (
+        pd.DataFrame({t: ohlcv[t]["close"] for t in fe.retained_assets_})
+        .reindex(fe.dates_)
+        .ffill(limit=3)
+    )
     return ohlcv, fe, fm, close
 
 
@@ -112,8 +117,7 @@ def _random_trees(n: int):
     pset = build_pset()
     random.seed(SEED)
     np.random.seed(SEED)
-    return [creator.Individual(gp.genHalfAndHalf(pset, min_=2, max_=5))
-            for _ in range(n)]
+    return [creator.Individual(gp.genHalfAndHalf(pset, min_=2, max_=5)) for _ in range(n)]
 
 
 def _sharpe_distribution(trees, fm, close, label: str) -> dict:
@@ -153,10 +157,9 @@ def _timeseries_stats(ohlcv: dict, label: str) -> dict:
         idx = ohlcv[t].index
         common = idx if common is None else common.intersection(idx)
 
-    rets = np.column_stack([
-        np.diff(np.log(ohlcv[t].loc[common, "close"].to_numpy(dtype=np.float64)))
-        for t in tickers
-    ])   # [T-1 x A]
+    rets = np.column_stack(
+        [np.diff(np.log(ohlcv[t].loc[common, "close"].to_numpy(dtype=np.float64))) for t in tickers]
+    )  # [T-1 x A]
 
     def acf(x, lag):
         if len(x) <= lag + 2:
@@ -172,8 +175,7 @@ def _timeseries_stats(ohlcv: dict, label: str) -> dict:
     # well beyond the 20-bar block. The far lags are what a block bootstrap
     # cannot preserve.
     abs_acf = {
-        lag: float(np.mean([acf(np.abs(rets[:, i]), lag)
-                            for i in range(rets.shape[1])]))
+        lag: float(np.mean([acf(np.abs(rets[:, i]), lag) for i in range(rets.shape[1])]))
         for lag in (1, 5, 20, 40, 60)
     }
 
@@ -227,9 +229,9 @@ def main() -> None:
             sur = block_bootstrap_ohlcv(ohlcv, rng, block_size=block)
             s_fm, s_close, s_dates = _default_feature_builder(sur)
             mask = s_dates <= "2025-04-30"
-            rows.append(_sharpe_distribution(
-                trees, s_fm[mask], s_close.loc[mask], f"block={shown} r{rep}"
-            ))
+            rows.append(
+                _sharpe_distribution(trees, s_fm[mask], s_close.loc[mask], f"block={shown} r{rep}")
+            )
             if rep == 0:
                 ts_rows.append(_timeseries_stats(sur, f"block={shown}"))
         print(f"  block_size={shown}: {N_REPS} replicate(s) done")
@@ -238,12 +240,16 @@ def main() -> None:
     print("\n" + "=" * 92)
     print("RANDOM-TREE IS SHARPE DISTRIBUTION  (no evolution; H1 discriminator)")
     print("=" * 92)
-    print(f"{'dataset':<26}{'n_valid':>8}{'valid%':>8}{'mean':>8}{'std':>8}"
-          f"{'p95':>8}{'max':>8}{'trades':>9}")
+    print(
+        f"{'dataset':<26}{'n_valid':>8}{'valid%':>8}{'mean':>8}{'std':>8}"
+        f"{'p95':>8}{'max':>8}{'trades':>9}"
+    )
     for r in rows:
-        print(f"{r['label']:<26}{r['n_valid']:>8}{100*r['frac_valid']:>7.0f}%"
-              f"{r['mean']:>8.3f}{r['std']:>8.3f}{r['p95']:>8.3f}"
-              f"{r['max']:>8.3f}{r['mean_trades']:>9.0f}")
+        print(
+            f"{r['label']:<26}{r['n_valid']:>8}{100*r['frac_valid']:>7.0f}%"
+            f"{r['mean']:>8.3f}{r['std']:>8.3f}{r['p95']:>8.3f}"
+            f"{r['max']:>8.3f}{r['mean_trades']:>9.0f}"
+        )
 
     real = rows[0]
     print(f"\nReal std={real['std']:.3f} max={real['max']:.3f}")
@@ -262,8 +268,10 @@ def main() -> None:
             continue
         ms = float(np.mean([g["std"] for g in grp]))
         mx = float(np.mean([g["max"] for g in grp]))
-        print(f"{shown:<26}{ms:>10.3f}{mx:>10.3f}"
-              f"{ms - real['std']:>+13.3f}{mx - real['max']:>+13.3f}")
+        print(
+            f"{shown:<26}{ms:>10.3f}{mx:>10.3f}"
+            f"{ms - real['std']:>+13.3f}{mx - real['max']:>+13.3f}"
+        )
     print("\nExpected after the correlation fix: gaps at or slightly below zero at")
     print("every block size. A gap that GROWS with block size (largest at the")
     print("rotation, where all temporal structure is intact) is the signature of a")
@@ -274,13 +282,17 @@ def main() -> None:
     print("\n" + "=" * 92)
     print("TIME-SERIES PROPERTIES  (mechanism; H2 vs H3)")
     print("=" * 92)
-    print(f"{'dataset':<26}{'ret_ac1':>9}{'|r|ac1':>8}{'|r|ac20':>9}{'|r|ac40':>9}"
-          f"{'|r|ac60':>9}{'volac20':>9}{'vol/vol':>9}{'pc1%':>7}{'kurt':>7}")
+    print(
+        f"{'dataset':<26}{'ret_ac1':>9}{'|r|ac1':>8}{'|r|ac20':>9}{'|r|ac40':>9}"
+        f"{'|r|ac60':>9}{'volac20':>9}{'vol/vol':>9}{'pc1%':>7}{'kurt':>7}"
+    )
     for t in ts_rows:
         a = t["absret_acf"]
-        print(f"{t['label']:<26}{t['ret_acf1']:>9.3f}{a[1]:>8.3f}{a[20]:>9.3f}"
-              f"{a[40]:>9.3f}{a[60]:>9.3f}{t['vol_acf20']:>9.3f}"
-              f"{t['vol_of_vol']:>9.3f}{100*t['pc1_share']:>6.0f}%{t['mean_kurtosis']:>7.1f}")
+        print(
+            f"{t['label']:<26}{t['ret_acf1']:>9.3f}{a[1]:>8.3f}{a[20]:>9.3f}"
+            f"{a[40]:>9.3f}{a[60]:>9.3f}{t['vol_acf20']:>9.3f}"
+            f"{t['vol_of_vol']:>9.3f}{100*t['pc1_share']:>6.0f}%{t['mean_kurtosis']:>7.1f}"
+        )
     print("\nNOTE: pc1% here is measured over the FULL SAMPLE and was preserved even")
     print("when every training window was broken — which is exactly why the bug")
     print("survived. Full-sample statistics cannot validate a surrogate; the")

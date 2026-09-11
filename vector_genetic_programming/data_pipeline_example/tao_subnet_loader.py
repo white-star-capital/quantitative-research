@@ -6,6 +6,7 @@ Expected per-subnet files: ``sn{netuid}_tao_daily_candles.csv`` (see
 as ``BinanceFetcher.fetch_all``: DatetimeIndex named ``date``, one column per
 asset (``SN1``, ``SN4``, …).
 """
+
 from __future__ import annotations
 
 import logging
@@ -85,9 +86,7 @@ def load_subnet_candles_from_dir(
 
     paths = sorted(p for p in root.glob("sn*_tao_daily_candles.csv") if p.is_file())
     if not paths:
-        raise FileNotFoundError(
-            f"No sn*_tao_daily_candles.csv files found under {root}"
-        )
+        raise FileNotFoundError(f"No sn*_tao_daily_candles.csv files found under {root}")
 
     series_list: list[pd.Series] = []
     for p in paths:
@@ -189,9 +188,7 @@ def load_tao_subnet_market_caps(
 
     paths = sorted(p for p in root.glob("sn*_tao_daily_candles.csv") if p.is_file())
     if not paths:
-        raise FileNotFoundError(
-            f"No sn*_tao_daily_candles.csv files found under {root}"
-        )
+        raise FileNotFoundError(f"No sn*_tao_daily_candles.csv files found under {root}")
 
     series_list: list[pd.Series] = []
     for p in paths:
@@ -255,9 +252,7 @@ def load_subnet_candles_combined(
     elif "netuid" in df.columns:
         id_series = "SN" + df["netuid"].astype(int).astype(str)
     else:
-        raise ValueError(
-            "Combined CSV needs a 'symbol' column (e.g. SN4) or 'netuid'"
-        )
+        raise ValueError("Combined CSV needs a 'symbol' column (e.g. SN4) or 'netuid'")
 
     df = df.assign(_asset=id_series)
     df = df.sort_values("_d")

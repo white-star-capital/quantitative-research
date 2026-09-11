@@ -1,4 +1,5 @@
 """Analysis: walk-forward runner, DSR reporting, visualizations."""
+
 from vgp.analysis.dsr import (
     IS_RETURNS_KEY,
     PERIODS_PER_YEAR_DAILY,

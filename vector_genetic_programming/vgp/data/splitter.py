@@ -7,6 +7,7 @@ Raising AssertionError (not ValueError) makes it an explicit programming
 contract violation — a splitter mis-configuration must not silently produce
 meaningless results.
 """
+
 from __future__ import annotations
 
 import logging
@@ -78,12 +79,12 @@ class WalkForwardSplitter:
         # ----------------------------------------------------------------
         # Step 1: Structural assertions (D-11).
         # ----------------------------------------------------------------
-        assert pd.Timestamp(val_start) > pd.Timestamp(train_end), (
-            f"val_start ({val_start}) must be strictly after train_end ({train_end})"
-        )
-        assert pd.Timestamp(test_start) > pd.Timestamp(val_end), (
-            f"test_start ({test_start}) must be strictly after val_end ({val_end})"
-        )
+        assert pd.Timestamp(val_start) > pd.Timestamp(
+            train_end
+        ), f"val_start ({val_start}) must be strictly after train_end ({train_end})"
+        assert pd.Timestamp(test_start) > pd.Timestamp(
+            val_end
+        ), f"test_start ({test_start}) must be strictly after val_end ({val_end})"
 
         # ----------------------------------------------------------------
         # Step 2: DataFrame input — boolean mask on DatetimeIndex.
@@ -91,9 +92,7 @@ class WalkForwardSplitter:
         if isinstance(data, pd.DataFrame):
             idx = data.index
             train = data.loc[idx <= pd.Timestamp(train_end)]
-            val = data.loc[
-                (idx >= pd.Timestamp(val_start)) & (idx <= pd.Timestamp(val_end))
-            ]
+            val = data.loc[(idx >= pd.Timestamp(val_start)) & (idx <= pd.Timestamp(val_end))]
             test = data.loc[idx >= pd.Timestamp(test_start)]
 
             logger.info(
@@ -130,6 +129,4 @@ class WalkForwardSplitter:
             )
             return train, val, test
 
-        raise TypeError(
-            f"data must be pd.DataFrame or np.ndarray, got {type(data).__name__}"
-        )
+        raise TypeError(f"data must be pd.DataFrame or np.ndarray, got {type(data).__name__}")

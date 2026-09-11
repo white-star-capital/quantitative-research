@@ -8,6 +8,7 @@ ARCHITECTURE INVARIANT (D-15):
 Transaction costs are applied INSIDE evaluate() via the fees= parameter to
 Portfolio.from_signals. They are NEVER applied post-hoc (CLAUDE.md constraint #3).
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,6 +38,7 @@ EVAL_NAN_METRICS = "nan_metrics"
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class EvalConfig:
@@ -68,6 +70,7 @@ class EvalConfig:
 # ---------------------------------------------------------------------------
 # Signal and portfolio construction — ONE definition, shared by every caller
 # ---------------------------------------------------------------------------
+
 
 def compute_signals(individual, feature_matrix: np.ndarray) -> np.ndarray:
     """Execute a GP tree per asset and return the [T x A] float32 signal matrix.
@@ -121,27 +124,27 @@ def build_portfolio(signals: np.ndarray, config: EvalConfig):
     # Convert 3-state signals to boolean long/short entry/exit matrices.
     # Using explicit separate arrays (not direction='both') to support
     # size_type='percent' with position reversals (Pitfall 2).
-    long_entries   = signals > 0    # [T x A] bool: go long
-    short_entries  = signals < 0    # [T x A] bool: go short
-    long_exits     = signals <= 0   # [T x A] bool: exit long
-    short_exits    = signals >= 0   # [T x A] bool: exit short
+    long_entries = signals > 0  # [T x A] bool: go long
+    short_entries = signals < 0  # [T x A] bool: go short
+    long_exits = signals <= 0  # [T x A] bool: exit long
+    short_exits = signals >= 0  # [T x A] bool: exit short
 
     # fee_bps is round-trip; divide by 2 for per-side, then by 10_000 for decimal.
     fee_per_side = (config.fee_bps / 2.0) / 10_000.0  # 10 bps -> 0.0005
 
     return vbt.Portfolio.from_signals(
-        close=config.close_prices,       # [T x A] DataFrame, DatetimeIndex
+        close=config.close_prices,  # [T x A] DataFrame, DatetimeIndex
         entries=long_entries,
         exits=long_exits,
         short_entries=short_entries,
         short_exits=short_exits,
-        size=1.0 / A,                    # equal weight: 1/N per asset (D-11)
+        size=1.0 / A,  # equal weight: 1/N per asset (D-11)
         size_type="percent",
-        upon_opposite_entry="close",     # close existing position before reversing (Pitfall 2)
-        fees=fee_per_side,               # EVAL-02 — inside evaluate, not post-hoc
-        freq=config.freq,                # "1D" — REQUIRED for sharpe_ratio() (Pitfall 1)
+        upon_opposite_entry="close",  # close existing position before reversing (Pitfall 2)
+        fees=fee_per_side,  # EVAL-02 — inside evaluate, not post-hoc
+        freq=config.freq,  # "1D" — REQUIRED for sharpe_ratio() (Pitfall 1)
         init_cash=config.init_cash,
-        group_by=True,                   # aggregate to single portfolio-level metrics
+        group_by=True,  # aggregate to single portfolio-level metrics
         cash_sharing=True,
     )
 
@@ -149,6 +152,7 @@ def build_portfolio(signals: np.ndarray, config: EvalConfig):
 # ---------------------------------------------------------------------------
 # Evaluation function
 # ---------------------------------------------------------------------------
+
 
 def evaluate_with_status(
     individual,
@@ -201,7 +205,9 @@ def evaluate_with_status(
         logger.debug(
             "Individual (size=%d) has only %d sign changes — below min_trades=%d. "
             "Returning worst fitness.",
-            tree_size, sign_changes, config.min_trades,
+            tree_size,
+            sign_changes,
+            config.min_trades,
         )
         return worst_fitness, EVAL_BELOW_MIN_TRADES, sign_changes
 
@@ -216,7 +222,9 @@ def evaluate_with_status(
         logger.debug(
             "Individual (size=%d) produced NaN metrics (sharpe=%s, total_ret=%s). "
             "Returning worst fitness.",
-            tree_size, sharpe, total_ret,
+            tree_size,
+            sharpe,
+            total_ret,
         )
         return worst_fitness, EVAL_NAN_METRICS, sign_changes
 
@@ -257,6 +265,7 @@ def evaluate(
 # ---------------------------------------------------------------------------
 # BacktestRunner class — stateful wrapper for Phase 4 (multiprocessing friendly)
 # ---------------------------------------------------------------------------
+
 
 class BacktestRunner:
     """Stateful wrapper around evaluate() for use in Phase 4 evolution loop.
