@@ -268,13 +268,30 @@ def _compute_features(df: pd.DataFrame) -> pd.DataFrame:
     vol_ratio_20d = volume / vol_mean_20
     vol_ratio_20d = vol_ratio_20d.where(vol_mean_20 != 0.0, other=1.0)
 
-    # OBV signal: sign(ret_1d) * volume, cumulated, then z-score normalised.
+    # OBV signal: sign(ret_1d) * volume, cumulated, then z-scored over a
+    # TRAILING window.
+    #
+    # This was previously normalised with obv_raw.mean() and obv_raw.std() over
+    # the whole series. Because FeatureEngine.fit_transform() runs once on the
+    # full panel before any walk-forward split, those constants were computed
+    # from data that includes every OOS period — a train/test contamination,
+    # and a breach of the no-lookahead invariant as written (CLAUDE.md #2, #6).
+    #
+    # The leak was mild: an affine transform with panel-wide constants injects
+    # no bar-level future information, obv_signal's correlation with a pure
+    # time index was 0.522 (log_close, which is uncontaminated, is 0.532), and
+    # train/OOS value ranges overlapped rather than being disjoint. It also
+    # biased toward FINDING skill, so it cannot have manufactured the negative
+    # results. None of that makes it correct.
+    #
+    # A trailing window is causal by construction and also removes the
+    # non-stationarity of an unbounded cumsum.
     obv_raw = (np.sign(close.pct_change(1)) * volume).cumsum()
-    obv_std = obv_raw.std()
-    if obv_std == 0.0 or np.isnan(obv_std):
-        obv_signal = pd.Series(0.0, index=close.index)
-    else:
-        obv_signal = (obv_raw - obv_raw.mean()) / obv_std
+    obv_mean = obv_raw.rolling(20).mean()
+    obv_std = obv_raw.rolling(20).std()
+    obv_signal = (obv_raw - obv_mean) / obv_std
+    # Flat or degenerate trailing window -> no information, not a divide-by-zero
+    obv_signal = obv_signal.where((obv_std != 0.0) & obv_std.notna(), other=0.0)
 
     # -- Assemble in canonical order --------------------------------
     feat = pd.DataFrame(

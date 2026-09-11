@@ -1,7 +1,14 @@
 Null control: 19 signal-free run(s), block_size=20 bars
-  observed best IS Sharpe   +3.705   null median +3.412   null p95 +4.331   p = 0.300
-  observed best OOS Sharpe  +1.862   null median +0.900   null p95 +2.623   p = 0.250
+  MAX statistic — could the search stumble on this by chance?
+  best IS Sharpe          +4.072   null median +3.818   null p95 +4.945   p = 0.300
+  best OOS Sharpe         +1.575   null median +0.711   null p95 +3.093   p = 0.350
+  TYPICAL statistic — does the median window beat chance?
+  typical IS Sharpe       +3.132   null median +2.783   null p95 +3.908   p = 0.400
+  typical OOS Sharpe      +0.448   null median -0.460   null p95 +1.024   p = 0.200
   VERDICT: the search finds comparable performance in data with no signal. Treat the headline result as unproven regardless of DSR.
+  surrogate fidelity verified across 8 windows
 
-null best IS Sharpe per run:  +2.3810, +3.1517, +2.8423, +3.2078, +3.6118, +3.4122, +2.8909, +3.9496, +3.7218, +4.2081, +3.1230, +3.5445, +2.9816, +5.4409, +3.7017, +4.1710, +2.8670, +3.6619, +3.1761
-null best OOS Sharpe per run: +2.5395, -0.3111, +1.7364, +1.0419, +0.6074, +0.1880, +1.5174, +1.8841, +0.4486, -0.5996, +1.0971, -0.0459, -0.1464, +0.9799, -0.9723, +0.9000, +2.2615, -0.3950, +3.3744
+null best IS Sharpe per run:     +3.5590, +3.9201, +3.8768, +3.8444, +3.7333, +3.2325, +3.1956, +4.8688, +4.1961, +3.4702, +3.8181, +3.1977, +3.4702, +5.6279, +3.8813, +4.3075, +3.2602, +4.1872, +3.6594
+null best OOS Sharpe per run:    +3.0168, +0.2184, +0.5801, +0.5404, +1.8711, +1.5847, +0.6880, +2.4949, +0.4495, +0.2639, +2.8314, +1.3570, +0.6631, +1.3380, +0.4490, +0.7105, +1.0369, +0.2208, +3.7751
+null typical IS Sharpe per run:  +2.4170, +2.6069, +1.9462, +2.5692, +3.2972, +2.7256, +2.3682, +3.9025, +3.2743, +3.0839, +2.7828, +2.7575, +2.6999, +3.9611, +3.3858, +3.3453, +2.7504, +3.3682, +2.9362
+null typical OOS Sharpe per run: +1.5309, -1.4459, +0.3951, -0.5078, +0.4516, -0.4602, +0.4087, -0.4383, -0.6636, -1.4607, +0.9679, -1.0190, -0.2287, -1.6370, -0.9531, -1.3434, -0.2905, -0.6950, +0.3998

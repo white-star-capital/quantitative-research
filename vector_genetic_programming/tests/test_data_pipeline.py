@@ -456,3 +456,112 @@ def test_feature_engine_drops_short_history_assets(synthetic_ohlcv_cache, block_
         f"{arr.shape[2]} — metadata and data disagree"
     )
     assert len(engine.retained_assets_) + len(engine.dropped_assets_) == len(ohlcv)
+
+
+# ---------------------------------------------------------------------------
+# DATA-05: every feature must be CAUSAL — computable from the past alone.
+#
+# This is the structural form of the no-lookahead invariant (CLAUDE.md #2). If
+# a feature at index i depends only on bars <= i, then truncating the series
+# after i cannot change it. Any use of a full-sample statistic — a global mean,
+# std, min or max — breaks that immediately.
+#
+# It is what should have caught the real defect: obv_signal was z-scored with
+# obv_raw.mean() and obv_raw.std() over the whole series, and since
+# FeatureEngine.fit_transform() runs once on the full panel before any
+# walk-forward split, those constants included every OOS period. A correlation
+# proxy did not catch it; this does, exactly and for all twelve features at
+# once.
+# ---------------------------------------------------------------------------
+
+
+def _one_asset(n: int = 400, seed: int = 5) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2024-01-01", periods=n, freq="D")
+    close = 100.0 * np.exp(np.cumsum(rng.standard_normal(n) * 0.02))
+    return pd.DataFrame(
+        {
+            "open": close * (1 + rng.standard_normal(n) * 0.001),
+            "high": close * (1 + np.abs(rng.standard_normal(n)) * 0.01),
+            "low": close * (1 - np.abs(rng.standard_normal(n)) * 0.01),
+            "close": close,
+            "volume": np.abs(rng.standard_normal(n)) * 1e6 + 1e5,
+        },
+        index=idx,
+    )
+
+
+def test_every_feature_is_causal_under_truncation():
+    """Truncating the series must not change any earlier feature value.
+
+    Checks each of the 12 features independently so a failure names the
+    culprit rather than just reporting that something leaks.
+    """
+    from vgp.data.feature_engine import _compute_features
+
+    df = _one_asset()
+    k = 300                                  # truncate here
+    full = _compute_features(df)
+    trunc = _compute_features(df.iloc[:k])
+
+    assert list(full.columns) == list(trunc.columns)
+
+    leaky = []
+    for col in full.columns:
+        a = full[col].iloc[:k].to_numpy(dtype=np.float64)
+        b = trunc[col].to_numpy(dtype=np.float64)
+        both_nan = np.isnan(a) & np.isnan(b)
+        if not np.allclose(a[~both_nan], b[~both_nan], rtol=0, atol=0,
+                           equal_nan=True):
+            worst = np.nanmax(np.abs(a[~both_nan] - b[~both_nan]))
+            leaky.append(f"{col} (max abs diff {worst:.3e})")
+
+    assert not leaky, (
+        "these features change when future bars are removed, so they use "
+        "future information: " + "; ".join(leaky)
+    )
+
+
+@pytest.mark.parametrize("k", [150, 250, 350])
+def test_causality_holds_at_several_truncation_points(k):
+    """Not just one cut — a leak could hide at a particular boundary."""
+    from vgp.data.feature_engine import _compute_features
+
+    df = _one_asset(seed=11)
+    full = _compute_features(df)
+    trunc = _compute_features(df.iloc[:k])
+
+    for col in full.columns:
+        a = full[col].iloc[:k].to_numpy(dtype=np.float64)
+        b = trunc[col].to_numpy(dtype=np.float64)
+        both_nan = np.isnan(a) & np.isnan(b)
+        np.testing.assert_allclose(
+            a[~both_nan], b[~both_nan], rtol=0, atol=0,
+            err_msg=f"{col} is not causal at truncation k={k}",
+        )
+
+
+def test_appending_future_bars_does_not_change_past_features():
+    """The same invariant from the other direction, which is how live use works.
+
+    Tomorrow's bar arriving must not revise today's feature value. A global
+    normalisation silently rewrites the entire history every time new data
+    lands, so a backtest and a live system would disagree about the past.
+    """
+    from vgp.data.feature_engine import _compute_features
+
+    df = _one_asset(n=500, seed=21)
+    today = _compute_features(df.iloc[:400])
+    tomorrow = _compute_features(df)
+
+    for col in today.columns:
+        a = today[col].to_numpy(dtype=np.float64)
+        b = tomorrow[col].iloc[:400].to_numpy(dtype=np.float64)
+        both_nan = np.isnan(a) & np.isnan(b)
+        np.testing.assert_allclose(
+            a[~both_nan], b[~both_nan], rtol=0, atol=0,
+            err_msg=(
+                f"{col} was revised by the arrival of future bars — a backtest "
+                f"and a live system would disagree about the past"
+            ),
+        )
