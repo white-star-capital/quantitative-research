@@ -713,3 +713,59 @@ def test_seed_reproducibility_holds_through_a_borrowed_pool_stub(
     assert fitnesses(hof_a) == fitnesses(hof_b), (
         "the second run through the same pool differed from the first"
     )
+
+
+def test_seed_reproducibility_holds_through_a_real_spawn_pool(
+    feature_matrix, eval_cfg
+):
+    """EXP-03 across a REAL spawn pool — pickling and worker isolation included.
+
+    The stub-pool test above covers the borrowed-pool branch in-process. This
+    one additionally covers what only real workers exercise: the individual and
+    the bound feature matrix round-tripping through pickle, and a fresh
+    interpreter's numba JIT producing the same numbers as the parent's.
+
+    That last point was measured directly before this test was written —
+    evaluating 40 individuals serially and through a 3-worker pool gave
+    bit-identical fitness on all 120 values, unchanged across a second pass
+    through the same workers and under reversed chunking. So exact equality is
+    the right assertion here, not a tolerance.
+
+    It matters because NSGA-II compares fitness tuples: were pooled and serial
+    evaluation to differ in the last bits, near-ties would break differently and
+    a run's Pareto front — hence its reported Sharpe — would depend on n_jobs.
+    Every committed result comes from n_jobs=3.
+
+    Slower than the rest of the suite (~15s) because each worker loads vectorbt
+    and numba. Do not run it alongside a long job: that combination OOM-killed
+    the container once.
+    """
+    from vgp.evolution import evolution_pool
+    from vgp.evolution.config import EvolutionConfig
+    from vgp.evolution.loop import run_evolution
+
+    def fitnesses(hof):
+        return [tuple(ind.fitness.values) for ind in hof]
+
+    kw = dict(pop_size=12, n_generations=2, seed=99, checkpoint_freq=999)
+
+    _p, hof_serial, _l = run_evolution(
+        EvolutionConfig(n_jobs=1, **kw), feature_matrix, eval_cfg
+    )
+
+    with evolution_pool(2) as pool:
+        _p, hof_a, _l = run_evolution(
+            EvolutionConfig(n_jobs=2, **kw), feature_matrix, eval_cfg, pool=pool
+        )
+        _p, hof_b, _l = run_evolution(
+            EvolutionConfig(n_jobs=2, **kw), feature_matrix, eval_cfg, pool=pool
+        )
+
+    assert fitnesses(hof_serial) == fitnesses(hof_a), (
+        "a real spawn pool diverged from serial for the same seed — n_jobs "
+        "would change the reported Pareto front"
+    )
+    assert fitnesses(hof_a) == fitnesses(hof_b), (
+        "the second run through the same warm pool differed from the first — "
+        "workers are retaining state between evolutions"
+    )

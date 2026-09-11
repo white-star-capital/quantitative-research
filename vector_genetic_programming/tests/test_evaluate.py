@@ -86,20 +86,73 @@ def valid_individual(pset):
 # ---------------------------------------------------------------------------
 
 def test_backtest_runner_does_not_import_deap_eval01():
-    """vgp.backtest.runner must NOT import deap at module level (EVAL-01, D-15)."""
-    # Reload in a clean module state to catch side-effect imports
-    if "vgp.backtest.runner" in sys.modules:
-        del sys.modules["vgp.backtest.runner"]
+    """vgp.backtest.runner must NOT import deap at module level (EVAL-01, D-15).
 
-    mods_before = set(sys.modules.keys())
-    import vgp.backtest.runner  # noqa: F401
-    mods_after = set(sys.modules.keys())
+    The module is evicted from sys.modules and re-imported so side-effect
+    imports are observable, then the ORIGINAL module object is restored.
 
-    new_deap_mods = [m for m in (mods_after - mods_before) if "deap" in m]
-    assert not new_deap_mods, (
-        f"vgp.backtest.runner imported deap modules as a side effect: {new_deap_mods}. "
-        f"Architecture invariant D-15 violated — BacktestRunner must NOT import deap."
+    Restoring matters. Without it, the re-import leaves a different module
+    object in sys.modules while every module that did
+    `from vgp.backtest.runner import evaluate` still holds the old function.
+    functools.partial(evaluate, ...) then fails to pickle — pickle resolves the
+    function by qualified name and checks identity — so any LATER test that
+    sends work to a multiprocessing worker dies with
+
+        PicklingError: Can't pickle <function evaluate ...>:
+        it's not the same object as vgp.backtest.runner.evaluate
+
+    That is exactly how the real-spawn-pool reproducibility test came to pass
+    in isolation and fail in the full suite, which cost a long detour into
+    floating-point and RNG hypotheses before the traceback was read.
+    """
+    import vgp.backtest as backtest_pkg
+
+    saved = sys.modules.get("vgp.backtest.runner")
+    saved_attr = getattr(backtest_pkg, "runner", None)
+    try:
+        if "vgp.backtest.runner" in sys.modules:
+            del sys.modules["vgp.backtest.runner"]
+
+        mods_before = set(sys.modules.keys())
+        import vgp.backtest.runner  # noqa: F401
+        mods_after = set(sys.modules.keys())
+
+        new_deap_mods = [m for m in (mods_after - mods_before) if "deap" in m]
+        assert not new_deap_mods, (
+            f"vgp.backtest.runner imported deap modules as a side effect: "
+            f"{new_deap_mods}. Architecture invariant D-15 violated — "
+            f"BacktestRunner must NOT import deap."
+        )
+    finally:
+        # Both bindings must be restored. `import a.b` consults sys.modules but
+        # ALSO rebinds the attribute on the parent package, so restoring only
+        # sys.modules leaves `vgp.backtest.runner` pointing at the re-imported
+        # copy and pickle-by-reference still fails.
+        if saved is not None:
+            sys.modules["vgp.backtest.runner"] = saved
+        if saved_attr is not None:
+            backtest_pkg.runner = saved_attr
+
+
+def test_evaluate_is_picklable_by_reference():
+    """functools.partial(evaluate, ...) must survive pickling.
+
+    This is what multiprocessing does on every generation: the toolbox binds
+    evaluate into a partial and ships it to workers. It breaks if anything has
+    left a different module object in sys.modules, and the failure surfaces far
+    from its cause — in whichever test next uses a pool.
+    """
+    import functools
+    import pickle
+
+    import vgp.backtest.runner as runner_mod
+    from vgp.backtest.runner import EvalConfig, evaluate
+
+    assert evaluate is runner_mod.evaluate, (
+        "the imported evaluate is not the module's current attribute — "
+        "something replaced or reloaded vgp.backtest.runner without restoring it"
     )
+    pickle.loads(pickle.dumps(functools.partial(evaluate, config=EvalConfig())))
 
 
 def test_evaluate_returns_tuple_eval01(valid_individual, feature_matrix, eval_config):
