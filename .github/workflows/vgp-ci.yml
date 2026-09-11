@@ -1,0 +1,66 @@
+# CI for vector_genetic_programming.
+#
+# This lives at the REPOSITORY ROOT because GitHub Actions only reads workflows
+# from `<repo>/.github/workflows/`. An identical workflow sat at
+# `vector_genetic_programming/.github/workflows/ci.yml` — a leftover from when
+# VGP was its own repository — and consequently never ran: the project had no
+# CI at all, on any branch, while appearing to have some. That copy has been
+# removed rather than left to drift alongside this one.
+#
+# Scoped to VGP on purpose. `quantitative-research` is a monorepo and the
+# sibling projects have no workflows and no known-green test suite, so the
+# `paths` filter keeps this from firing on their changes.
+name: VGP CI
+
+on:
+  push:
+    branches: ["**"]        # fire during development, not only at merge
+    paths:
+      - "vector_genetic_programming/**"
+      - ".github/workflows/vgp-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "vector_genetic_programming/**"
+      - ".github/workflows/vgp-ci.yml"
+
+defaults:
+  run:
+    # Applies to `run:` steps only; `uses:` actions still resolve paths from the
+    # repository root, which is why hashFiles below is root-relative.
+    working-directory: vector_genetic_programming
+
+jobs:
+  smoke-test:
+    name: Smoke Test (Python 3.12)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('vector_genetic_programming/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install package and dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run smoke tests
+        run: pytest tests/test_smoke.py -v
+
+      # The numpy/numba bound is asserted inside tests/test_smoke.py, read from
+      # numba's installed metadata. It is deliberately NOT duplicated as a
+      # hardcoded literal here — the previous `numpy<2.3` step was numba 0.61's
+      # ceiling and went stale when numba 0.67 raised it to <2.6.
+      - name: Verify dependency set resolves and is self-consistent
+        run: pip check
