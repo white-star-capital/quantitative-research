@@ -29,6 +29,80 @@ from vgp.evolution.loop import run_evolution
 logger = logging.getLogger(__name__)
 
 
+# Selection outcomes, recorded on every result row so a fallback can never pass
+# for a validation-selected pick.
+SELECT_VALIDATION = "validation"
+SELECT_IS_FALLBACK = "is_fallback_no_measurable_validation"
+
+
+def _select_on_validation(
+    hof,
+    val_fm: np.ndarray,
+    val_eval_cfg: EvalConfig,
+    window_id: int,
+    seed: int,
+) -> tuple[object, float, str]:
+    """Pick the Pareto-front individual with the best VALIDATION Sharpe.
+
+    The front is non-dominated on training fitness, so its members are not
+    ranked against each other by anything the search has already used. Scoring
+    them on a held-out slice is what turns the front into a single choice
+    without consulting the OOS period.
+
+    Returns `(individual, validation Sharpe, selection outcome)`.
+
+    Ties are broken by smaller tree, then by position in the front, so the
+    choice is deterministic — two runs of the same seed must not diverge on a
+    coin flip, or `n_jobs` and run order start to move the reported Sharpe.
+
+    FALLBACK. When no front member is measurable on validation — every one of
+    them trips the trade threshold on a short window, say — this returns
+    `hof[0]` and says so in the third element. The caller writes that onto the
+    result row. A fallback that looked like a validation pick would be the same
+    class of defect as the sentinel that used to be reported as performance.
+    """
+    scored: list[tuple[float, int, int, object]] = []
+    # Indexed, not iterated: `hof[i]` and `len(hof)` are the access pattern the
+    # rest of this module already uses on the front, and sticking to one
+    # contract means a stand-in that satisfies it cannot iterate as empty and
+    # turn "I looked at nothing" into a plausible-looking fallback.
+    for i in range(len(hof)):
+        ind = hof[i]
+        fitness, status, _n_trades = evaluate_with_status(ind, val_fm, val_eval_cfg)
+        if status != EVAL_OK:
+            continue
+        sharpe = float(fitness[0])
+        if not np.isfinite(sharpe):
+            continue
+        scored.append((-sharpe, len(ind), i, ind))
+
+    if not scored:
+        logger.warning(
+            "Window %d seed %d: no Pareto-front member was measurable on "
+            "validation (front size %d) — falling back to the training-best "
+            "individual and recording the fallback",
+            window_id,
+            seed,
+            len(hof),
+        )
+        return hof[0], float("nan"), SELECT_IS_FALLBACK
+
+    scored.sort(key=lambda t: (t[0], t[1], t[2]))
+    neg_sharpe, _n_nodes, idx, ind = scored[0]
+    logger.info(
+        "Window %d seed %d: selected front member %d of %d on validation "
+        "Sharpe %+.3f (%d of %d members measurable)",
+        window_id,
+        seed,
+        idx,
+        len(hof),
+        -neg_sharpe,
+        len(scored),
+        len(hof),
+    )
+    return ind, float(-neg_sharpe), SELECT_VALIDATION
+
+
 @dataclass
 class WindowSpec:
     """One walk-forward window's date boundaries."""
@@ -224,7 +298,7 @@ class WalkForwardRunner:
         )
 
         # --- Split feature matrix (ndarray) --- #
-        train_fm, _val_fm, test_fm = self._splitter.split(
+        train_fm, val_fm, test_fm = self._splitter.split(
             feature_matrix,
             train_end=window.train_end,
             val_start=window.val_start,
@@ -235,7 +309,7 @@ class WalkForwardRunner:
         )
 
         # --- Split close prices (DataFrame) --- #
-        train_close, _val_close, test_close = self._splitter.split(
+        train_close, val_close, test_close = self._splitter.split(
             close_prices,
             train_end=window.train_end,
             val_start=window.val_start,
@@ -270,6 +344,20 @@ class WalkForwardRunner:
                 T_train,
             )
 
+        # Validation config. min_trades is scaled to the validation window for the
+        # same reason as the OOS one: it is a RATE expressed for the train window.
+        T_train_v = int(train_fm.shape[0])
+        T_val = int(val_fm.shape[0])
+        val_ratio = (T_val / T_train_v) if T_train_v > 0 else 1.0
+        val_min_trades = max(1, int(round(base_eval_config.min_trades * val_ratio)))
+        val_eval_cfg = EvalConfig(
+            fee_bps=base_eval_config.fee_bps,
+            min_trades=val_min_trades,
+            freq=base_eval_config.freq,
+            init_cash=base_eval_config.init_cash,
+            close_prices=val_close.copy(),
+        )
+
         test_eval_cfg = EvalConfig(
             fee_bps=base_eval_config.fee_bps,
             min_trades=oos_min_trades,
@@ -293,7 +381,19 @@ class WalkForwardRunner:
                 )
                 continue
 
-            best_ind = hof[0]
+            # --- Select from the Pareto front on VALIDATION fitness --- #
+            #
+            # This used to be `best_ind = hof[0]`, the front's top individual
+            # by TRAINING fitness, while the validation slice was computed and
+            # discarded. That made `val_months` a bare embargo gap and meant the
+            # reported individual was chosen by the most overfitting-prone rule
+            # available: best-on-train.
+            #
+            # Validation is out-of-sample for the search and in-sample for the
+            # selection; the OOS slice is still touched exactly once, after this.
+            best_ind, val_sharpe, selection = _select_on_validation(
+                hof, val_fm, val_eval_cfg, window.window_id, seed
+            )
 
             # IS Sharpe: read from the individual's fitness tuple (index 0 = Sharpe).
             # Using hof[0].fitness.values[0] rather than the logbook population-max
@@ -376,6 +476,9 @@ class WalkForwardRunner:
                     "oos_min_trades": oos_min_trades,
                     "dsr": float("nan"),  # filled in by attach_dsr()
                     "n_nodes_best": len(best_ind),
+                    "val_sharpe": val_sharpe,
+                    "selection": selection,
+                    "n_pareto_front": len(hof),
                     # Every individual this seed evaluated is a trial for the
                     # multiple-testing correction; attach_dsr() merges these across
                     # seeds and windows. See vgp/trials.py.

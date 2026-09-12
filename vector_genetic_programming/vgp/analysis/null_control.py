@@ -388,9 +388,24 @@ _FIDELITY_TOL = {
 _FIDELITY_INFO = ("ew_vol", "mean_abs_ret")
 
 
-def _window_stats(ohlcv: dict[str, pd.DataFrame], window: pd.DatetimeIndex) -> dict:
-    """Cross-sectional and scale statistics of one window."""
-    tickers = [t for t in sorted(ohlcv) if window.isin(ohlcv[t].index).all()]
+def _window_stats(
+    ohlcv: dict[str, pd.DataFrame],
+    window: pd.DatetimeIndex,
+    universe: Sequence[str] | None = None,
+) -> dict:
+    """Cross-sectional and scale statistics of one window.
+
+    `universe` restricts the comparison to an agreed asset set. Without it this
+    re-derived its own list from whatever dict it was handed, so the observed
+    and surrogate panels could be summarised over DIFFERENT assets and then
+    compared as though they were the same measurement. Harmless while
+    `block_bootstrap_ohlcv` returns exactly the keys it was given, which is why
+    it never fired — but mean correlation and effective-bet count are both
+    functions of the universe, so a mismatch would read as a fidelity breach
+    that is really just two different books.
+    """
+    pool = sorted(ohlcv) if universe is None else [t for t in universe if t in ohlcv]
+    tickers = [t for t in pool if window.isin(ohlcv[t].index).all()]
     if len(tickers) < 2:
         return {}
     rets = np.column_stack(
@@ -448,8 +463,8 @@ def window_fidelity_report(
     report: list[dict] = []
     for i in range(n_windows):
         window = calendar[edges[i] : edges[i + 1]]
-        obs = _window_stats(observed, window)
-        sur = _window_stats(surrogate, window)
+        obs = _window_stats(observed, window, universe=tickers)
+        sur = _window_stats(surrogate, window, universe=tickers)
         if not obs or not sur:
             continue
         row = {
@@ -849,7 +864,30 @@ def run_null_control(
                     f"observed seeds are {sorted(seen)}"
                 )
 
-    obs = summary_sharpes(comparable)
+    # MAX is seed-matched; TYPICAL is NOT — and the difference is the point.
+    #
+    # `max` is a maximum over result ROWS, so it grows with the row count and
+    # must be compared over equal numbers of tries. `typical` already reduces
+    # per window (median over seeds, then median over windows), so it does not
+    # scale with the seed count and restricting it just discards data. Applying
+    # the match to both was a real error while it lasted: on the first
+    # corrected-window run it cut the observed set to a single lucky seed and
+    # reported typical OOS +1.151 where all three seeds give -1.355, flipping
+    # the sign of the headline.
+    #
+    # The residual mismatch is that the null's typical comes from single-seed
+    # runs, so its reference distribution is wider than a multi-seed observed
+    # median. That makes the comparison CONSERVATIVE — an observed value has to
+    # be more extreme to clear a given p — which is the safe direction for a
+    # test whose job is to refuse to certify an edge.
+    obs_max = summary_sharpes(comparable)
+    obs_typical = summary_sharpes(observed_results)
+    obs = {
+        "max_is": obs_max["max_is"],
+        "max_oos": obs_max["max_oos"],
+        "typical_is": obs_typical["typical_is"],
+        "typical_oos": obs_typical["typical_oos"],
+    }
 
     null_is: list[float] = []
     null_oos: list[float] = []

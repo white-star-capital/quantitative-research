@@ -1164,6 +1164,77 @@ def test_stratum_resamples_within_itself_not_across_the_panel():
     )
 
 
+def test_seed_matching_applies_to_max_but_not_to_typical():
+    """MAX is restricted to the null's seeds; TYPICAL keeps every seed.
+
+    Regression for an over-correction. `max` is a maximum over rows and grows
+    with the row count, so it must be compared over equal numbers of tries.
+    `typical` reduces per window first, so it does not scale with seeds, and
+    restricting it only discards data — on the first corrected-window run that
+    cut the observed set to one lucky seed and flipped the reported sign of the
+    headline (typical OOS +1.151 against -1.355 across all three seeds).
+
+    Here seed 0 is the best seed in every window, so a typical statistic that
+    honoured the seed restriction would read HIGHER than the all-seed one.
+    """
+    from vgp.analysis import run_null_control
+
+    observed = []
+    for window in range(3):
+        for seed, level in ((0, 3.0), (1, -1.0), (2, -1.0)):
+            observed.append(
+                {
+                    "window_id": window,
+                    "seed": seed,
+                    "is_sharpe": level,
+                    "oos_sharpe": level,
+                    "oos_status": "ok",
+                }
+            )
+
+    def flat_experiment(_fm, _close, _dates):
+        return [
+            {"window_id": w, "seed": 0, "is_sharpe": 0.0, "oos_sharpe": 0.0, "oos_status": "ok"}
+            for w in range(3)
+        ]
+
+    idx = pd.date_range("2024-01-01", periods=120, freq="D")
+    close = 100.0 * np.exp(np.cumsum(np.random.default_rng(0).standard_normal(120) * 0.01))
+    panel = {
+        "A": pd.DataFrame(
+            {
+                "open": close,
+                "high": close * 1.001,
+                "low": close * 0.999,
+                "close": close,
+                "volume": np.full(120, 1e6),
+            },
+            index=idx,
+        )
+    }
+
+    def builder(_ohlcv):
+        return np.zeros((120, 2), dtype=np.float32), panel["A"][["close"]], idx
+
+    res = run_null_control(
+        ohlcv=panel,
+        experiment_fn=flat_experiment,
+        observed_results=observed,
+        n_runs=2,
+        feature_builder=builder,
+        null_seeds=[0],
+    )
+
+    assert res.observed_best_is_sharpe == pytest.approx(
+        3.0
+    ), "MAX must be seed-matched to the null's seeds"
+    assert res.observed_typical_is_sharpe == pytest.approx(-1.0), (
+        f"TYPICAL is {res.observed_typical_is_sharpe}, but the median over all "
+        "three seeds is -1.0 — the seed restriction leaked into a statistic "
+        "that does not scale with the seed count"
+    )
+
+
 def test_null_control_matches_seed_counts_before_comparing():
     """The max statistic must not compare more tries on one side than the other.
 
@@ -1243,3 +1314,48 @@ def test_null_control_matches_seed_counts_before_comparing():
     assert matched.observed_best_is_sharpe < unmatched.observed_best_is_sharpe, (
         "seed matching must be able to lower the observed statistic, or it is " "not doing anything"
     )
+
+
+def test_fidelity_compares_the_same_universe_on_both_panels():
+    """Observed and surrogate stats are taken over one agreed asset set.
+
+    `_window_stats` used to re-derive its own ticker list from whichever dict
+    it was handed, while `window_fidelity_report` computed the observed-vs-
+    surrogate intersection and then ignored it. Both mean correlation and the
+    effective-bet count are functions of the universe, so summarising the two
+    panels over different books and comparing the numbers would report a
+    fidelity breach that is really an apples-to-oranges comparison.
+
+    Latent in the pipeline — `block_bootstrap_ohlcv` returns exactly the keys
+    it is given — so this pins the contract rather than fixing a live failure.
+    """
+    from vgp.analysis.null_control import window_fidelity_report
+
+    dates = pd.date_range("2024-01-01", periods=200, freq="D")
+    rng = np.random.default_rng(5)
+
+    def frame(vol):
+        close = 100.0 * np.exp(np.cumsum(rng.standard_normal(200) * vol))
+        return pd.DataFrame(
+            {
+                "open": close,
+                "high": close * 1.001,
+                "low": close * 0.999,
+                "close": close,
+                "volume": np.full(200, 1e6),
+            },
+            index=dates,
+        )
+
+    observed = {"A": frame(0.01), "B": frame(0.01), "C": frame(0.01)}
+    # The surrogate is missing C, and carries a wildly different D instead.
+    surrogate = {"A": frame(0.01), "B": frame(0.01), "D": frame(0.20)}
+
+    report = window_fidelity_report(observed, surrogate, n_windows=2)
+
+    assert report, "no windows were comparable"
+    for row in report:
+        assert row["n_assets"] == 2, (
+            f"compared {row['n_assets']} assets, but only A and B are in both "
+            "panels — the two sides were summarised over different universes"
+        )

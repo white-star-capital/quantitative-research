@@ -1150,3 +1150,187 @@ def test_wrong_periods_per_year_changes_the_answer_materially():
         "the annualization constant made no difference; the de-annualization "
         "is not actually being applied"
     )
+
+
+# ---------------------------------------------------------------------------
+# Selection happens on VALIDATION, not on training fitness (VAL-09)
+# ---------------------------------------------------------------------------
+
+
+class _Ind(list):
+    """Stands in for a DEAP individual: a sized object with a fitness tuple."""
+
+    def __init__(self, n_nodes, is_sharpe):
+        super().__init__(range(n_nodes))
+        self.fitness = type("F", (), {"values": (is_sharpe, 0.0, -float(n_nodes))})()
+
+
+def _patch_val_scores(monkeypatch, scores):
+    """Make evaluate_with_status return `scores[id(ind)]` on the validation slice.
+
+    Each entry is `(sharpe, status)`; a status other than EVAL_OK marks the
+    individual unmeasurable.
+    """
+    from vgp.analysis import runner as runner_mod
+    from vgp.backtest.runner import EVAL_BELOW_MIN_TRADES, EVAL_OK
+
+    def fake(ind, _fm, _cfg):
+        sharpe, status = scores[id(ind)]
+        if status != EVAL_OK:
+            return (float("-inf"), float("-inf"), -float(len(ind))), EVAL_BELOW_MIN_TRADES, 0
+        return (sharpe, 0.0, -float(len(ind))), EVAL_OK, 999
+
+    monkeypatch.setattr(runner_mod, "evaluate_with_status", fake)
+
+
+def test_selection_prefers_validation_over_training_fitness(monkeypatch):
+    """The front member with the best VALIDATION Sharpe wins, not hof[0].
+
+    `hof` is a ParetoFront ordered by training fitness, so `hof[0]` is the
+    training-best. Selecting it was the old behaviour, and it is the most
+    overfitting-prone rule available. Here the training-best is deliberately
+    the validation-worst, so the two rules cannot agree by accident.
+    """
+    from vgp.analysis.runner import SELECT_VALIDATION, _select_on_validation
+    from vgp.backtest.runner import EVAL_OK
+
+    train_best = _Ind(5, 4.0)  # hof[0]: best on train, worst on validation
+    middle = _Ind(7, 3.0)
+    val_best = _Ind(9, 2.0)  # worst on train, best on validation
+    hof = [train_best, middle, val_best]
+
+    _patch_val_scores(
+        monkeypatch,
+        {
+            id(train_best): (-1.0, EVAL_OK),
+            id(middle): (0.5, EVAL_OK),
+            id(val_best): (2.5, EVAL_OK),
+        },
+    )
+
+    chosen, val_sharpe, outcome = _select_on_validation(hof, np.zeros((10, 2)), None, 0, 0)
+
+    assert chosen is val_best, "selected the training-best instead of the validation-best"
+    assert val_sharpe == pytest.approx(2.5)
+    assert outcome == SELECT_VALIDATION
+
+
+def test_selection_skips_members_unmeasurable_on_validation(monkeypatch):
+    """An individual that trips the validation trade filter cannot be selected.
+
+    Its sentinel fitness is -inf, which would sort to the BOTTOM — but only if
+    it is compared at all. Filtering on status rather than on the value keeps
+    the sentinel out of the ranking entirely, the same distinction that the
+    OOS path draws between "measured badly" and "not measured".
+    """
+    from vgp.analysis.runner import SELECT_VALIDATION, _select_on_validation
+    from vgp.backtest.runner import EVAL_BELOW_MIN_TRADES, EVAL_OK
+
+    unmeasurable = _Ind(5, 9.0)
+    measurable = _Ind(6, 1.0)
+    hof = [unmeasurable, measurable]
+
+    _patch_val_scores(
+        monkeypatch,
+        {id(unmeasurable): (99.0, EVAL_BELOW_MIN_TRADES), id(measurable): (0.2, EVAL_OK)},
+    )
+
+    chosen, val_sharpe, outcome = _select_on_validation(hof, np.zeros((10, 2)), None, 0, 0)
+
+    assert chosen is measurable, "an unmeasurable individual was selected"
+    assert val_sharpe == pytest.approx(0.2)
+    assert outcome == SELECT_VALIDATION
+
+
+def test_selection_falls_back_loudly_when_nothing_is_measurable(monkeypatch):
+    """No measurable front member: return hof[0] and SAY it was a fallback.
+
+    A fallback that looked like a validation pick would be the same class of
+    defect as the worst-fitness sentinel that used to be written into
+    results.csv as an OOS Sharpe.
+    """
+    from vgp.analysis.runner import SELECT_IS_FALLBACK, _select_on_validation
+    from vgp.backtest.runner import EVAL_BELOW_MIN_TRADES
+
+    a, b = _Ind(5, 3.0), _Ind(6, 2.0)
+    _patch_val_scores(
+        monkeypatch,
+        {id(a): (0.0, EVAL_BELOW_MIN_TRADES), id(b): (0.0, EVAL_BELOW_MIN_TRADES)},
+    )
+
+    chosen, val_sharpe, outcome = _select_on_validation([a, b], np.zeros((10, 2)), None, 0, 0)
+
+    assert chosen is a, "fallback must be the training-best individual"
+    assert np.isnan(val_sharpe), "fallback must not report a validation Sharpe"
+    assert outcome == SELECT_IS_FALLBACK
+
+
+def test_selection_ties_break_deterministically(monkeypatch):
+    """Equal validation Sharpe resolves to the smaller tree, then to front order.
+
+    Non-determinism here would make the reported Sharpe depend on dict order or
+    scheduling, which is exactly what the serial-vs-pooled bit-identity work
+    established must not happen.
+    """
+    from vgp.analysis.runner import _select_on_validation
+    from vgp.backtest.runner import EVAL_OK
+
+    big, small, also_small = _Ind(20, 1.0), _Ind(4, 1.0), _Ind(4, 1.0)
+    hof = [big, small, also_small]
+    _patch_val_scores(
+        monkeypatch,
+        {id(big): (1.5, EVAL_OK), id(small): (1.5, EVAL_OK), id(also_small): (1.5, EVAL_OK)},
+    )
+
+    first = _select_on_validation(hof, np.zeros((10, 2)), None, 0, 0)[0]
+    second = _select_on_validation(hof, np.zeros((10, 2)), None, 0, 0)[0]
+
+    assert first is small, "tie should go to the smaller tree, then to front order"
+    assert first is second, "repeated selection on identical input diverged"
+
+
+def test_result_rows_record_how_the_individual_was_selected(
+    feature_matrix, close_prices, dates, eval_cfg, base_evo_kwargs
+):
+    """Every row carries val_sharpe, selection and n_pareto_front (VAL-09).
+
+    results.csv is the artefact a reader trusts. Without these columns a
+    validation-selected pick and a silent fallback to the training-best are
+    indistinguishable after the fact, which is how the worst-fitness sentinel
+    went unnoticed for so long.
+    """
+    from vgp.analysis import generate_windows
+    from vgp.analysis.runner import SELECT_VALIDATION, WalkForwardRunner
+
+    runner = WalkForwardRunner(dates=dates)
+    window = generate_windows("2024-01-01", "2026-04-01")[0]
+    mock_return = _make_mock_evolution_return()
+
+    with (
+        patch("vgp.analysis.runner.run_evolution", return_value=mock_return),
+        patch(
+            "vgp.analysis.runner.evaluate_with_status", return_value=((0.3, 0.05, -5.0), "ok", 120)
+        ),
+        patch(
+            "vgp.analysis.runner._get_is_returns",
+            return_value=np.random.default_rng(0).standard_normal(250),
+        ),
+    ):
+        rows = runner.run_window(
+            window=window,
+            feature_matrix=feature_matrix,
+            close_prices=close_prices,
+            base_eval_config=eval_cfg,
+            seeds=[42],
+            evo_config_kwargs=base_evo_kwargs,
+        )
+
+    assert rows, "run_window returned no rows"
+    for row in rows:
+        for key in ("val_sharpe", "selection", "n_pareto_front"):
+            assert key in row, f"result row is missing {key!r}: {sorted(row)}"
+        assert row["selection"] == SELECT_VALIDATION, (
+            f"selection recorded as {row['selection']!r} when every individual was "
+            "measurable on validation"
+        )
+        assert row["n_pareto_front"] >= 1
