@@ -1072,3 +1072,174 @@ def test_run_null_control_records_both_statistics(ohlcv):
     assert res.observed_typical_oos_sharpe == pytest.approx(1.0)
     assert np.isfinite(res.p_value_typical_oos)
     assert res.p_value_typical_oos == pytest.approx(1 / 6)  # observed beats all 5
+
+
+# ---------------------------------------------------------------------------
+# The stratum's resampling pool is the stratum itself — on purpose
+# ---------------------------------------------------------------------------
+
+
+def test_block_indices_honour_the_declared_source_size():
+    """Draws fill `n_out` slots from `[0, n_src)`, whatever the two sizes are.
+
+    `_circular_block_indices` used to take a single `n` serving as both the
+    output length and the source size, and the one caller narrowed the result
+    into its real source range with `% (n_src - 1)` — a modulo that does
+    nothing whenever the source is the longer of the two. The pool it produced
+    was correct but only incidentally, and the dead modulo read as though a
+    wider pool were intended. This pins the contract now that the two sizes
+    are named separately.
+    """
+    from vgp.analysis.null_control import _circular_block_indices
+
+    wide = _circular_block_indices(60, 400, 20, np.random.default_rng(0))
+    assert wide.size == 60
+    assert wide.max() < 400, "drew outside the declared source range"
+    assert wide.max() >= 60, "a source of 400 must be able to reach past slot 60"
+
+    narrow = _circular_block_indices(200, 50, 10, np.random.default_rng(0))
+    assert narrow.size == 200, "must fill every output slot even from a short source"
+    assert narrow.max() < 50, "drew outside a source smaller than the output"
+
+    assert _circular_block_indices(0, 100, 10, np.random.default_rng(0)).size == 0
+    assert _circular_block_indices(100, 0, 10, np.random.default_rng(0)).size == 0
+
+
+def test_stratum_resamples_within_itself_not_across_the_panel():
+    """An early stratum keeps its own volatility level, and still gets shuffled.
+
+    Two properties at once, because fixing either one alone breaks the other.
+
+    CONFINEMENT: the source pool for a stratum is that stratum's own shared
+    dates, not the region running to the end of the panel. Widening it would
+    pull returns from periods when more assets were listed back into a warm-up
+    that had none of them — see
+    test_ragged_surrogate_keeps_pre_overlap_history_out_of_the_overlap. It is
+    also conservative: observed and null runs then face the same regime.
+
+    SHUFFLING: confinement must not degrade into identity. Blocks are drawn
+    with replacement inside the stratum, so essentially no output date keeps
+    its own return and the time ordering the GP could exploit is destroyed.
+    A surrogate that reproduced the stratum date-for-date would preserve
+    exactly the structure the null control exists to remove.
+    """
+    from vgp.analysis import block_bootstrap_ohlcv
+
+    dates = pd.date_range("2024-01-01", periods=400, freq="D")
+    rng = np.random.default_rng(11)
+    quiet = rng.standard_normal(199) * 0.001
+    violent = rng.standard_normal(200) * 0.05
+    close = 100.0 * np.exp(np.cumsum(np.concatenate([[0.0], quiet, violent])))
+
+    long_df = pd.DataFrame(
+        {
+            "open": close,
+            "high": close * 1.002,
+            "low": close * 0.998,
+            "close": close,
+            "volume": np.full(400, 1e6),
+        },
+        index=dates,
+    )
+    # SHORT lists at day 200, so day 200 is the stratum boundary.
+    panel = {"LONG": long_df, "SHORT": long_df.iloc[200:].copy()}
+
+    sur = block_bootstrap_ohlcv(panel, np.random.default_rng(3), block_size=10)
+
+    early = sur["LONG"].loc[dates[:200], "close"].to_numpy(dtype=np.float64)
+    early_ret = np.diff(np.log(early))
+
+    # Confinement: the quiet stratum stays quiet.
+    assert early_ret.std() < 0.01, (
+        f"early-stratum surrogate volatility {early_ret.std():.4f} looks like the "
+        "later regime (~0.05) — the stratum drew from outside itself"
+    )
+
+    # Shuffling: it is a resample, not a copy.
+    real_early_ret = np.diff(np.log(close[:200]))
+    identical = np.isclose(early_ret, real_early_ret, rtol=0, atol=1e-12).mean()
+    assert identical < 0.25, (
+        f"{identical:.1%} of early-stratum returns are the real return for that "
+        "exact date — the stratum is being reproduced, not resampled"
+    )
+
+
+def test_null_control_matches_seed_counts_before_comparing():
+    """The max statistic must not compare more tries on one side than the other.
+
+    `max_is` / `max_oos` are maxima over result ROWS, so they grow with the
+    number of rows. The observed run uses 3 seeds x 6 windows = 18 rows; the
+    null runs use 1 seed x 6 windows = 6 rows to save compute. Comparing those
+    directly asks whether the best of 18 tries beats the best of 6, which it
+    usually does whether or not there is any signal.
+
+    `null_seeds` restricts the observed rows to the seeds the null actually
+    ran. Here seed 0 is deliberately the WORST of the three, so an unmatched
+    comparison would report a higher observed max than a matched one.
+    """
+    from vgp.analysis import run_null_control
+
+    observed = []
+    for window in range(3):
+        for seed, level in ((0, 0.5), (1, 2.0), (2, 3.5)):
+            observed.append(
+                {
+                    "window_id": window,
+                    "seed": seed,
+                    "is_sharpe": level,
+                    "oos_sharpe": level,
+                    "oos_status": "ok",
+                }
+            )
+
+    def flat_experiment(_fm, _close, _dates):
+        return [
+            {"window_id": w, "seed": 0, "is_sharpe": 1.0, "oos_sharpe": 1.0, "oos_status": "ok"}
+            for w in range(3)
+        ]
+
+    idx = pd.date_range("2024-01-01", periods=120, freq="D")
+    close = 100.0 * np.exp(np.cumsum(np.random.default_rng(0).standard_normal(120) * 0.01))
+    panel = {
+        "A": pd.DataFrame(
+            {
+                "open": close,
+                "high": close * 1.001,
+                "low": close * 0.999,
+                "close": close,
+                "volume": np.full(120, 1e6),
+            },
+            index=idx,
+        )
+    }
+
+    def builder(_ohlcv):
+        return np.zeros((120, 2), dtype=np.float32), panel["A"][["close"]], idx
+
+    matched = run_null_control(
+        ohlcv=panel,
+        experiment_fn=flat_experiment,
+        observed_results=observed,
+        n_runs=2,
+        feature_builder=builder,
+        null_seeds=[0],
+    )
+    unmatched = run_null_control(
+        ohlcv=panel,
+        experiment_fn=flat_experiment,
+        observed_results=observed,
+        n_runs=2,
+        feature_builder=builder,
+    )
+
+    assert matched.observed_best_is_sharpe == pytest.approx(0.5), (
+        f"matched observed max is {matched.observed_best_is_sharpe}, expected seed 0 value 0.5 — "
+        "observed rows were not restricted to the null's seeds"
+    )
+    assert unmatched.observed_best_is_sharpe == pytest.approx(3.5), (
+        "sanity: without null_seeds the observed max should still be the "
+        "unrestricted best of all three seeds"
+    )
+    assert matched.observed_best_is_sharpe < unmatched.observed_best_is_sharpe, (
+        "seed matching must be able to lower the observed statistic, or it is " "not doing anything"
+    )

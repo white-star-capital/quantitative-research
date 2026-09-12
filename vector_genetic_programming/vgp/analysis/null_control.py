@@ -79,22 +79,31 @@ _OHLCV_COLUMNS = ("open", "high", "low", "close", "volume")
 
 
 def _circular_block_indices(
-    n: int,
+    n_out: int,
+    n_src: int,
     block_size: int,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """`n` source positions drawn as circular blocks of `block_size` from [0, n).
+    """`n_out` source positions drawn as circular blocks of `block_size` from [0, `n_src`).
 
-    Wrapping at the end (rather than truncating) keeps every position equally
-    likely to be drawn, which is what makes the surrogate's marginal
+    Wrapping at the end (rather than truncating) keeps every source position
+    equally likely to be drawn, which is what makes the surrogate's marginal
     distribution match the original's.
+
+    OUTPUT LENGTH AND SOURCE SIZE ARE SEPARATE ARGUMENTS. They used to be one
+    `n`: starts were drawn from `[0, n_out)` and the caller narrowed them into
+    the source range with `% (n_src - 1)`, a modulo that does nothing whenever
+    the source is the longer of the two. The effective pool was therefore the
+    output's own span, which is what the caller wants — but only by accident,
+    and the dead modulo read as though a wider pool were intended. Naming the
+    two sizes separately lets the caller state the pool it means.
     """
-    if n <= 0:
+    if n_out <= 0 or n_src <= 0:
         return np.empty(0, dtype=np.int64)
-    n_blocks = int(np.ceil(n / block_size))
-    starts = rng.integers(0, n, size=n_blocks)
-    offsets = (starts[:, None] + np.arange(block_size)[None, :]) % n
-    return offsets.reshape(-1)[:n].astype(np.int64)
+    n_blocks = int(np.ceil(n_out / block_size))
+    starts = rng.integers(0, n_src, size=n_blocks)
+    offsets = (starts[:, None] + np.arange(block_size)[None, :]) % n_src
+    return offsets.reshape(-1)[:n_out].astype(np.int64)
 
 
 # One experiment: features + close + dates in, result rows out.
@@ -237,8 +246,8 @@ def block_bootstrap_ohlcv(
                 pos = pos[pos >= 1]
                 if pos.size == 0:
                     continue
-                local = _circular_block_indices(pos.size, block_size, rng)
-                src[t][pos - 1] = (pos - 1)[local % pos.size]
+                local = _circular_block_indices(pos.size, pos.size, block_size, rng)
+                src[t][pos - 1] = (pos - 1)[local]
                 if t not in degraded:
                     degraded.append(t)
             continue
@@ -247,8 +256,24 @@ def block_bootstrap_ohlcv(
         # date. Every alive asset reads this same mapping, so on any surrogate
         # bar they all take their return from the same source date — which is
         # what preserves contemporaneous cross-asset correlation.
-        shared = _circular_block_indices(len(out_dates), block_size, rng)
-        shared = shared % (len(region) - 1)
+        # SOURCE POOL: this stratum's own shared dates, NOT the whole region.
+        #
+        # Confining the draw to the stratum is deliberate, not a truncation to
+        # be widened. A stratum runs from one listing date to the next, and its
+        # region runs on to the end of the panel; drawing across the region
+        # would pull returns from periods when MORE assets were listed back
+        # into a warm-up period that had none of them, leaking the joint regime
+        # into a stretch of history that never saw it. Time ordering is still
+        # destroyed — blocks are resampled with replacement inside the stratum,
+        # so no output date keeps its own return — which is what the bootstrap
+        # is for. What survives is the stratum's volatility LEVEL, and that is
+        # a conservative property: the observed run and the null run then face
+        # the same regime, so the null is harder to beat, not easier.
+        #
+        # `min` reproduces what the old `% (len(region) - 1)` did in the rare
+        # case where the region is shorter than the stratum (assets with gaps).
+        n_pool = min(len(out_dates), len(region) - 1)
+        shared = _circular_block_indices(len(out_dates), n_pool, block_size, rng)
         src_date_of = pd.Series(region[shared + 1].to_numpy(), index=out_dates)
 
         for t in alive:
@@ -745,6 +770,7 @@ def run_null_control(
     block_size: int = 20,
     seed: int = 0,
     feature_builder: Callable[[dict[str, pd.DataFrame]], tuple] | None = None,
+    null_seeds: Sequence[int] | None = None,
 ) -> NullControlResult:
     """Run the same experiment on `n_runs` signal-free surrogates.
 
@@ -772,6 +798,21 @@ def run_null_control(
         `ohlcv -> (feature_matrix, close_prices, dates)`. Defaults to the
         standard FeatureEngine path. Surrogates MUST go through the same
         feature construction as the real run, or the comparison is invalid.
+    null_seeds : Sequence[int], optional
+        The GP seeds each surrogate experiment runs. When the null uses fewer
+        seeds than the observed run, `observed_results` is restricted to those
+        seeds before the statistics are taken.
+
+        This matters for the MAX statistic and only for it. `max` is a maximum
+        over result ROWS, so it grows with the number of rows: a max over 18
+        observed rows (6 windows x 3 seeds) is systematically larger than a max
+        over 6 null rows (6 windows x 1 seed) drawn from the same distribution,
+        which biases the max p-value toward significance. The null was run at
+        one seed to save compute, on the reasoning that it "only has to
+        represent the same procedure, not the same compute budget" — true for
+        the typical statistic, which reduces per window, and false for a
+        maximum, whose whole job is to ask what the best of N tries looks like.
+        Matching the row counts costs nothing and removes the bias.
 
     Returns
     -------
@@ -783,7 +824,32 @@ def run_null_control(
     if feature_builder is None:
         feature_builder = _default_feature_builder
 
-    obs = summary_sharpes(observed_results)
+    comparable = observed_results
+    if null_seeds is not None:
+        wanted = {int(x) for x in null_seeds}
+        seen = {int(r["seed"]) for r in observed_results if r.get("seed") is not None}
+        if seen - wanted:
+            comparable = [
+                r
+                for r in observed_results
+                if r.get("seed") is not None and int(r["seed"]) in wanted
+            ]
+            logger.info(
+                "null control: observed run used seeds %s but the null uses %s; "
+                "comparing on %d of %d observed rows so the max statistic is not "
+                "a max over more tries on one side than the other",
+                sorted(seen),
+                sorted(wanted),
+                len(comparable),
+                len(observed_results),
+            )
+            if not comparable:
+                raise ValueError(
+                    f"no observed rows for null_seeds={sorted(wanted)}; "
+                    f"observed seeds are {sorted(seen)}"
+                )
+
+    obs = summary_sharpes(comparable)
 
     null_is: list[float] = []
     null_oos: list[float] = []

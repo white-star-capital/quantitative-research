@@ -82,8 +82,12 @@ MIN_ASSETS = 10  # below this the run aborts rather than reporting
 # reports nothing there. This is the falsification test for the headline result.
 #
 # Cost is N_NULL_RUNS full experiments, which is why the null runs use fewer
-# seeds: the statistic is the best Sharpe the SEARCH finds, so the null only has
-# to represent the same procedure, not the same compute budget.
+# seeds than the observed run. That saving is only sound because the comparison
+# is seed-MATCHED: run_null_control restricts the observed rows to NULL_SEEDS
+# before taking statistics. Without that, the max statistic is a max over 18
+# observed rows against a max over 6 null rows, which is biased toward
+# significance — a maximum grows with the number of tries, so "the same
+# procedure" has to mean the same number of them.
 # A p-value cannot resolve below 1/(1+N_NULL_RUNS); 20 runs buys p >= 0.048.
 # Set N_NULL_RUNS = 0 to skip, and then do not describe the result as validated.
 N_NULL_RUNS = 19  # 1/(1+19) = 0.05, the smallest p-value worth claiming
@@ -315,6 +319,7 @@ def main() -> None:
                 n_runs=N_NULL_RUNS,
                 block_size=NULL_BLOCK,
                 seed=1000,
+                null_seeds=NULL_SEEDS,
             )
             print(null_result.summary())
 
@@ -402,6 +407,7 @@ def main() -> None:
             val_start=best_window.val_start,
             val_end=best_window.val_end,
             test_start=best_window.test_start,
+            test_end=best_window.test_end,
             dates=fe.dates_,
         )
         train_close = close_prices.loc[close_prices.index <= best_window.train_end].copy()

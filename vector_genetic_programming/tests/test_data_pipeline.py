@@ -61,6 +61,7 @@ def test_splitter_ordering_assertion():
             val_start="2023-06-01",  # before train_end -- must raise
             val_end="2024-06-30",
             test_start="2024-07-01",
+            test_end="2024-12-31",
         )
 
 
@@ -76,6 +77,7 @@ def test_splitter_test_ordering_assertion():
             val_start="2024-01-01",
             val_end="2024-06-30",
             test_start="2024-06-01",  # before val_end -- must raise
+            test_end="2024-12-31",
         )
 
 
@@ -92,6 +94,7 @@ def test_splitter_valid_split_dataframe():
         val_start="2024-01-01",
         val_end="2024-06-30",
         test_start="2024-07-01",
+        test_end="2024-12-31",
     )
     assert len(train) > 0, "Train slice is empty"
     assert len(val) > 0, "Val slice is empty"
@@ -142,6 +145,7 @@ def test_full_pipeline_split_array(synthetic_ohlcv_cache, block_network):
         val_start=str(val_start.date()),
         val_end=str(val_end.date()),
         test_start=str(test_start.date()),
+        test_end=str(dates[-1].date()),
         dates=dates,
     )
     assert (
@@ -577,4 +581,111 @@ def test_appending_future_bars_does_not_change_past_features():
                 f"{col} was revised by the arrival of future bars — a backtest "
                 f"and a live system would disagree about the past"
             ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# The test slice must END where the window says it ends (DATA-03)
+# ---------------------------------------------------------------------------
+
+
+def test_split_respects_test_end_dataframe():
+    """The test slice stops at test_end, not at the end of the panel.
+
+    Regression. `split()` had no `test_end` parameter at all, so every test
+    slice ran from `test_start` to the last row of the data. Walk-forward
+    windows that recorded a 2-month OOS period were in fact scored on
+    everything from their start date onward, which makes the OOS periods
+    NESTED rather than disjoint: window 0's OOS contains every later window's.
+    Any statistic taken across windows — a median OOS Sharpe, a count of
+    profitable windows — is then an average over six overlapping views of
+    largely the same period, not six independent observations.
+
+    It was invisible in the results because nothing reported the realized OOS
+    length; the only trace was `oos_min_trades`, scaled by T_test/T_train,
+    falling 66 -> 5 across six windows that all claimed the same 2-month span.
+    """
+    from vgp.data import WalkForwardSplitter
+
+    idx = pd.date_range("2024-01-01", "2025-12-31", freq="D")
+    df = pd.DataFrame({"v": range(len(idx))}, index=idx)
+
+    train, val, test = WalkForwardSplitter().split(
+        df,
+        train_end="2024-06-30",
+        val_start="2024-07-01",
+        val_end="2024-08-31",
+        test_start="2024-09-01",
+        test_end="2024-10-31",
+    )
+
+    assert test.index.min() >= pd.Timestamp("2024-09-01"), "test slice starts too early"
+    assert test.index.max() <= pd.Timestamp("2024-10-31"), (
+        f"test slice runs to {test.index.max().date()}, past test_end 2024-10-31 — "
+        "the OOS window is unbounded and overlaps every later window"
+    )
+    assert len(test) == 61, f"expected 61 days of OOS (Sep+Oct), got {len(test)}"
+
+
+def test_split_respects_test_end_ndarray():
+    """Same bound on the ndarray path, which is what the feature matrix uses."""
+    from vgp.data import WalkForwardSplitter
+
+    dates = pd.date_range("2024-01-01", "2025-12-31", freq="D")
+    arr = np.arange(len(dates) * 3, dtype=np.float32).reshape(len(dates), 3)
+
+    _train, _val, test = WalkForwardSplitter().split(
+        arr,
+        train_end="2024-06-30",
+        val_start="2024-07-01",
+        val_end="2024-08-31",
+        test_start="2024-09-01",
+        test_end="2024-10-31",
+        dates=dates,
+    )
+
+    assert test.shape[0] == 61, (
+        f"expected 61 OOS rows (Sep+Oct), got {test.shape[0]} — the ndarray path "
+        "ignores test_end and runs to the end of the panel"
+    )
+
+
+def test_walk_forward_oos_windows_are_disjoint():
+    """Consecutive windows must not score overlapping OOS periods (VAL-01).
+
+    The end-to-end version of the two tests above: run the real window
+    generator through the real splitter and assert the OOS slices tile the
+    sample instead of nesting inside one another.
+    """
+    from vgp.analysis import generate_windows
+    from vgp.data import WalkForwardSplitter
+
+    idx = pd.date_range("2024-01-01", "2026-03-31", freq="D")
+    df = pd.DataFrame({"v": range(len(idx))}, index=idx)
+    splitter = WalkForwardSplitter()
+
+    windows = generate_windows(
+        "2024-01-01", "2026-03-31", train_months=9, val_months=2, oos_months=2, step_months=2
+    )
+    assert len(windows) >= 2, f"need at least 2 windows to test disjointness, got {len(windows)}"
+
+    spans = []
+    for w in windows:
+        _t, _v, test = splitter.split(
+            df,
+            train_end=w.train_end,
+            val_start=w.val_start,
+            val_end=w.val_end,
+            test_start=w.test_start,
+            test_end=w.test_end,
+        )
+        if len(test) == 0:
+            continue
+        spans.append((w.window_id, test.index.min(), test.index.max()))
+
+    for (id_a, _start_a, end_a), (id_b, start_b, _end_b) in zip(spans, spans[1:]):
+        assert end_a < start_b, (
+            f"window {id_a} OOS ends {end_a.date()} but window {id_b} OOS starts "
+            f"{start_b.date()} — the OOS periods overlap, so statistics across "
+            "windows are not independent observations"
         )

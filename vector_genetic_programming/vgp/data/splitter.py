@@ -37,6 +37,7 @@ class WalkForwardSplitter:
         val_start: str,
         val_end: str,
         test_start: str,
+        test_end: str,
         dates: pd.DatetimeIndex | None = None,
     ) -> tuple:
         """
@@ -61,6 +62,14 @@ class WalkForwardSplitter:
             Inclusive end date for the validation set.
         test_start : str
             Inclusive start date for the test set.
+        test_end : str
+            Inclusive end date for the test set. REQUIRED, deliberately: this
+            argument used not to exist, so every test slice silently ran from
+            ``test_start`` to the end of the panel. Windows that reported a
+            2-month OOS period were measured on everything from their start
+            date onward, making the walk-forward OOS periods nested rather than
+            disjoint. A default of "to the end" is what hid that, so there is
+            no default — each caller states the end date it means.
         dates : pd.DatetimeIndex | None
             Required when ``data`` is an ``np.ndarray``.  Ignored for DataFrames.
 
@@ -72,7 +81,8 @@ class WalkForwardSplitter:
         Raises
         ------
         AssertionError
-            If ``val_start <= train_end`` or ``test_start <= val_end``.
+            If ``val_start <= train_end``, ``test_start <= val_end``, or
+            ``test_end < test_start``.
         ValueError
             If ``data`` is an ``np.ndarray`` and ``dates`` is not provided.
         """
@@ -85,6 +95,9 @@ class WalkForwardSplitter:
         assert pd.Timestamp(test_start) > pd.Timestamp(
             val_end
         ), f"test_start ({test_start}) must be strictly after val_end ({val_end})"
+        assert pd.Timestamp(test_end) >= pd.Timestamp(
+            test_start
+        ), f"test_end ({test_end}) must be on or after test_start ({test_start})"
 
         # ----------------------------------------------------------------
         # Step 2: DataFrame input — boolean mask on DatetimeIndex.
@@ -93,7 +106,7 @@ class WalkForwardSplitter:
             idx = data.index
             train = data.loc[idx <= pd.Timestamp(train_end)]
             val = data.loc[(idx >= pd.Timestamp(val_start)) & (idx <= pd.Timestamp(val_end))]
-            test = data.loc[idx >= pd.Timestamp(test_start)]
+            test = data.loc[(idx >= pd.Timestamp(test_start)) & (idx <= pd.Timestamp(test_end))]
 
             logger.info(
                 "Split summary — train: %d rows, val: %d rows, test: %d rows",
@@ -116,10 +129,11 @@ class WalkForwardSplitter:
             i_val_start = np.searchsorted(dates, pd.Timestamp(val_start), side="left")
             i_val_end = np.searchsorted(dates, pd.Timestamp(val_end), side="right")
             i_test_start = np.searchsorted(dates, pd.Timestamp(test_start), side="left")
+            i_test_end = np.searchsorted(dates, pd.Timestamp(test_end), side="right")
 
             train = data[:i_train_end]
             val = data[i_val_start:i_val_end]
-            test = data[i_test_start:]
+            test = data[i_test_start:i_test_end]
 
             logger.info(
                 "Split summary — train: %d rows, val: %d rows, test: %d rows",

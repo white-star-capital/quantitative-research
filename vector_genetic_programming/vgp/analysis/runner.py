@@ -230,6 +230,7 @@ class WalkForwardRunner:
             val_start=window.val_start,
             val_end=window.val_end,
             test_start=window.test_start,
+            test_end=window.test_end,
             dates=self._dates,
         )
 
@@ -240,6 +241,7 @@ class WalkForwardRunner:
             val_start=window.val_start,
             val_end=window.val_end,
             test_start=window.test_start,
+            test_end=window.test_end,
         )
 
         # Build train/test EvalConfigs (close_prices must match the data slice)
