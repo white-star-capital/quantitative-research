@@ -1,14 +1,14 @@
 Null control: 19 signal-free run(s), block_size=20 bars
   MAX statistic — could the search stumble on this by chance?
-  best IS Sharpe          +3.288   null median +3.653   null p95 +4.499   p = 0.750
-  best OOS Sharpe         +1.368   null median +3.372   null p95 +4.780   p = 0.850
+  best IS Sharpe          +3.066   null median +3.046   null p95 +4.209   p = 0.500
+  best OOS Sharpe         +2.657   null median +3.606   null p95 +6.373   p = 0.750
   TYPICAL statistic — does the median window beat chance?
-  typical IS Sharpe       +2.531   null median +2.700   null p95 +3.647   p = 0.600
-  typical OOS Sharpe      +1.151   null median +0.052   null p95 +1.644   p = 0.250
+  typical IS Sharpe       +1.925   null median +1.878   null p95 +3.265   p = 0.450
+  typical OOS Sharpe      +0.974   null median +0.284   null p95 +2.411   p = 0.300
   VERDICT: the search finds comparable performance in data with no signal. Treat the headline result as unproven regardless of DSR.
   surrogate fidelity verified across 8 windows
 
-null best IS Sharpe per run:     +2.9896, +3.9598, +3.9221, +3.5397, +3.3863, +3.8080, +2.9961, +5.3716, +3.8414, +3.6534, +3.5942, +3.3586, +2.9050, +2.8864, +4.3352, +4.3075, +2.5293, +4.4017, +3.9740
-null best OOS Sharpe per run:    +4.7712, +1.4716, +3.6634, +3.9654, +4.2282, +1.2099, +2.5094, +2.7824, +4.6071, -0.6342, +4.8591, +3.0589, +3.7141, +3.3720, +4.4453, +0.4420, +1.4365, +3.5958, +2.6979
-null typical IS Sharpe per run:  +2.2709, +3.1140, +2.2719, +2.4007, +2.6995, +2.9950, +2.5424, +3.8847, +3.2352, +2.4368, +2.9910, +2.4741, +2.5264, +2.3679, +3.6207, +3.4644, +2.3034, +3.2390, +3.2936
-null typical OOS Sharpe per run: +2.3950, +0.2086, -1.6910, -1.1292, +1.5604, +0.0516, -1.3894, -1.4949, +0.1895, -2.2663, +1.1979, -2.3703, +1.0107, +0.5543, +1.0814, -3.7269, -0.8357, -1.1177, +1.4079
+null best IS Sharpe per run:     +2.5293, +3.2261, +3.2888, +3.4821, +3.2060, +3.0457, +2.4373, +5.3716, +3.3834, +2.6348, +2.2661, +2.5060, +2.6737, +1.7626, +4.0562, +4.0794, +2.3333, +2.8437, +3.4273
+null best OOS Sharpe per run:    +4.7220, +3.6064, +6.2494, +4.2791, +4.0237, +4.2742, +7.4847, +1.3749, +5.6967, +2.6741, +2.8591, +4.7719, +0.9011, +1.6233, +2.1948, +3.4690, +1.8251, +4.2018, +3.5676
+null typical IS Sharpe per run:  +1.7876, +1.8549, +1.7124, +1.7930, +2.1083, +2.4851, +1.6822, +3.2647, +2.2785, +1.8780, +1.7461, +1.9151, +1.8301, +1.2845, +3.0972, +3.2691, +1.7177, +2.4925, +2.9508
+null typical OOS Sharpe per run: +2.2426, +0.0149, -1.6303, -1.4841, +0.4554, +1.9199, +0.8734, -0.3334, +0.3448, -1.3317, +1.1643, +3.9227, -1.9120, -0.2764, +0.2841, -2.2520, -0.5850, +1.4297, +0.8471

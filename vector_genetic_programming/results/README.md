@@ -1,32 +1,90 @@
 # results/
 
-Run date: 2026-09-11 · universe fingerprint `af8fe4ee067f` · reproduce with `make start`
+Run date: 2026-09-13 · universe fingerprint `af8fe4ee067f` · reproduce with `make start`
 
-## Verdict: no evidence of skill, and the out-of-sample result is negative
+## Verdict: no evidence of skill
 
-Six walk-forward windows, three seeds, a 19-run null control whose surrogate was
+Six walk-forward windows with **disjoint** OOS periods, three seeds, selection on
+a held-out validation slice, and a 19-run null control whose surrogate was
 verified faithful in all 8 fidelity windows.
 
 | statistic | observed | null median | null p95 | p |
 |---|---|---|---|---|
-| **MAX** best IS Sharpe | +3.308 | +3.771 | +4.637 | 0.600 |
-| **MAX** best OOS Sharpe | +1.362 | +0.866 | +3.411 | 0.400 |
-| **TYPICAL** IS Sharpe | +2.421 | +2.631 | +3.638 | 0.700 |
-| **TYPICAL** OOS Sharpe | **−0.943** | −0.412 | +2.050 | **0.750** |
+| **MAX** best IS Sharpe | +3.066 | +3.046 | +4.209 | 0.500 |
+| **MAX** best OOS Sharpe | +2.657 | +3.606 | +6.373 | 0.750 |
+| **TYPICAL** IS Sharpe | +1.925 | +1.878 | +3.265 | 0.450 |
+| **TYPICAL** OOS Sharpe | **+0.974** | +0.284 | +2.411 | **0.300** |
 
-The typical window loses money out-of-sample, and loses *more* than a typical
-signal-free surrogate does. On the max statistic the search does not even reach
-the null's median in-sample. Nothing here is close to significant on any of the
-four tests.
+Per-window OOS medians: **+1.090, +0.858, −3.016, +2.657, −2.266, +1.368** —
+four of six positive. All 18 rows measurable, all 18 selected on validation with
+zero fallbacks.
 
-Per-window OOS medians: **−0.736, −0.319, −1.471, −2.867, −1.149, +0.066**.
-Only the last window is positive, and barely. All 18 rows measurable.
+The typical out-of-sample Sharpe is positive, and it is still not evidence of
+anything. Five of nineteen signal-free surrogates reached +0.974 or better, so a
+search of this size lands here three times in ten on data with no signal at all.
+Nothing clears 0.05 on any of the four tests.
 
-## The previous run's positive OOS was a lookahead artifact
+## Two corrections since the previous run, both of which moved the result
 
-The run immediately before this one reported a *positive* typical OOS Sharpe of
-+0.448 (p = 0.200) and per-window medians of +0.660, +0.820, +1.027, +0.235,
-−0.978, −0.375. The only difference is one feature.
+### The OOS windows were nested, not disjoint
+
+`WalkForwardSplitter.split()` had no `test_end` parameter. Every test slice ran
+from `test_start` to the **end of the panel**, while `results.csv` faithfully
+recorded a `test_end` that was never applied. Window 0's OOS spanned ~12 months
+and contained every later window's.
+
+The only trace was `oos_min_trades`, which scales with `T_test/T_train` and fell
+66, 46, 31, 20, 12, 5 across six windows that all declared the same 2-month span.
+A 13:1 spread means the windows were 13:1 in length.
+
+Everything taken across windows was affected: "six independent OOS periods" was
+false, and the typical statistic was a median over six overlapping views of
+largely the same stretch. Re-measured on genuinely disjoint windows, with
+selection unchanged, the result got **worse**: typical OOS −1.355 (p = 0.700)
+against the −0.943 (p = 0.750) reported before.
+
+`test_end` is now required with no default — a default of "run to the end" is
+what hid this for the life of the project — and three tests pin it, including an
+end-to-end check that consecutive windows tile rather than nest.
+
+### Selection used training fitness; the validation split was discarded
+
+`run_window` computed the validation slice and threw it away (`_val_fm`,
+`_val_close`), then scored `hof[0]` — the Pareto front's best by **training**
+fitness. `val_months=2` was a bare embargo gap while the banner advertised
+"9m train + 2m val + 2m OOS".
+
+Not a measurement error: OOS never touched selection, so the older numbers were
+honest. But it meant the framework concluded "no evidence of skill" using the
+most overfitting-prone rule available. Every front member is now scored on the
+held-out validation window and the best is taken.
+
+| | select on train (`hof[0]`) | select on validation |
+|---|---|---|
+| TYPICAL OOS Sharpe | −1.355 | **+0.974** |
+| p (typical OOS) | 0.700 | 0.300 |
+| TYPICAL IS Sharpe | +2.441 | +1.925 |
+| windows with positive median | 1 of 6 | 4 of 6 |
+
+Out-of-sample rose 2.33 Sharpe while **in-sample fell** — the signature of a
+real fix rather than a new leak. Selecting on training fitness was picking the
+individual most fitted to the training window.
+
+It does not change the verdict. The null median rose too (+0.052 → +0.284),
+because the surrogates run the identical selection procedure. A better method
+helps the null as much as the real data, which is exactly what a null control
+exists to reveal.
+
+## Earlier: a positive OOS that was a lookahead artifact
+
+Historical, and still the largest single correction this project has made. Both
+runs below predate the two fixes above, so they used nested OOS windows and
+selected on training fitness — the comparison is like-for-like between
+themselves, not with the headline table.
+
+That run reported a *positive* typical OOS Sharpe of +0.448 (p = 0.200) and
+per-window medians of +0.660, +0.820, +1.027, +0.235, −0.978, −0.375. The only
+difference from the run that followed it is one feature.
 
 `obv_signal` was z-scored with whole-series mean and standard deviation, and
 `FeatureEngine.fit_transform()` runs once on the full panel before any
@@ -40,7 +98,10 @@ that included every OOS period. It is now a trailing 20-bar z-score.
 | windows with positive median | 4 of 6 | 1 of 6 |
 
 **That single contaminated feature accounted for essentially all of the apparent
-out-of-sample edge.**
+out-of-sample edge**, as measured at the time. The headline result has since
+returned to a positive typical OOS (+0.974) for an unrelated reason — selecting
+on validation instead of training fitness — and the null control declines to
+certify that one too, at p = 0.300.
 
 ### The severity of the leak was badly misjudged, and the method was the problem
 
@@ -66,20 +127,33 @@ nothing about its size.
 
 | | value |
 |---|---|
-| `dsr` (78,210 trials of 100,852 evaluations) | up to **0.861** |
-| `dsr_bests_only` (9 winners) | up to 0.994 |
-| null control, max IS | **p = 0.600** |
+| `dsr` (78,599 trials of 100,923 evaluations) | up to **0.965** |
+| `dsr_bests_only` (18 winners) | up to 0.993 |
+| null control, typical OOS | **p = 0.300** |
 
-A DSR of 0.86 reads as "nearly significant". The null control, running the same
-pipeline on signal-free data, finds it performs *better* on noise. Both numbers
-are arithmetically correct; they answer different questions. DSR corrects for
-selection across trials and is blind to bias shared by every trial, which is
-exactly what a null control is for. Where they disagree, the null control wins.
+This is the sharpest version of the disagreement yet: **0.965 clears the
+conventional 0.95 bar.** Read on its own, the Deflated Sharpe Ratio now
+certifies this result. The null control, running the same pipeline on
+signal-free surrogates, finds that three runs in ten do as well on data with no
+signal in it.
 
-(The DSR values are much larger than earlier runs' ~1e-3 partly because
+Both numbers are arithmetically correct and they answer different questions. DSR
+corrects for selection *across trials* — it asks whether the best of N tries is
+better than the best of N tries should be, given the spread of those tries. It is
+blind by construction to any bias shared by **every** trial, because such a bias
+shifts all of them together and leaves the cross-sectional spread untouched. A
+lookahead, a reused training window, a survivor-biased universe, and an
+overlapping OOS period all live in that blind spot; this project has now found
+four of them.
+
+The null control is the only check here that can see them, because it rebuilds
+the entire pipeline on data where the answer is known to be nothing. Where the
+two disagree, the null control wins.
+
+(The DSR figures are far larger than earlier runs' ~1e-3 partly because
 de-annualization was corrected from 252 to 365 periods, matching vectorbt's
-`freq="1D"` convention. That change raises DSR; it does not change any verdict,
-because the verdict comes from the null control.)
+`freq="1D"` convention. That change raises DSR; it changes no verdict, because
+the verdict comes from the null control.)
 
 ## What was run
 
@@ -88,8 +162,9 @@ because the verdict comes from the null control.)
 | Data | Binance daily OHLCV, 2024-01-01 → 2026-04-01 |
 | Universe | 21 of 30 declared assets — see `universe.json` |
 | Panel | 701 dates × 12 features × 21 assets |
-| Windows | 6 walk-forward (9m train / 2m val / 2m OOS, non-overlapping) |
-| Search | pop 200 × 30 generations × 3 seeds = 100,852 evaluations |
+| Windows | 6 walk-forward, 9m train / 2m validation / 2m OOS, OOS periods **disjoint** |
+| Selection | best Pareto-front member by **validation** Sharpe (0 fallbacks in 18 rows) |
+| Search | pop 200 × 30 generations × 3 seeds = 100,923 evaluations |
 | Costs | 10 bps round-trip, inside `evaluate()` |
 | Null control | 19 runs × 1 seed, 20-bar blocks, one shared warm worker pool |
 
@@ -99,12 +174,28 @@ because the verdict comes from the null control.)
 `oos_status` says why. All 18 rows were measurable in this run.
 
 Two DSR columns are reported because the trial-set convention changes the
-answer completely — 0.861 against all evaluations versus 0.994 against the nine
-reported winners. `dsr` is the honest figure. Two null statistics are reported
+answer completely — 0.965 against all evaluations versus 0.993 against the
+eighteen reported winners. `dsr` is the honest figure. Two null statistics are reported
 because the max asks whether the search got lucky and the typical asks whether
 the average period beats chance; here both fail, but they can disagree.
 
 ## Known limitations
+
+**Per-seed rows are not fully independent.** In window 5, seeds 0 and 1 produced
+different Pareto fronts (2 and 4 members) yet both validation-best members are
+the same 3-node tree, giving identical IS and OOS Sharpe to six decimals. With
+trees that small there are few distinct expressions to find, so convergence is
+expected — but it means the effective number of independent observations is
+lower than the 18 rows suggest, and a per-window median over 3 seeds can rest on
+fewer than 3 distinct strategies.
+
+**Disjoint OOS windows are short, and the dispersion is severe.** Two years of
+data tiled into non-overlapping 2-month OOS periods gives ~61 daily bars per
+window, where an annualised Sharpe carries a standard error near 2.4. Individual
+seeds range −5.44 to +2.77 within a single window. That noise floor is high
+enough that an edge the size of the one observed here could not be distinguished
+from luck at this sample size — which is the honest reading of p = 0.300, rather
+than "close to significant".
 
 - **19 null runs floor the p-value at 0.05.** These p-values (0.400–0.750) are
   nowhere near the floor, so the conclusion does not depend on it.
