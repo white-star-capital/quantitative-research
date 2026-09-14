@@ -33,8 +33,19 @@ from tqdm import tqdm
 # Config — edit these to scale up or point at different data
 # ---------------------------------------------------------------------------
 
-CACHE_DIR = Path("data_pipeline_example/cache")  # {SYMBOL}_1d.parquet, see results/README.md
-RESULTS_DIR = Path("results")
+# Paths are anchored to the project directory, not the working directory, so
+# `python scripts/run.py` behaves the same from anywhere. They used to be bare
+# relative paths, which quietly required you to be standing in the project root.
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+
+# Daily OHLCV as {SYMBOL}_1d.parquet. COMMITTED to the repository: 27 assets is
+# 956 KB, small enough to live in git as ordinary objects, so a plain
+# `git clone` gives a working dataset and `make start` runs with no setup step.
+# It previously lived in data_pipeline_example/cache/ and was gitignored, so
+# every user had to git-lfs-pull the sibling risk_premium_pca project and copy
+# files across before anything would run.
+CACHE_DIR = PROJECT_DIR / "data"
+RESULTS_DIR = PROJECT_DIR / "results"
 SEEDS = [0, 1, 2]
 POP_SIZE = 200  # individuals per generation
 N_GENERATIONS = 30  # generations per seed

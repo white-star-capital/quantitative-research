@@ -11,6 +11,8 @@ fixture now makes the no-network promise enforceable rather than aspirational.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -689,3 +691,71 @@ def test_walk_forward_oos_windows_are_disjoint():
             f"{start_b.date()} — the OOS periods overlap, so statistics across "
             "windows are not independent observations"
         )
+
+
+# ---------------------------------------------------------------------------
+# The committed dataset must be present and usable from a bare clone (DATA-10)
+# ---------------------------------------------------------------------------
+
+
+def test_committed_market_data_is_present_and_readable():
+    """`data/` ships with the repo, so `make start` needs no setup step.
+
+    The dataset used to live in `data_pipeline_example/cache/` and was covered
+    by the `*.parquet` gitignore rule, so a fresh clone had none of it. Running
+    anything meant first pulling the sibling `risk_premium_pca` project's Git
+    LFS cache and copying files across by hand — two commands that appeared
+    nowhere except a paragraph in results/README.md.
+
+    27 assets is 956 KB, which is small enough to commit as ordinary git
+    objects. No LFS, so `git clone` alone is sufficient.
+
+    This test fails if someone re-adds a gitignore rule covering `data/`, moves
+    the directory, or commits the files as LFS pointers (a pointer is ~130
+    bytes and will not parse as parquet).
+    """
+    data_dir = Path(__file__).resolve().parent.parent / "data"
+    assert data_dir.is_dir(), f"{data_dir} is missing — the committed dataset is gone"
+
+    files = sorted(data_dir.glob("*_1d.parquet"))
+    assert len(files) >= 20, (
+        f"found {len(files)} parquet files in {data_dir}, expected the full "
+        "committed universe — a fresh clone cannot run the pipeline"
+    )
+
+    # Parsing one proves these are real files, not LFS pointers or empty stubs.
+    df = pd.read_parquet(files[0])
+    assert not df.empty, f"{files[0].name} is empty"
+    for column in ("open", "high", "low", "close", "volume"):
+        assert column in df.columns, f"{files[0].name} is missing column {column!r}"
+    assert isinstance(df.index, pd.DatetimeIndex), f"{files[0].name} lacks a DatetimeIndex"
+
+
+def test_run_script_points_at_the_committed_data():
+    """scripts/run.py resolves CACHE_DIR to the committed directory, from any cwd.
+
+    Both halves matter. If CACHE_DIR drifts back to a path that is not shipped,
+    a clean clone silently has no data; if it is a bare relative path, the
+    script only works when invoked from the project root.
+    """
+    import ast
+
+    source = (Path(__file__).resolve().parent.parent / "scripts" / "run.py").read_text()
+    tree = ast.parse(source)
+
+    assigned = {
+        target.id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    assert "CACHE_DIR" in assigned, "scripts/run.py no longer defines CACHE_DIR"
+
+    assert (
+        '"data"' in source or "'data'" in source
+    ), "scripts/run.py does not reference the committed data/ directory"
+    assert "__file__" in source, (
+        "scripts/run.py uses a bare relative data path — it will only work when "
+        "run from the project root"
+    )

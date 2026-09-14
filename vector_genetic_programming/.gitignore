@@ -35,5 +35,11 @@ htmlcov/
 
 # Experiment outputs (large, generated)
 *.parquet
+# ...except the committed market data. 956 KB for 27 assets is small enough to
+# live in the repo as ordinary git objects, so `git clone` alone gives a
+# working dataset — no Git LFS, no copying files out of a sibling project, no
+# setup commands before `make start`. The sibling risk_premium_pca/ keeps its
+# own LFS config; this directory deliberately does not use it.
+!data/*.parquet
 *.pkl
 *.pickle

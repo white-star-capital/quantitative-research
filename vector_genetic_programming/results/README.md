@@ -212,16 +212,34 @@ than "close to significant".
 
 ## Reproducing
 
-Daily OHLCV parquet files must be in `data_pipeline_example/cache/` as
-`{SYMBOL}_1d.parquet`. `*.parquet` is gitignored; this run used the Git LFS
-cache from the sibling `risk_premium_pca` project:
+```bash
+git clone <repo> && cd vector_genetic_programming
+python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+make start
+```
+
+That is the whole procedure. The market data ships in `data/` as ordinary
+committed files — 27 assets, 956 KB — so there is no Git LFS step, nothing to
+copy out of a sibling project, and no setup command before `make start`.
+
+Previously the data lived in `data_pipeline_example/cache/`, which the
+`*.parquet` gitignore rule excluded, so a fresh clone had none of it. Running
+anything first required:
 
 ```bash
 git lfs pull --include="risk_premium_pca/rp_pca/data/cache/*.parquet"
 cp risk_premium_pca/rp_pca/data/cache/*USDT_1d.parquet \
    vector_genetic_programming/data_pipeline_example/cache/
-make start
 ```
+
+Two commands documented in one paragraph of one file. `tests/test_data_pipeline.py`
+now fails if `data/` goes missing, gets re-ignored, or is committed as LFS
+pointers, so a clean clone stays runnable.
+
+To point at your own data, drop `{SYMBOL}_1d.parquet` files into `data/` or
+change `CACHE_DIR` at the top of `scripts/run.py`. Paths there resolve against
+the project directory, not the working directory, so the script runs correctly
+from anywhere.
 
 `python scripts/diagnose_null_gap.py` re-verifies that the surrogate is a fair
 opponent after any change to the bootstrap.

@@ -74,7 +74,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-CACHE_DIR = Path("data_pipeline_example/cache")
+CACHE_DIR = Path(__file__).resolve().parent.parent / "data"
 N_TREES = 400  # random trees evaluated per dataset
 N_REPS = 3  # surrogate replicates per block size
 BLOCK_SIZES = (1, 5, 20, 60, 100_000)  # last one exceeds T -> pure rotation
