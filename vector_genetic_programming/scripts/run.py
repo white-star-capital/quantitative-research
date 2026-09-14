@@ -66,7 +66,24 @@ N_GENERATIONS = 30  # generations per seed
 # The alternative — 6m train, 8 windows — was rejected: ~183 training bars is
 # thin for fitting depth-8 trees, and noisier fits work against the very
 # question more windows are meant to answer.
-WINDOW_KW = dict(train_months=9, val_months=2, oos_months=2, step_months=2)
+# 4 windows x 4-month OOS, tiling the sample with nothing discarded.
+#
+# Chosen over both 8x2-month and 2x6-month by measurement, not preference. The
+# reported statistic is the MEDIAN ACROSS windows, whose precision goes as
+# 1.25 * SE_window / sqrt(n_windows), and SE_window itself goes as
+# sqrt(365 / oos_bars). Longer windows shrink SE_window and the window count in
+# step, so the aggregate barely moves — what actually buys precision is TOTAL
+# OOS calendar time, and that is capped by the data.
+#
+#   8 x 2-month   16 months OOS   SE/window 2.45   SE of median 1.08
+#   4 x 4-month   16 months OOS   SE/window 1.74   SE of median 1.09
+#   2 x 6-month   12 months OOS   SE/window 1.42   SE of median 1.25   <- worst
+#
+# 6-month windows do not fit this 2.25-year sample: only two are generated and
+# Dec 2025 - Mar 2026 is dropped, which is why the "longer is better" intuition
+# inverts here. 4-month keeps every month of OOS while making each individual
+# window worth reading (SE 1.74 against 2.45).
+WINDOW_KW = dict(train_months=9, val_months=2, oos_months=4, step_months=4)
 
 # One warm pool serves the WHOLE experiment (evolution_pool below) — every
 # window, every seed, every null run — so the numba JIT warmup is paid once
@@ -101,7 +118,9 @@ MIN_ASSETS = 10  # below this the run aborts rather than reporting
 # procedure" has to mean the same number of them.
 # A p-value cannot resolve below 1/(1+N_NULL_RUNS); 20 runs buys p >= 0.048.
 # Set N_NULL_RUNS = 0 to skip, and then do not describe the result as validated.
-N_NULL_RUNS = 19  # 1/(1+19) = 0.05, the smallest p-value worth claiming
+N_NULL_RUNS = 99  # 1/(1+99) = 0.01 — at 19 the floor WAS 0.05, so nothing
+# could ever be called significant; a p of exactly 0.05 was the best attainable
+# result and indistinguishable from the boundary.
 NULL_SEEDS = [0]
 NULL_BLOCK = 20  # bootstrap block length in bars
 
