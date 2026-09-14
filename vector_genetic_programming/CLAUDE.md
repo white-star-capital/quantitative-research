@@ -110,6 +110,8 @@ technical constraints above.
 
 9. **De-annualize with the convention that annualized it** — vectorbt annualizes a `freq="1D"` Sharpe with **365** periods per year, not 252 (verified: `pf.sharpe_ratio()` over the per-period Sharpe of `pf.returns()` equals sqrt(365) to 1e-14). `PERIODS_PER_YEAR_DAILY = 365` in `vgp/analysis/dsr.py`. Using 252 inflated the DSR z-statistic by ~20% — a unit mismatch is invisible in the output, so tests pin both sides of the coupling.
 
+10. **Reproducibility must be tested ACROSS PROCESSES, never within one** — DEAP's `gp.cxOnePoint` picks the crossover type with `random.choice(list(common_types))` where `common_types` is a set of TYPE OBJECTS. Classes inherit the address-derived `object.__hash__`, so that list's order depends on where the interpreter loaded them, and ASLR changes it between processes. Two runs of the same seed consume the identical RNG draw, index a differently ordered list, pick a different type, and diverge for the rest of the run. Measured: 63% of crossover pairs have two candidate types, the order flips in ~1 process in 12, and the headline typical OOS Sharpe moved **+0.974 to +0.087 across two runs of identical code, data and seeds**. `vgp/gp/variation.py` replaces the operator with one that sorts candidates by name; it consumes the same number of RNG draws, so it does not shift the stream. Every pre-existing reproducibility test passed throughout, because they all re-run inside one interpreter where addresses are fixed — `tests/test_determinism.py` shells out instead. Any new `random.choice(list(a_set))` over non-value-hashed objects reintroduces this.
+
 ## Architecture Invariants
 
 - `EvolutionLoop` must NOT import `vectorbt`

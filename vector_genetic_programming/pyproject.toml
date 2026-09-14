@@ -91,6 +91,13 @@ include = ["vgp*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+markers = [
+  # Cross-process reproducibility checks. They shell out to fresh interpreters
+  # because the defect they guard against (address-dependent set ordering in
+  # DEAP's typed crossover) is invisible inside a single process. Slower than
+  # the rest of the suite by design; deselect with -m "not slow" when iterating.
+  "slow: spawns subprocesses; runs in CI, skip locally with -m 'not slow'",
+]
 
 [tool.black]
 line-length = 100

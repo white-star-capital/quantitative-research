@@ -38,6 +38,7 @@ from vgp.gp.gp_types import (  # noqa: F401 — side effect: registers creator.I
     build_pset,
     creator,
 )
+from vgp.gp.variation import cx_one_point
 from vgp.trials import TrialAccumulator
 
 logger = logging.getLogger(__name__)
@@ -129,7 +130,10 @@ def _build_toolbox(
     toolbox.register("select", tools.selNSGA2)
 
     # Genetic operators (EVO-01)
-    toolbox.register("mate", gp.cxOnePoint)
+    # Our crossover, not gp.cxOnePoint: DEAP's picks the crossover type out of a
+    # set of TYPE OBJECTS, whose iteration order follows their memory addresses
+    # and therefore changes between processes. See vgp/gp/variation.py.
+    toolbox.register("mate", cx_one_point)
     toolbox.register("mutate", gp.mutUniform, expr=toolbox.expr, pset=pset)
 
     # Depth limit on BOTH operators (EVO-03, D-16, CLAUDE.md #5).
