@@ -103,7 +103,7 @@
     "FLUIDUSDT": "ProxyError: HTTPSConnectionPool(host='api.binance.com', port=443): Max retries exceeded with url: /api/v3/klines?symbol=FLUIDUSDT&interval=1d&startTime=1704067200000&endTime=1775087999000&limit=1000 (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))"
   },
   "null_control": {
-    "n_runs": 19,
+    "n_runs": 99,
     "block_size": 20,
     "universe_matches_observed": true
   }

@@ -1,30 +1,83 @@
 # results/
 
-Run date: 2026-09-13 · universe fingerprint `af8fe4ee067f` · reproduce with `make start`
+Run date: 2026-09-15 · universe fingerprint `af8fe4ee067f` · reproduce with `make start`
 
 ## Verdict: no evidence of skill
 
-Six walk-forward windows with **disjoint** OOS periods, three seeds, selection on
-a held-out validation slice, and a 19-run null control whose surrogate was
-verified faithful in all 8 fidelity windows.
+Three walk-forward windows with **disjoint 4-month OOS periods**, three seeds,
+selection on a held-out validation slice, and a **99-run** null control whose
+surrogate was verified faithful in all 8 fidelity windows.
+
+This is the first result the project has produced that **reproduces**: it is the
+first run on the deterministic crossover (see below), so re-running `make start`
+returns these numbers rather than a different draw.
 
 | statistic | observed | null median | null p95 | p |
 |---|---|---|---|---|
-| **MAX** best IS Sharpe | +3.066 | +3.046 | +4.209 | 0.500 |
-| **MAX** best OOS Sharpe | +2.657 | +3.606 | +6.373 | 0.750 |
-| **TYPICAL** IS Sharpe | +1.925 | +1.878 | +3.265 | 0.450 |
-| **TYPICAL** OOS Sharpe | **+0.974** | +0.284 | +2.411 | **0.300** |
+| **MAX** best IS Sharpe | +3.066 | +2.770 | +4.141 | 0.340 |
+| **MAX** best OOS Sharpe | +1.207 | +1.484 | +3.517 | 0.620 |
+| **TYPICAL** IS Sharpe | +2.216 | +2.167 | +3.515 | 0.470 |
+| **TYPICAL** OOS Sharpe | **−0.533** | +0.255 | +2.294 | **0.700** |
 
-Per-window OOS medians: **+1.090, +0.858, −3.016, +2.657, −2.266, +1.368** —
-four of six positive. All 18 rows measurable, all 18 selected on validation with
-zero fallbacks.
+Per-window OOS medians: **+1.207, −1.759, −0.533** — one of three positive.
 
-The typical out-of-sample Sharpe is positive, and it is still not evidence of
-anything. Five of nineteen signal-free surrogates reached +0.974 or better, so a
-search of this size lands here three times in ten on data with no signal at all.
-Nothing clears 0.05 on any of the four tests.
+Two design changes were made specifically to give a real edge room to appear,
+and both did their job:
 
-## Two corrections since the previous run, both of which moved the result
+* **99 null runs instead of 19.** The p-value floor was 0.05, so nothing could
+  ever have been called significant; it is now 0.01. Nothing came close.
+* **4-month windows instead of 2-month.** Per-window standard error fell from
+  2.45 to 1.74. The typical OOS Sharpe went **down**, to −0.533 against a null
+  median of +0.255 — the search performs worse than signal-free data on the
+  statistic that matters.
+
+## The features are not empty; the tradeable signal is
+
+`scripts/diagnose_feature_ic.py` asks the data directly, in minutes rather than
+the hours an evolution takes, and gives a sharper answer than the GP can.
+
+Five features clear a Bonferroni threshold and hold their sign across both
+halves of the sample with near-identical magnitudes — `vol_20d` at −0.0620 /
+−0.0607, `parkinson_14` at −0.0662 / −0.0673. That is a stable cross-sectional
+effect, not a regime artifact.
+
+It does not survive contact with a portfolio:
+
+| | result |
+|---|---|
+| long-only lowest-vol tercile | negative OOS — 21 assets at 0.615 mean correlation give 2.4 effective bets, so the book is a levered direction bet |
+| market-neutral tercile tilt | median OOS Sharpe **+1.079** after costs — looks like an edge |
+| the same strategy, 99 surrogates | **p = 0.250**, null median +0.283, p95 +1.861 |
+
+The block bootstrap preserves each asset's volatility level and the cross-asset
+correlation structure — that is what makes it a fair null — so the
+low-volatility assets in a surrogate are **still** the low-volatility assets. A
+long-low/short-high book inherits that structure's return asymmetry with no
+predictive timing involved. The apparent edge is the structure, not information.
+
+Which also explains the GP result. It is not failing to search hard enough;
+there is nothing to find beyond what the null reproduces.
+
+## An observation on validation selection, not yet a finding
+
+Across the nine rows of this run, validation Sharpe is **anti**-correlated with
+OOS Sharpe (pooled −0.608), and the window-level pattern is stark:
+
+| window | mean validation Sharpe | mean OOS Sharpe |
+|---|---|---|
+| W0 | +0.11 | **+1.29** |
+| W1 | +2.92 | −0.72 |
+| W2 | +2.94 | −0.74 |
+
+If real, it would mean selecting on validation is not merely neutral here but
+actively harmful, and the natural reading is regime alternation: the validation
+window sits immediately before the OOS window, and a period that looked good is
+followed by one that does not.
+
+**Three windows is not evidence.** It is recorded because it is cheap to test
+on the next dataset and expensive to discover later.
+
+## Two corrections since the previous run## Two corrections since the previous run, both of which moved the result
 
 ### The OOS windows were nested, not disjoint
 
@@ -127,14 +180,14 @@ nothing about its size.
 
 | | value |
 |---|---|
-| `dsr` (78,599 trials of 100,923 evaluations) | up to **0.965** |
-| `dsr_bests_only` (18 winners) | up to 0.993 |
-| null control, typical OOS | **p = 0.300** |
+| `dsr` (38,774 trials of 50,455 evaluations) | up to **0.970** |
+| `dsr_bests_only` (9 winners) | up to 0.993 |
+| null control, typical OOS | **p = 0.700** |
 
-This is the sharpest version of the disagreement yet: **0.965 clears the
-conventional 0.95 bar.** Read on its own, the Deflated Sharpe Ratio now
+This is the sharpest version of the disagreement yet: **0.970 clears the
+conventional 0.95 bar**, on a run whose null control returns p = 0.700. Read on its own, the Deflated Sharpe Ratio now
 certifies this result. The null control, running the same pipeline on
-signal-free surrogates, finds that three runs in ten do as well on data with no
+signal-free surrogates, finds that seven runs in ten do as well on data with no
 signal in it.
 
 Both numbers are arithmetically correct and they answer different questions. DSR
@@ -162,11 +215,11 @@ the verdict comes from the null control.)
 | Data | Binance daily OHLCV, 2024-01-01 → 2026-04-01 |
 | Universe | 21 of 30 declared assets — see `universe.json` |
 | Panel | 701 dates × 12 features × 21 assets |
-| Windows | 6 walk-forward, 9m train / 2m validation / 2m OOS, OOS periods **disjoint** |
-| Selection | best Pareto-front member by **validation** Sharpe (0 fallbacks in 18 rows) |
-| Search | pop 200 × 30 generations × 3 seeds = 100,923 evaluations |
+| Windows | 3 walk-forward, 9m train / 2m validation / **4m OOS**, OOS periods **disjoint** |
+| Selection | best Pareto-front member by **validation** Sharpe (0 fallbacks in 9 rows) |
+| Search | pop 200 × 30 generations × 3 seeds = 50,455 evaluations |
 | Costs | 10 bps round-trip, inside `evaluate()` |
-| Null control | 19 runs × 1 seed, 20-bar blocks, one shared warm worker pool |
+| Null control | **99 runs** × 1 seed, 20-bar blocks, one shared warm worker pool |
 
 ## Reading the columns
 
@@ -174,8 +227,8 @@ the verdict comes from the null control.)
 `oos_status` says why. All 18 rows were measurable in this run.
 
 Two DSR columns are reported because the trial-set convention changes the
-answer completely — 0.965 against all evaluations versus 0.993 against the
-eighteen reported winners. `dsr` is the honest figure. Two null statistics are reported
+answer completely — 0.970 against all evaluations versus 0.993 against the
+nine reported winners. `dsr` is the honest figure. Two null statistics are reported
 because the max asks whether the search got lucky and the typical asks whether
 the average period beats chance; here both fail, but they can disagree.
 
@@ -190,14 +243,14 @@ lower than the 18 rows suggest, and a per-window median over 3 seeds can rest on
 fewer than 3 distinct strategies.
 
 **Disjoint OOS windows are short, and the dispersion is severe.** Two years of
-data tiled into non-overlapping 2-month OOS periods gives ~61 daily bars per
+data tiled into non-overlapping 4-month OOS periods gives ~121 daily bars per
 window, where an annualised Sharpe carries a standard error near 2.4. Individual
 seeds range −5.44 to +2.77 within a single window. That noise floor is high
 enough that an edge the size of the one observed here could not be distinguished
 from luck at this sample size — which is the honest reading of p = 0.300, rather
 than "close to significant".
 
-- **19 null runs floor the p-value at 0.05.** These p-values (0.400–0.750) are
+- **99 null runs floor the p-value at 0.01.** These p-values (0.340–0.700) are
   nowhere near the floor, so the conclusion does not depend on it.
 - **Window-local correlation is matched in distribution, not exactly.** A
   bootstrap draws source dates from the whole eligible region, so an unusually
