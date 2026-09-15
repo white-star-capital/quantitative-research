@@ -5,11 +5,32 @@ not inside functions. multiprocessing.Pool workers re-import this module; if
 creator.create() is inside a function it will not run in workers, causing
 AttributeError on Individual.fitness.
 """
+
 from __future__ import annotations
 
 import random
 
 from deap import base, creator, gp
+
+from vgp.gp.primitives import (
+    Scalar,
+    Vector,
+    # Phase 4 additions (D-10):
+    gt,
+    if_then_else,
+    lt,
+    prim_add,
+    prim_mul,
+    prim_neg,
+    prim_protected_div,
+    prim_sub,
+    rolling_max_20,
+    rolling_mean_5,
+    rolling_mean_20,
+    rolling_min_20,
+    rolling_std_5,
+    rolling_std_20,
+)
 
 
 def _rand_scalar_int() -> float:
@@ -21,25 +42,6 @@ def _rand_scalar_int() -> float:
     """
     return float(random.randint(-5, 5))
 
-from vgp.gp.primitives import (
-    Vector,
-    Scalar,
-    prim_add,
-    prim_sub,
-    prim_mul,
-    prim_protected_div,
-    prim_neg,
-    rolling_mean_5,
-    rolling_mean_20,
-    rolling_std_5,
-    rolling_std_20,
-    rolling_max_20,
-    rolling_min_20,
-    # Phase 4 additions (D-10):
-    gt,
-    lt,
-    if_then_else,
-)
 
 # ---------------------------------------------------------------------------
 # Module-level creator registration (D-09 — DEAP pickling requirement)
