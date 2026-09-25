@@ -137,7 +137,9 @@ VGP uses `pip-tools` to maintain a reproducible lock file.
 
 3. Commit the updated `requirements-lock.txt`.
 
-**Important:** The `numpy<2.3` upper bound in `pyproject.toml` must remain. NumPy 2.3 hard-breaks numba's internal C extension APIs, which makes the entire evolution engine inoperable. Do not remove or relax this pin. If numba adds NumPy 2.3 support in a future release, update the pin in `pyproject.toml` and re-run the smoke tests (`test_numba_jit_compiles`) before committing.
+**Important:** the numpy bounds in `pyproject.toml` are not arbitrary — numba binds numpy's C extension APIs and pins them tightly, and a mismatch makes the evolution engine inoperable. The bounds follow from the rest of the set: `vectorbt 1.1.0` needs `numpy>=2.4.6`, `numba 0.67.0` needs `numpy<2.6`.
+
+When bumping any of vectorbt, numba, numpy or pandas, bump them **together** and let the resolver check the result — these four constrain each other. Do not hardcode a numpy ceiling in a test or CI step: the original `numpy<2.3` assertion was numba 0.61's limit, numba 0.67 raised it to `<2.6`, and the assertion then failed on a valid environment. `tests/test_smoke.py` reads the bound from numba's installed metadata instead, and also asserts that the declared set resolves against the live environment and that installed packages do not conflict with each other. Run `pip install -e ".[dev]" && pytest tests/test_smoke.py` after any pin change.
 
 ## Code Conventions
 

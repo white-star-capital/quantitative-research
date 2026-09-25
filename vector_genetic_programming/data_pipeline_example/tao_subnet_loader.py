@@ -6,15 +6,14 @@ Expected per-subnet files: ``sn{netuid}_tao_daily_candles.csv`` (see
 as ``BinanceFetcher.fetch_all``: DatetimeIndex named ``date``, one column per
 asset (``SN1``, ``SN4``, …).
 """
+
 from __future__ import annotations
 
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
-
 from rp_pca.config import TAO_SUBNET_WIDE_PARQUET
 
 logger = logging.getLogger(__name__)
@@ -30,7 +29,7 @@ def _to_naive_date_index(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
     return idx.normalize()
 
 
-def _netuid_from_filename(name: str) -> Optional[int]:
+def _netuid_from_filename(name: str) -> int | None:
     m = _SUBNET_FILE_RE.match(name)
     if m is None:
         return None
@@ -65,8 +64,8 @@ def load_subnet_candles_from_dir(
     directory: Path | str,
     *,
     price_col: str = "close",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> pd.DataFrame:
     """
     Discover ``sn*_tao_daily_candles.csv`` under ``directory`` and merge to a
@@ -87,9 +86,7 @@ def load_subnet_candles_from_dir(
 
     paths = sorted(p for p in root.glob("sn*_tao_daily_candles.csv") if p.is_file())
     if not paths:
-        raise FileNotFoundError(
-            f"No sn*_tao_daily_candles.csv files found under {root}"
-        )
+        raise FileNotFoundError(f"No sn*_tao_daily_candles.csv files found under {root}")
 
     series_list: list[pd.Series] = []
     for p in paths:
@@ -127,8 +124,8 @@ def load_tao_subnet_prices(
     directory: Path | str,
     *,
     price_col: str = "close",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> pd.DataFrame:
     """
     Load wide subnet closes: prefer ``tao_subnets_wide.parquet`` if present,
@@ -173,8 +170,8 @@ def load_tao_subnet_prices(
 def load_tao_subnet_market_caps(
     directory: Path | str,
     *,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> pd.DataFrame:
     """
     Load wide market-cap DataFrame from individual ``sn*_tao_daily_candles.csv``.
@@ -191,9 +188,7 @@ def load_tao_subnet_market_caps(
 
     paths = sorted(p for p in root.glob("sn*_tao_daily_candles.csv") if p.is_file())
     if not paths:
-        raise FileNotFoundError(
-            f"No sn*_tao_daily_candles.csv files found under {root}"
-        )
+        raise FileNotFoundError(f"No sn*_tao_daily_candles.csv files found under {root}")
 
     series_list: list[pd.Series] = []
     for p in paths:
@@ -231,8 +226,8 @@ def load_subnet_candles_combined(
     *,
     price_col: str = "close",
     symbol_col: str = "symbol",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> pd.DataFrame:
     """
     Load a long combined CSV (e.g. ``tao_all_subnets_daily_candles_combined.csv``)
@@ -257,9 +252,7 @@ def load_subnet_candles_combined(
     elif "netuid" in df.columns:
         id_series = "SN" + df["netuid"].astype(int).astype(str)
     else:
-        raise ValueError(
-            "Combined CSV needs a 'symbol' column (e.g. SN4) or 'netuid'"
-        )
+        raise ValueError("Combined CSV needs a 'symbol' column (e.g. SN4) or 'netuid'")
 
     df = df.assign(_asset=id_series)
     df = df.sort_values("_d")
