@@ -10,18 +10,24 @@
 # Scoped to VGP on purpose. `quantitative-research` is a monorepo and the
 # sibling projects have no workflows and no known-green test suite, so the
 # `paths` filter keeps this from firing on their changes.
-name: VGP CI
+name: CI
+
+# Renamed from "VGP CI" when farming_anthropic_ipo_volatility/ arrived. The file
+# keeps its old name so the workflow's run history stays continuous — GitHub
+# keys a workflow by path, not by display name.
 
 on:
   push:
     branches: ["**"]        # fire during development, not only at merge
     paths:
       - "vector_genetic_programming/**"
+      - "farming_anthropic_ipo_volatility/**"
       - ".github/workflows/vgp-ci.yml"
   pull_request:
     branches: [main]
     paths:
       - "vector_genetic_programming/**"
+      - "farming_anthropic_ipo_volatility/**"
       - ".github/workflows/vgp-ci.yml"
 
 defaults:
@@ -111,3 +117,45 @@ jobs:
       # ceiling and went stale when numba 0.67 raised it to <2.6.
       - name: Verify dependency set resolves and is self-consistent
         run: pip check
+
+  ipo-vol:
+    name: IPO vol (Python 3.12)
+    runs-on: ubuntu-latest
+    # Pure numpy/pandas maths with no network and no JIT: the suite runs in well
+    # under a second. The ceiling is here to bound a dependency-resolution hang,
+    # not the tests.
+    timeout-minutes: 10
+    defaults:
+      run:
+        # Overrides the workflow-level default, which points at VGP.
+        working-directory: farming_anthropic_ipo_volatility
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-ipo-${{ hashFiles('farming_anthropic_ipo_volatility/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-ipo-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Tests only. This project has no pyproject.toml and so no pinned ruff or
+      # black, and gating unpinned formatters on code they have never been run
+      # against turns the first unrelated push red. Lint gates belong here once
+      # the project declares its own pinned dev tooling, the way VGP does.
+      #
+      # `src/` is not an installed package, so the tests reach it via a path
+      # insert; pytest is invoked from the project root for that reason.
+      - name: Run test suite
+        run: python -m pytest tests/ -q --durations=10
