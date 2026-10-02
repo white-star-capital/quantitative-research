@@ -1,0 +1,161 @@
+# CI for vector_genetic_programming.
+#
+# This lives at the REPOSITORY ROOT because GitHub Actions only reads workflows
+# from `<repo>/.github/workflows/`. An identical workflow sat at
+# `vector_genetic_programming/.github/workflows/ci.yml` — a leftover from when
+# VGP was its own repository — and consequently never ran: the project had no
+# CI at all, on any branch, while appearing to have some. That copy has been
+# removed rather than left to drift alongside this one.
+#
+# Scoped to VGP on purpose. `quantitative-research` is a monorepo and the
+# sibling projects have no workflows and no known-green test suite, so the
+# `paths` filter keeps this from firing on their changes.
+name: CI
+
+# Renamed from "VGP CI" when farming_anthropic_ipo_volatility/ arrived. The file
+# keeps its old name so the workflow's run history stays continuous — GitHub
+# keys a workflow by path, not by display name.
+
+on:
+  push:
+    branches: ["**"]        # fire during development, not only at merge
+    paths:
+      - "vector_genetic_programming/**"
+      - "farming_anthropic_ipo_volatility/**"
+      - ".github/workflows/vgp-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "vector_genetic_programming/**"
+      - "farming_anthropic_ipo_volatility/**"
+      - ".github/workflows/vgp-ci.yml"
+
+defaults:
+  run:
+    # Applies to `run:` steps only; `uses:` actions still resolve paths from the
+    # repository root, which is why hashFiles below is root-relative.
+    working-directory: vector_genetic_programming
+
+jobs:
+  test:
+    name: Tests (Python 3.12)
+    runs-on: ubuntu-latest
+    # The suite runs in ~70s from cold and install takes ~1-2min on an empty
+    # pip cache. The ceiling exists for the deadlock case, not the slow case:
+    # the pooled determinism test below spawns real worker processes, and a
+    # hung pool would otherwise sit on the runner for the 6-hour default.
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('vector_genetic_programming/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install package and dev dependencies
+        run: pip install -e ".[dev]"
+
+      # Lint gate. `select = ["E", "F", "W", "I", "UP"]` in pyproject — pycodestyle,
+      # pyflakes, import sorting and pyupgrade. Placed before the tests because it
+      # costs well under a second and a dead import is worth failing on before
+      # spending two minutes evolving trees.
+      #
+      # The dev extra pins ruff to a minor series. Ruff is pre-1.0 and adds rules
+      # in minor releases, so an unpinned gate fails on code nobody touched.
+      #
+      # Formatting is NOT gated: the project carries both black and ruff in its
+      # dev extra, and picking a formatter is a separate decision from linting.
+      - name: Lint
+        run: ruff check .
+
+      # Formatting gate. Black and ruff's linter agree on this tree — `ruff check`
+      # passes on black's output — so the two can be enforced together without one
+      # undoing the other. Formatting was applied in its own commit, which
+      # .git-blame-ignore-revs points at so `git blame` skips it.
+      #
+      # Pinned to a major series in the dev extra: black versions its stable style
+      # by calendar year, so an unpinned gate reformats the tree at the rollover.
+      - name: Check formatting
+        run: black --check --diff .
+
+      # The full suite, not a smoke subset. Two properties make this safe to run
+      # unattended on a hosted runner, both measured rather than assumed:
+      #
+      #   * Hermetic. No test reaches the network. `tests/conftest.py` generates
+      #     its own OHLCV parquet cache and the `block_network` fixture raises on
+      #     any outbound socket, so a network-shaped failure here is a real
+      #     regression, not the old silent fallthrough to the Binance API.
+      #   * Bounded. Measured in a clean-room run — fresh worktree, fresh 3.12
+      #     venv, these exact commands: 185 passed, 2 skipped in 70s, peak RSS
+      #     ~1 GB across the whole process tree. That includes the two spawn
+      #     workers started by
+      #     test_seed_reproducibility_holds_through_a_real_spawn_pool, which at
+      #     15.4s is the second-slowest test and the only one that forks. A
+      #     4-core/16 GB runner has room to spare, so no worker cap or
+      #     deselection is needed. The two slowest tests are dominated by numba
+      #     JIT compilation, so a warm cache runs the suite in ~50s.
+      #
+      # 2 tests skip: the MLflow logging pair, which is an optional dependency
+      # (D-02) and deliberately absent from the dev extra.
+      - name: Run test suite
+        run: pytest -q --durations=15
+
+      # The numpy/numba bound is asserted inside tests/test_smoke.py, read from
+      # numba's installed metadata. It is deliberately NOT duplicated as a
+      # hardcoded literal here — the previous `numpy<2.3` step was numba 0.61's
+      # ceiling and went stale when numba 0.67 raised it to <2.6.
+      - name: Verify dependency set resolves and is self-consistent
+        run: pip check
+
+  ipo-vol:
+    name: IPO vol (Python 3.12)
+    runs-on: ubuntu-latest
+    # Pure numpy/pandas maths with no network and no JIT: the suite runs in well
+    # under a second. The ceiling is here to bound a dependency-resolution hang,
+    # not the tests.
+    timeout-minutes: 10
+    defaults:
+      run:
+        # Overrides the workflow-level default, which points at VGP.
+        working-directory: farming_anthropic_ipo_volatility
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-ipo-${{ hashFiles('farming_anthropic_ipo_volatility/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-ipo-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Tests only. This project has no pyproject.toml and so no pinned ruff or
+      # black, and gating unpinned formatters on code they have never been run
+      # against turns the first unrelated push red. Lint gates belong here once
+      # the project declares its own pinned dev tooling, the way VGP does.
+      #
+      # `src/` is not an installed package, so the tests reach it via a path
+      # insert; pytest is invoked from the project root for that reason.
+      - name: Run test suite
+        run: python -m pytest tests/ -q --durations=10

@@ -60,10 +60,24 @@ Results are saved to `results/results.csv` automatically. Each row is one (windo
 ```python
 from vgp.data import DataLoader, FeatureEngine, WalkForwardSplitter
 
-loader = DataLoader(cache_dir="data/cache")
-ohlcv = loader.load()                     # dict[str, pd.DataFrame]
+loader = DataLoader(cache_dir="data")     # the committed parquet files
+ohlcv = loader.fetch_ohlcv(               # dict[str, pd.DataFrame]
+    start_date="2024-01-01",
+    end_date="2026-04-01",
+    # `data/` ships 27 of UNIVERSE_30's 30 symbols. Without this the loader
+    # reaches Binance for the missing 3 and raises FetchError — deliberately,
+    # because a partial universe changes the experiment and must be a declared
+    # choice rather than a log line. This is what scripts/run.py passes, and it
+    # is what makes the project work with no network at all.
+    allow_partial=True,
+    min_assets=10,
+)
 fe = FeatureEngine()
-fm = fe.transform(ohlcv)                  # float32 [T×F×A]
+fm = fe.fit_transform(ohlcv)              # float32 [T×F×A]
+# fe.retained_assets_ and fe.dates_ give the REALISED universe: the engine
+# drops assets below min_obs_fraction, so the A axis is NOT the input dict.
+# Results on different universes are not comparable — compare
+# `universe_fingerprint`, not asset counts.
 ```
 
 See `vgp/evolution/` for the NSGA-II loop and `vgp/evolution/config.py` for all `EvolutionConfig` parameters.
@@ -137,7 +151,9 @@ VGP uses `pip-tools` to maintain a reproducible lock file.
 
 3. Commit the updated `requirements-lock.txt`.
 
-**Important:** The `numpy<2.3` upper bound in `pyproject.toml` must remain. NumPy 2.3 hard-breaks numba's internal C extension APIs, which makes the entire evolution engine inoperable. Do not remove or relax this pin. If numba adds NumPy 2.3 support in a future release, update the pin in `pyproject.toml` and re-run the smoke tests (`test_numba_jit_compiles`) before committing.
+**Important:** the numpy bounds in `pyproject.toml` are not arbitrary — numba binds numpy's C extension APIs and pins them tightly, and a mismatch makes the evolution engine inoperable. The bounds follow from the rest of the set: `vectorbt 1.1.0` needs `numpy>=2.4.6`, `numba 0.67.0` needs `numpy<2.6`.
+
+When bumping any of vectorbt, numba, numpy or pandas, bump them **together** and let the resolver check the result — these four constrain each other. Do not hardcode a numpy ceiling in a test or CI step: the original `numpy<2.3` assertion was numba 0.61's limit, numba 0.67 raised it to `<2.6`, and the assertion then failed on a valid environment. `tests/test_smoke.py` reads the bound from numba's installed metadata instead, and also asserts that the declared set resolves against the live environment and that installed packages do not conflict with each other. Run `pip install -e ".[dev]" && pytest tests/test_smoke.py` after any pin change.
 
 ## Code Conventions
 

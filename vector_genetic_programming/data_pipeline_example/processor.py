@@ -12,10 +12,10 @@ Steps
 6. Drop any remaining all-NaN rows (e.g. the first row after pct_change).
 7. Align to a common date index.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -92,7 +92,10 @@ class ReturnProcessor:
         self.retained_assets_ = keep
         logger.info(
             "Asset filter: %d/%d assets retained (min_obs_fraction=%.2f, min_obs=%d rows)",
-            len(keep), len(prices.columns), self.min_obs_fraction, min_obs,
+            len(keep),
+            len(prices.columns),
+            self.min_obs_fraction,
+            min_obs,
         )
         prices = prices[keep]
 
@@ -124,6 +127,7 @@ class ReturnProcessor:
 # Benchmark return constructors
 # ---------------------------------------------------------------------------
 
+
 def equal_weighted_returns(returns: pd.DataFrame) -> pd.Series:
     """Simple cross-sectional average return (equal weight)."""
     return returns.mean(axis=1).rename("EW_Market")
@@ -132,7 +136,7 @@ def equal_weighted_returns(returns: pd.DataFrame) -> pd.Series:
 def value_weighted_returns(
     returns: pd.DataFrame,
     prices: pd.DataFrame,
-    supply: Optional[pd.DataFrame] = None,
+    supply: pd.DataFrame | None = None,
 ) -> pd.Series:
     """
     Market-cap-weighted portfolio returns.
@@ -158,8 +162,10 @@ def value_weighted_returns(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _winsorise_df(df: pd.DataFrame, lower: float, upper: float) -> pd.DataFrame:
     """Winsorise each column at [lower, upper] quantiles."""
+
     def _clip(col: pd.Series) -> pd.Series:
         lo = col.quantile(lower)
         hi = col.quantile(upper)
@@ -169,7 +175,7 @@ def _winsorise_df(df: pd.DataFrame, lower: float, upper: float) -> pd.DataFrame:
 
 
 def compute_rolling_returns(
-    returns: pd.DataFrame, window: int, min_obs: Optional[int] = None
+    returns: pd.DataFrame, window: int, min_obs: int | None = None
 ) -> pd.DataFrame:
     """Compute rolling cumulative returns over `window` days."""
     min_obs = min_obs or window // 2

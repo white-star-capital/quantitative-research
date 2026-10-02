@@ -17,6 +17,7 @@ DEAP's typed GP can call primitives with ephemeral constant terminals (Python fl
 All primitives coerce their inputs with _to_f32() to ensure numpy array semantics
 throughout the tree execution — this handles the ephemeral constant → primitive path.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -42,6 +43,7 @@ def _to_f32(x) -> np.ndarray:
 # Type tokens for DEAP PrimitiveSetTyped
 # ---------------------------------------------------------------------------
 
+
 class Vector:
     """Type token for [T] numpy arrays in the DEAP PrimitiveSetTyped type system.
 
@@ -64,6 +66,7 @@ class Scalar(Vector):
 # Arithmetic primitives: (Vector, Vector) -> Vector  [D-06]
 # ---------------------------------------------------------------------------
 
+
 def prim_add(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Element-wise addition. Handles scalar (ephemeral constant) inputs via numpy broadcast."""
     return (np.asarray(x, dtype=np.float32) + np.asarray(y, dtype=np.float32)).astype(np.float32)
@@ -75,7 +78,10 @@ def prim_sub(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 
 def prim_mul(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """Element-wise multiplication. Handles scalar (ephemeral constant) inputs via numpy broadcast."""
+    """Element-wise multiplication.
+
+    Handles scalar (ephemeral constant) inputs via numpy broadcast.
+    """
     return (np.asarray(x, dtype=np.float32) * np.asarray(y, dtype=np.float32)).astype(np.float32)
 
 
@@ -107,6 +113,7 @@ def prim_neg(x: np.ndarray) -> np.ndarray:
 # with the corresponding input values (no NaN propagation from warm-up).
 # sliding_window_view: no per-bar Python loops — fully vectorized.
 # ---------------------------------------------------------------------------
+
 
 def rolling_mean_5(x: np.ndarray) -> np.ndarray:
     """Rolling 5-period mean. Pads first 4 positions with input values.
@@ -204,6 +211,7 @@ def rolling_min_20(x: np.ndarray) -> np.ndarray:
 # Added in Phase 4. Returns 0.0/1.0 float32 arrays — compose naturally
 # with arithmetic primitives without needing a boolean type in the type system.
 # ---------------------------------------------------------------------------
+
 
 def gt(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Element-wise greater-than. Returns 0.0/1.0 float32 array (D-10)."""

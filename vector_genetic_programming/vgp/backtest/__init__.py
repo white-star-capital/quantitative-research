@@ -4,7 +4,7 @@ ARCHITECTURE INVARIANT: This module must NOT import deap.
 Interface from GP: numpy array in -> fitness tuple out.
 """
 
-from .runner import evaluate, EvalConfig, BacktestRunner
+from .runner import BacktestRunner, EvalConfig, evaluate
 
 __all__ = [
     "evaluate",

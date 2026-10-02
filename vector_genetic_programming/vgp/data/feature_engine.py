@@ -13,6 +13,7 @@ Steps
 6. Stack into [T, F, A] float32 numpy array.
 7. Raise ValueError if any NaN persists after the trim.
 """
+
 from __future__ import annotations
 
 import logging
@@ -25,18 +26,18 @@ logger = logging.getLogger(__name__)
 # Canonical feature order (F = 12).  This list is the single source of truth —
 # the array's F-axis layout must match this exactly.
 FEATURE_NAMES: list[str] = [
-    "ret_1d",       # 1-day simple return
-    "ret_5d",       # 5-day simple return
-    "ret_20d",      # 20-day simple return
-    "log_close",    # natural log of close
-    "vol_5d",       # 5-day realised volatility (std of daily returns)
-    "vol_20d",      # 20-day realised volatility
-    "atr_14",       # simplified 14-day ATR (high - low range, rolling mean)
-    "parkinson_14", # 14-day Parkinson volatility estimator
-    "rsi_14",       # 14-period RSI
-    "norm_close",   # close normalised over 20-day min/max range
-    "vol_ratio_20d",# current volume / 20-day mean volume
-    "obv_signal",   # OBV z-score
+    "ret_1d",  # 1-day simple return
+    "ret_5d",  # 5-day simple return
+    "ret_20d",  # 20-day simple return
+    "log_close",  # natural log of close
+    "vol_5d",  # 5-day realised volatility (std of daily returns)
+    "vol_20d",  # 20-day realised volatility
+    "atr_14",  # simplified 14-day ATR (high - low range, rolling mean)
+    "parkinson_14",  # 14-day Parkinson volatility estimator
+    "rsi_14",  # 14-period RSI
+    "norm_close",  # close normalised over 20-day min/max range
+    "vol_ratio_20d",  # current volume / 20-day mean volume
+    "obv_signal",  # OBV z-score
 ]
 
 
@@ -101,9 +102,7 @@ class FeatureEngine:
         # ----------------------------------------------------------------
         # Step 1: Build aligned close prices to determine observation counts.
         # ----------------------------------------------------------------
-        closes = pd.DataFrame(
-            {ticker: df["close"] for ticker, df in ohlcv.items()}
-        )
+        closes = pd.DataFrame({ticker: df["close"] for ticker, df in ohlcv.items()})
         closes = closes.sort_index()
 
         # Step 2: Forward-fill short gaps before counting valid observations.
@@ -168,9 +167,7 @@ class FeatureEngine:
         # ----------------------------------------------------------------
         # Step 6: Stack into [T, F, A] float32 array.
         # ----------------------------------------------------------------
-        arrays = [
-            feat_df.to_numpy(dtype=np.float32) for feat_df in per_asset_trimmed
-        ]
+        arrays = [feat_df.to_numpy(dtype=np.float32) for feat_df in per_asset_trimmed]
         result = np.stack(arrays, axis=2)  # shape: [T, F, A]
 
         # ----------------------------------------------------------------
@@ -238,9 +235,7 @@ def _compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # Formula: sqrt( log(H/L)^2 / (4 * ln(2)) )
     # Clamp high/low ratio to avoid log(0) on degenerate bars.
     hl_ratio = (high / low).clip(lower=1e-8)
-    parkinson_14 = (
-        (np.log(hl_ratio) ** 2 / (4.0 * np.log(2.0))) ** 0.5
-    ).rolling(14).mean()
+    parkinson_14 = ((np.log(hl_ratio) ** 2 / (4.0 * np.log(2.0))) ** 0.5).rolling(14).mean()
 
     # -- Oscillators ------------------------------------------------
     # RSI-14 using Wilder's simple-mean approximation (rolling mean of
@@ -268,13 +263,30 @@ def _compute_features(df: pd.DataFrame) -> pd.DataFrame:
     vol_ratio_20d = volume / vol_mean_20
     vol_ratio_20d = vol_ratio_20d.where(vol_mean_20 != 0.0, other=1.0)
 
-    # OBV signal: sign(ret_1d) * volume, cumulated, then z-score normalised.
+    # OBV signal: sign(ret_1d) * volume, cumulated, then z-scored over a
+    # TRAILING window.
+    #
+    # This was previously normalised with obv_raw.mean() and obv_raw.std() over
+    # the whole series. Because FeatureEngine.fit_transform() runs once on the
+    # full panel before any walk-forward split, those constants were computed
+    # from data that includes every OOS period — a train/test contamination,
+    # and a breach of the no-lookahead invariant as written (CLAUDE.md #2, #6).
+    #
+    # The leak was mild: an affine transform with panel-wide constants injects
+    # no bar-level future information, obv_signal's correlation with a pure
+    # time index was 0.522 (log_close, which is uncontaminated, is 0.532), and
+    # train/OOS value ranges overlapped rather than being disjoint. It also
+    # biased toward FINDING skill, so it cannot have manufactured the negative
+    # results. None of that makes it correct.
+    #
+    # A trailing window is causal by construction and also removes the
+    # non-stationarity of an unbounded cumsum.
     obv_raw = (np.sign(close.pct_change(1)) * volume).cumsum()
-    obv_std = obv_raw.std()
-    if obv_std == 0.0 or np.isnan(obv_std):
-        obv_signal = pd.Series(0.0, index=close.index)
-    else:
-        obv_signal = (obv_raw - obv_raw.mean()) / obv_std
+    obv_mean = obv_raw.rolling(20).mean()
+    obv_std = obv_raw.rolling(20).std()
+    obv_signal = (obv_raw - obv_mean) / obv_std
+    # Flat or degenerate trailing window -> no information, not a divide-by-zero
+    obv_signal = obv_signal.where((obv_std != 0.0) & obv_std.notna(), other=0.0)
 
     # -- Assemble in canonical order --------------------------------
     feat = pd.DataFrame(

@@ -7,24 +7,24 @@ trade-level data from data.binance.vision (used for Glosten-Harris).
 
 Fallback: Uses CCXT as backup if Binance REST API is unavailable.
 """
+
 from __future__ import annotations
 
-import time
 import logging
-from datetime import datetime, timezone, timedelta
+import time
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 import requests
 from tqdm import tqdm
 
-from .universe import UNIVERSE_30, get_binance_symbols
+from .universe import get_binance_symbols
 
 logger = logging.getLogger(__name__)
 
 BINANCE_REST = "https://api.binance.com/api/v3/klines"
-MAX_LIMIT = 1000          # Binance max rows per request
+MAX_LIMIT = 1000  # Binance max rows per request
 SLEEP_BETWEEN_CALLS = 0.12  # seconds — stay well under rate limits
 
 
@@ -46,7 +46,7 @@ class BinanceFetcher:
     def __init__(
         self,
         cache_dir: Path,
-        symbols: Optional[list[str]] = None,
+        symbols: list[str] | None = None,
         use_ccxt_fallback: bool = True,
     ) -> None:
         self.cache_dir = Path(cache_dir)
@@ -81,9 +81,7 @@ class BinanceFetcher:
         for symbol in tqdm(self.symbols, desc="Fetching OHLCV"):
             ticker = symbol.replace("USDT", "")
             try:
-                df = self._fetch_symbol(
-                    symbol, start_date, end_date, interval, force_refresh
-                )
+                df = self._fetch_symbol(symbol, start_date, end_date, interval, force_refresh)
                 frames[ticker] = df["close"]
             except Exception as exc:
                 logger.warning("REST API failed for %s — %s", symbol, exc)
@@ -94,7 +92,9 @@ class BinanceFetcher:
                 # Partial REST failure — fill only the missing symbols via CCXT
                 logger.info(
                     "REST API returned %d/%d symbols. Using CCXT to fill %d missing: %s",
-                    len(frames), len(self.symbols), len(missing),
+                    len(frames),
+                    len(self.symbols),
+                    len(missing),
                     [s.replace("USDT", "") for s in missing],
                 )
                 ccxt_frames = self._fetch_all_ccxt(
@@ -104,7 +104,8 @@ class BinanceFetcher:
                 if ccxt_frames:
                     logger.info(
                         "CCXT filled %d additional symbols: %s",
-                        len(ccxt_frames), list(ccxt_frames.keys()),
+                        len(ccxt_frames),
+                        list(ccxt_frames.keys()),
                     )
                 else:
                     logger.warning("CCXT could not fill any of the missing symbols.")
@@ -134,9 +135,7 @@ class BinanceFetcher:
         for symbol in tqdm(self.symbols, desc="Fetching OHLCV"):
             ticker = symbol.replace("USDT", "")
             try:
-                df = self._fetch_symbol(
-                    symbol, start_date, end_date, interval, force_refresh
-                )
+                df = self._fetch_symbol(symbol, start_date, end_date, interval, force_refresh)
                 result[ticker] = df
             except Exception as exc:
                 logger.warning("Skipping %s — %s", symbol, exc)
@@ -151,7 +150,7 @@ class BinanceFetcher:
         start_date: str,
         end_date: str,
         interval: str,
-        symbols_to_fetch: Optional[list[str]] = None,
+        symbols_to_fetch: list[str] | None = None,
     ) -> dict[str, pd.Series]:
         """
         Fetch close-price series via CCXT for the given symbols.
@@ -179,9 +178,7 @@ class BinanceFetcher:
             if not target_symbols:
                 break
             # Still-missing tickers at the start of this exchange attempt
-            still_missing = [
-                s for s in target_symbols if s.replace("USDT", "") not in frames
-            ]
+            still_missing = [s for s in target_symbols if s.replace("USDT", "") not in frames]
             if not still_missing:
                 break
 
@@ -198,13 +195,19 @@ class BinanceFetcher:
                                 frames[ticker] = series
                                 logger.debug(
                                     "CCXT %s: fetched %s as %s (%d rows)",
-                                    exchange_name, ticker, sym_fmt, len(series),
+                                    exchange_name,
+                                    ticker,
+                                    sym_fmt,
+                                    len(series),
                                 )
                                 break  # got it; no need to try slash format
                         except Exception as exc:
                             logger.debug(
                                 "CCXT %s failed for %s (%s): %s",
-                                exchange_name, ticker, sym_fmt, exc,
+                                exchange_name,
+                                ticker,
+                                sym_fmt,
+                                exc,
                             )
                             continue
             except Exception as exc:
@@ -229,10 +232,7 @@ class BinanceFetcher:
         if cache_path.exists() and not force_refresh:
             df = pd.read_parquet(cache_path)
             # Check if the cached range covers the requested range
-            if (
-                str(df.index.min().date()) <= start_date
-                and str(df.index.max().date()) >= end_date
-            ):
+            if str(df.index.min().date()) <= start_date and str(df.index.max().date()) >= end_date:
                 mask = (df.index >= start_date) & (df.index <= end_date)
                 return df.loc[mask]
 
@@ -279,7 +279,7 @@ class BinanceFetcher:
 
 def _to_ms(date_str: str, end_of_day: bool = False) -> int:
     """Convert 'YYYY-MM-DD' to millisecond Unix timestamp."""
-    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=UTC)
     if end_of_day:
         dt = dt.replace(hour=23, minute=59, second=59)
     return int(dt.timestamp() * 1000)
@@ -288,14 +288,24 @@ def _to_ms(date_str: str, end_of_day: bool = False) -> int:
 def _parse_klines(rows: list[list]) -> pd.DataFrame:
     """Parse raw Binance kline rows into a DataFrame."""
     if not rows:
-        return pd.DataFrame(
-            columns=["open", "high", "low", "close", "volume"]
-        )
-    df = pd.DataFrame(rows, columns=[
-        "open_time", "open", "high", "low", "close", "volume",
-        "close_time", "quote_volume", "n_trades",
-        "taker_buy_base", "taker_buy_quote", "_",
-    ])
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            "open_time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "close_time",
+            "quote_volume",
+            "n_trades",
+            "taker_buy_base",
+            "taker_buy_quote",
+            "_",
+        ],
+    )
     df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
     df = df.set_index("open_time")
     df.index = df.index.normalize().tz_localize(None)  # date only
@@ -317,10 +327,7 @@ def _parse_ccxt_ohlcv(
     if not ohlcv:
         return pd.Series(dtype=float)
 
-    df = pd.DataFrame(
-        ohlcv,
-        columns=["timestamp", "open", "high", "low", "close", "volume"]
-    )
+    df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     df = df.set_index("timestamp")
     df.index = df.index.normalize().tz_localize(None)

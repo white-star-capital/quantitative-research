@@ -21,18 +21,28 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
+# These pins are mutually satisfiable and CI-verified — tests/test_smoke.py asserts
+# both that they resolve against the installed environment and that every installed
+# distribution's own requirements are met. Change them together, not individually.
+#
+# The binding constraint chain is:
+#   vectorbt 1.1.0  requires  pandas>=3.0.3,<4.0  and  numpy>=2.4.6
+#   numba 0.67.0    requires  numpy<2.6
+# so numpy lands in [2.4.6, 2.6). An earlier revision of this file paired
+# vectorbt==1.0.0 (which caps pandas<3.0) with pandas>=3.0.0, which no resolver
+# could satisfy — `pip install -e .` failed outright.
 dependencies = [
   # GP framework
   "deap==1.4.4",
-  # Backtesting — vectorbt 1.0.0 is a major rewrite from 0.x; do not use 0.x docs
-  "vectorbt==1.0.0",
-  # CRITICAL: numpy<2.3 is required for numba compatibility.
-  # NumPy 2.3 (mid-2026) hard-breaks numba. Pin strictly.
-  "numpy>=2.0.0,<2.3",
-  # numba>=0.61.2 adds explicit NumPy 2.2 support (see release notes)
-  "numba>=0.61.2",
-  # Data
-  "pandas>=3.0.0,<4.0",
+  # Backtesting — vectorbt 1.x is a major rewrite from 0.x; do not use 0.x docs.
+  # 1.1.0 is the first release supporting pandas 3; 1.0.0 caps pandas<3.0.
+  "vectorbt>=1.1.0,<2.0",
+  # Lower bound from vectorbt 1.1.0; upper bound from numba 0.67's numpy<2.6.
+  "numpy>=2.4.6,<2.6",
+  # numba>=0.67.0 is required for numpy>=2.4 (0.61.x caps numpy<2.3)
+  "numba>=0.67.0",
+  # Data — pandas 3 required by vectorbt>=1.1.0
+  "pandas>=3.0.3,<4.0",
   "pyarrow>=18.0",
   "scipy>=1.13",
   # ML utilities
@@ -41,7 +51,9 @@ dependencies = [
   # Visualization
   "matplotlib>=3.9.0,<4.0",
   "networkx>=3.3",
-  "plotly>=5.22",
+  # plotly 6 removed scattermapbox, which vectorbt still registers in its
+  # figure templates at import time — vectorbt raises ValueError on import.
+  "plotly>=5.22,<6.0",
   "seaborn>=0.13",
   # Serialization — dill handles closures that pickle cannot (needed for DEAP checkpoints)
   "dill>=0.3.8",
@@ -50,9 +62,16 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.2",
+  # used by tests/test_smoke.py to check the dependency set resolves
+  "packaging>=24.0",
   "pytest-benchmark>=4.0",
-  "black>=24.0",
-  "ruff>=0.5",
+  # Pinned to a major series for the same reason as ruff below: CI gates on
+  # `black --check`, and black versions its stable style by calendar year, so
+  # an unpinned formatter reformats the whole tree the January it rolls over.
+  "black>=26.5.1,<27",
+  # Pinned to a minor series because CI gates on `ruff check`: ruff is pre-1.0 and
+  # adds rules in minor releases, which would turn the gate red on unchanged code.
+  "ruff>=0.16.6,<0.17",
   "mypy>=1.10",
   "jupyterlab>=4.0",
   "nbstripout>=0.7",
@@ -72,6 +91,13 @@ include = ["vgp*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+markers = [
+  # Cross-process reproducibility checks. They shell out to fresh interpreters
+  # because the defect they guard against (address-dependent set ordering in
+  # DEAP's typed crossover) is invisible inside a single process. Slower than
+  # the rest of the suite by design; deselect with -m "not slow" when iterating.
+  "slow: spawns subprocesses; runs in CI, skip locally with -m 'not slow'",
+]
 
 [tool.black]
 line-length = 100
