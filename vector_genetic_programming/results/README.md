@@ -31,17 +31,71 @@ and both did their job:
   median of +0.255 — the search performs worse than signal-free data on the
   statistic that matters.
 
-## The features are not empty; the tradeable signal is
+## What is in the features, and why none of it is tradeable
 
 `scripts/diagnose_feature_ic.py` asks the data directly, in minutes rather than
-the hours an evolution takes, and gives a sharper answer than the GP can.
+the hours an evolution takes.
 
-Five features clear a Bonferroni threshold and hold their sign across both
-halves of the sample with near-identical magnitudes — `vol_20d` at −0.0620 /
-−0.0607, `parkinson_14` at −0.0662 / −0.0673. That is a stable cross-sectional
-effect, not a regime artifact.
+An earlier version of this section reported that five features cleared a
+Bonferroni threshold and held their sign across both halves of the sample. That
+claim was wrong, and the way it was wrong is worth more than the claim was.
 
-It does not survive contact with a portfolio:
+It ranked features by **raw** cross-sectional rank IC and tested each against
+**zero**. A raw IC on `vol_20d` answers "do high-volatility assets earn less
+than low-volatility ones" — a static property of the assets, not a prediction.
+Scored against a surrogate instead of against zero, signal-free data reproduces
+nearly all of it:
+
+| feature | raw IC | t vs 0 | reproduced by the null |
+|---|---|---|---|
+| `parkinson_14` | −0.0667 | −4.81 | **110%** |
+| `vol_20d` | −0.0614 | −4.52 | **104%** |
+| `log_close` | +0.0546 | +4.59 | **111%** |
+| `atr_14` | +0.0514 | +4.41 | **111%** |
+| `vol_5d` | −0.0450 | −3.59 | **117%** |
+
+Split-half stability was not independent corroboration either. A static asset
+property is stable across halves *by construction*, so that check could only
+ever agree — it was reported as though it had been able to disagree.
+
+### The corrected measurement
+
+Standardising each feature within its own asset removes the level and leaves
+the timing component — not "is this asset volatile" but "is this asset volatile
+**for itself** right now". That is the only part a strategy can harvest. Scored
+against the surrogate distribution over 250 draws, 11 of 12 features are
+indistinguishable from signal-free data.
+
+The survivor is **`ret_1d`**, 1-day cross-sectional reversal — which the raw
+ranking placed near the *bottom* (t −2.36, below its own Bonferroni line) while
+promoting the two features that turn out to be entirely static.
+
+| statistic | observed | null mean | null sd | z | p |
+|---|---|---|---|---|---|
+| timing IC | −0.0290 | +0.0058 | 0.0104 | −3.34 | **0.0040** |
+| Sharpe, no costs | +0.2850 | −0.3093 | 0.7539 | 0.79 | 0.2311 |
+| Sharpe, 10 bps | **−2.1783** | −2.7983 | 0.7221 | 0.86 | 0.2072 |
+
+**The information is real and it does not convert.** The timing IC clears
+Bonferroni (0.0042). The portfolio built on it does not: gross Sharpe sits
+within one standard deviation of the null, and daily rebalancing turns the book
+over 1.34x, a **49% annual drag at 10 bps**, taking net Sharpe to −2.18. An IC
+that beats the null is necessary, not sufficient — report both numbers or
+neither.
+
+### Block size is not a free parameter
+
+The null control severs serial dependence only at block boundaries, so an
+effect shorter than the block survives into the surrogate and cannot be
+flagged. These are 1-day-horizon ICs, and the previous 20-bar block made them
+unfalsifiable. The IC steps now use `block_size=1`; step 4's portfolio
+rebalances every 21 days and keeps the 20-bar default.
+
+For the same reason `N_NULL_IC` defaults to 250: an empirical p cannot resolve
+below 1/(1+N), and Bonferroni over 12 features needs 0.0042. This is the defect
+that made the 19-run null control unable to call anything significant.
+
+### The pre-specified portfolio
 
 | | result |
 |---|---|
@@ -55,8 +109,9 @@ low-volatility assets in a surrogate are **still** the low-volatility assets. A
 long-low/short-high book inherits that structure's return asymmetry with no
 predictive timing involved. The apparent edge is the structure, not information.
 
-Which also explains the GP result. It is not failing to search hard enough;
-there is nothing to find beyond what the null reproduces.
+Which also explains the GP result. It is not failing to search hard enough; the
+one feature carrying real timing information is too small to trade at this
+breadth and cost, and the rest carry none.
 
 ## An observation on validation selection, not yet a finding
 
