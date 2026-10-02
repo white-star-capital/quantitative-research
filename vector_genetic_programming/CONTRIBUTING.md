@@ -60,10 +60,24 @@ Results are saved to `results/results.csv` automatically. Each row is one (windo
 ```python
 from vgp.data import DataLoader, FeatureEngine, WalkForwardSplitter
 
-loader = DataLoader(cache_dir="data/cache")
-ohlcv = loader.load()                     # dict[str, pd.DataFrame]
+loader = DataLoader(cache_dir="data")     # the committed parquet files
+ohlcv = loader.fetch_ohlcv(               # dict[str, pd.DataFrame]
+    start_date="2024-01-01",
+    end_date="2026-04-01",
+    # `data/` ships 27 of UNIVERSE_30's 30 symbols. Without this the loader
+    # reaches Binance for the missing 3 and raises FetchError — deliberately,
+    # because a partial universe changes the experiment and must be a declared
+    # choice rather than a log line. This is what scripts/run.py passes, and it
+    # is what makes the project work with no network at all.
+    allow_partial=True,
+    min_assets=10,
+)
 fe = FeatureEngine()
-fm = fe.transform(ohlcv)                  # float32 [T×F×A]
+fm = fe.fit_transform(ohlcv)              # float32 [T×F×A]
+# fe.retained_assets_ and fe.dates_ give the REALISED universe: the engine
+# drops assets below min_obs_fraction, so the A axis is NOT the input dict.
+# Results on different universes are not comparable — compare
+# `universe_fingerprint`, not asset counts.
 ```
 
 See `vgp/evolution/` for the NSGA-II loop and `vgp/evolution/config.py` for all `EvolutionConfig` parameters.

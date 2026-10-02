@@ -23,18 +23,45 @@ VGP is a research tool, not a trading system. The primary output is reproducible
 
 ```bash
 git clone <repo-url>
-cd vector-genetic-programming
-python -m venv .venv && source .venv/bin/activate
+cd quantitative-research/vector_genetic_programming
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Run full test suite
-python -m pytest tests/ -v
-
-# Run a minimal evolution experiment (requires parquet data in data/cache/)
-python -m vgp.analysis.runner
+make test     # full suite
+make start    # the headline experiment, end to end
 ```
 
-The test suite covers all five sub-modules (smoke, data pipeline, GP primitives, backtest evaluation, evolution engine, walk-forward validation, visualizations). All 57 tests should pass.
+That is the whole procedure, and it needs no network. The market data ships in
+`data/` as ordinary committed parquet files — 27 assets, 956 KB — so there is no
+Git LFS step and nothing to copy out of a sibling project.
+
+`data/` holds 27 of `UNIVERSE_30`'s 30 symbols. Code that loads it must pass
+`allow_partial=True` with a `min_assets` floor, or `DataLoader` will reach
+Binance for the missing three and raise `FetchError`. That raise is deliberate —
+a partial universe changes the experiment — and the shipped scripts all declare
+it, so they run offline.
+
+`make start` runs three walk-forward windows, three seeds and a 99-run null
+control. **It takes several hours**; the null control is 99 full experiments and
+is most of that time. For a quick check that the install works, `make smoke`.
+
+`make test` collects 209 tests: 207 pass and 2 skip (the optional MLflow pair).
+One is marked `slow` — a cross-process determinism canary that spawns 10
+subprocesses and adds ~165s. Deselect it with `pytest -m "not slow"`, which
+leaves 206 passed, 2 skipped, 1 deselected.
+
+### Is there anything in the data to find?
+
+```bash
+python scripts/diagnose_feature_ic.py
+```
+
+Asks the data directly in minutes rather than the hours an evolution takes:
+per-feature information coefficient scored against signal-free surrogates, then
+a pre-specified portfolio against the same null. On the committed dataset it
+reaches a firmer negative than any evolution run, and explains why. Lower
+`VGP_N_NULL_IC` and `VGP_N_NULL` for a fast pass — but an empirical p cannot
+resolve below `1/(1+N)`, so a reduced run cannot call anything significant.
 
 ---
 
@@ -90,7 +117,7 @@ The verdict is an empirical p-value in the `(1 + k) / (1 + n)` form, so it never
 
 **The surrogate verifies itself, window by window.** `check_surrogate_fidelity()` runs before the null experiments and compares observed against surrogate inside each of several contiguous windows, on cross-asset correlation and effective-bet count. The locality is the point: a surrogate once preserved 69% full-sample PC1 share while having 0.001 mean pairwise correlation inside every training window, which inflated the null until it could not be beaten in-sample. Full-sample statistics cannot validate a surrogate.
 
-**Block size is not a free parameter.** A block bootstrap severs dependence only at block boundaries, so with L-bar blocks roughly 1 in L transitions breaks and structure shorter than L survives. Concretely: an AR(1) series with lag-1 autocorrelation 0.82 retains 0.67 under 5-bar blocks. **The block must be shorter than the horizon of the effect being tested** — with the default 20 bars, a strategy exploiting 1–5 day momentum survives into the surrogate and the control will not flag it.
+**Block size is not a free parameter.** A block bootstrap severs dependence only at block boundaries, so with L-bar blocks roughly 1 in L transitions breaks and structure shorter than L survives. Concretely: an AR(1) series with lag-1 autocorrelation 0.82 retains 0.67 under 5-bar blocks. **The block must be shorter than the horizon of the effect being tested** — with the default 20 bars, a strategy exploiting 1–5 day momentum survives into the surrogate and the control will not flag it. `scripts/diagnose_feature_ic.py` is the worked example: its information coefficients are 1-day horizon, so its IC steps use `block_size=1`, and a test pins that value. At the 20-bar default those tests could not have failed.
 
 The control costs `N_NULL_RUNS` full experiments, which is why the null runs use fewer seeds than the real run: the statistic is the best Sharpe the *search* finds, so the null need only represent the same procedure, not the same compute budget. Setting `N_NULL_RUNS = 0` in `scripts/run.py` skips it — and then the run must not be described as validated.
 
@@ -107,27 +134,66 @@ The OOS trade threshold is scaled to the OOS window length (`oos_min_trades`, ov
 ## Current result
 
 Run end to end on Binance daily data (2024-01-01 → 2026-04-01, 21 assets,
-6 walk-forward windows, 100,852 evaluations) with a 19-run null control whose
-surrogate was verified faithful in every fidelity window.
+**three** walk-forward windows with **disjoint 4-month OOS periods**, three
+seeds, selection on a held-out validation slice) with a **99-run** null control
+whose surrogate was verified faithful in all 8 fidelity windows.
 
-**No evidence of skill, and the out-of-sample result is negative.** The typical
-window's OOS Sharpe is −0.943 against a null median of −0.412 (p = 0.750); the
-best OOS Sharpe is +1.362 against a null median of +0.866 (p = 0.400). See
-`results/README.md`.
+**No evidence of skill, and the out-of-sample result is negative.**
 
-The run before this one reported a *positive* typical OOS Sharpe of +0.448
-(p = 0.200). The difference was a single feature, `obv_signal`, z-scored with
-whole-series statistics that included every OOS period. One contaminated
-feature accounted for essentially all of the apparent edge — and its severity
-was badly underestimated from proxy diagnostics before the rerun settled it.
+| statistic | observed | null median | p |
+|---|---|---|---|
+| **MAX** best IS Sharpe | +3.066 | +2.770 | 0.340 |
+| **MAX** best OOS Sharpe | +1.207 | +1.484 | 0.620 |
+| **TYPICAL** IS Sharpe | +2.216 | +2.167 | 0.470 |
+| **TYPICAL** OOS Sharpe | **−0.533** | +0.255 | **0.700** |
 
-Note that `dsr` reaches 0.861 on this same run while the null control returns
-p = 0.600. Both are correct; they answer different questions, and DSR is blind
-to bias shared by every trial. Where they disagree, believe the null control.
+Per-window OOS medians: +1.207, −1.759, −0.533 — one of three positive. The
+search performs *worse* than signal-free data on the statistic that matters.
+`results/README.md` is the full record.
 
-**Honest caveat:** Positive OOS Sharpe is the goal. Results depend on data availability, asset universe, and evolution configuration. VGP is a framework for reproducible research — it does not guarantee profitable strategies.
+This is the first result the project has produced that **reproduces**. Every
+earlier figure was one sample from a distribution: `gp.cxOnePoint` picked the
+crossover type with `random.choice(list(common_types))` over type objects, which
+hash by address, so ASLR reordered the list between processes and the same seed
+gave different answers. The headline moved +0.974 → +0.087 on identical code and
+data before the fix.
 
-A result here is only as good as three numbers read together: the OOS Sharpe, the conservative `dsr` against the full evaluation count, and the null control p-value. A high Sharpe with a high `dsr` and a null p-value of 0.7 means the pipeline found the same thing in noise.
+**`dsr` reaches 0.970 on this run while the null control returns p = 0.700.**
+Both are correct and they answer different questions. DSR corrects for selection
+*across trials* and is blind by construction to bias shared by *every* trial —
+seven such biases have been found in this project and it saw none of them. Where
+they disagree, believe the null control.
+
+### Where the signal actually is
+
+`scripts/diagnose_feature_ic.py` answers the question the GP cannot ask about
+itself. Eleven of twelve features carry no timing information distinguishable
+from signal-free data. The twelfth, `ret_1d` (1-day cross-sectional reversal),
+does: timing IC −0.0290 against a null of +0.0058 ± 0.0104, p = 0.0040 over 250
+surrogates, which clears Bonferroni.
+
+**It does not convert into an edge.** Gross Sharpe is +0.285 against a null mean
+of −0.309 — inside one standard deviation, p = 0.231. Daily rebalancing turns
+the book over 1.34×, a 49% annual drag at 10 bps, taking net Sharpe to −2.18.
+Real information, too small to trade at this breadth and cost.
+
+An earlier version of this section reported that five features cleared a
+Bonferroni threshold with stable split-half signs. That was measured on *raw*
+cross-sectional IC tested against *zero*, and signal-free surrogates reproduce
+92–124% of it: it described a static property of the assets, not predictability.
+Split-half stability was not corroboration either — a static property is stable
+across halves by construction.
+
+**Honest caveat:** Positive OOS Sharpe is the goal. Results depend on data
+availability, asset universe, and evolution configuration. VGP is a framework
+for reproducible research — it does not guarantee profitable strategies. Three
+windows over two years of one asset class is thin, even for a negative result,
+and 21 crypto assets at 0.615 mean correlation give only 2.4 effective bets.
+
+A result here is only as good as three numbers read together: the OOS Sharpe,
+the conservative `dsr` against the full evaluation count, and the null control
+p-value. A high Sharpe with a high `dsr` and a null p-value of 0.7 means the
+pipeline found the same thing in noise.
 
 ---
 
