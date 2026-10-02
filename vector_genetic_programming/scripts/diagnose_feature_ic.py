@@ -2,31 +2,54 @@
 
 Answers a question the GP cannot: when a search over ~100,000 strategies reports
 nothing, is that because the search is inadequate or because the data holds no
-exploitable signal? This asks the data directly, in four steps, and runs in
-minutes rather than the hours a full evolution takes.
+exploitable signal? This asks the data directly and runs in minutes rather than
+the hours a full evolution takes.
 
-  1. INFORMATION COEFFICIENT — per feature, the cross-sectional rank
-     correlation with next-day returns. Causal: the feature at t is ranked
-     against the return from t to t+1.
-  2. SPLIT-HALF STABILITY — the same IC computed on each half of the sample.
-     A real effect keeps its sign and rough magnitude; an artifact does not.
+  1. RAW IC, AND HOW MUCH OF IT THE NULL REPRODUCES — the cross-sectional rank
+     correlation of each feature with next-day returns, beside the same number
+     computed on signal-free surrogates.
+  2. TIMING IC vs THE SURROGATE — the same IC after each feature is
+     standardised within its own asset, scored against the surrogate
+     distribution rather than against zero.
   3. A PRE-SPECIFIED BASELINE — the simplest portfolio expressing the strongest
-     feature, long-only and market-neutral, after the same 10 bps costs.
-  4. THE SAME NULL CONTROL THE GP FACES — the baseline re-run on block
-     bootstrapped surrogates.
+     feature, market-neutral, after the same 10 bps costs.
+  4. THE SAME NULL CONTROL THE GP FACES — the baseline re-run on surrogates.
 
-Step 4 is the one that matters, and on the committed dataset it is what turns
-an apparent result into a negative. A market-neutral low-volatility tilt earns
-a median OOS Sharpe near +1.08, which looks like an edge until the surrogates
-run: their median is around +0.28 and their 95th percentile above +1.8, giving
-p ~ 0.25. The bootstrap preserves each asset's volatility level and the
-cross-asset correlation structure — that is what makes it a fair null — and so
-the low-volatility assets in a surrogate are still the low-volatility assets. A
-long-low/short-high book inherits that structure's return asymmetry with no
-predictive timing involved. The apparent edge is the structure, not a signal.
+WHY STEPS 1 AND 2 ARE SHAPED THIS WAY. An earlier version of this script ranked
+features by raw IC and tested each against zero. Both choices are wrong, and
+together they produced a confident finding that does not survive contact with
+the null.
 
-Which also explains the GP's result. It is not failing to search well enough;
-there is nothing to find beyond what the null reproduces.
+A raw cross-sectional IC on `vol_20d` answers "do high-volatility assets earn
+less than low-volatility ones". That is a STATIC property of the assets, not
+predictability, and a surrogate that preserves each asset's return distribution
+reproduces it in full — measured on the committed dataset, the surrogate
+reproduces 92-124% of every feature's raw IC. The five features that cleared a
+Bonferroni threshold against zero cleared it on a quantity signal-free data
+reproduces entirely. Split-half stability was not independent evidence either: a
+static asset property is stable across halves by construction, so that check
+could only ever agree.
+
+Standardising each feature within its own asset removes the static level and
+leaves the only component a strategy can trade — is this asset unusual FOR
+ITSELF right now. Scored that way against surrogates, 11 of 12 features are
+indistinguishable from signal-free data. The survivor is `ret_1d`, 1-day
+cross-sectional reversal, which the raw ranking placed near the BOTTOM.
+
+BLOCK SIZE IS NOT A FREE PARAMETER HERE. `block_bootstrap_ohlcv` severs serial
+dependence only at block boundaries, so an effect shorter than the block
+survives into the surrogate and the null cannot flag it. These are 1-day
+horizon ICs, so the IC steps use `block_size=1`: it preserves each asset's
+return distribution and the cross-sectional structure while destroying time
+ordering, which is the right null for a 1-day signal. Step 4's portfolio
+rebalances every REBALANCE_DAYS, so it keeps the 20-bar default.
+
+AN IC THAT BEATS THE NULL IS NECESSARY, NOT SUFFICIENT. On this dataset
+`ret_1d` reaches p = 0.004 on timing IC and still produces a gross Sharpe of
++0.285 against a null mean of -0.309 — within one standard deviation, p = 0.23.
+Daily rebalancing turns the book over 1.34x, which is a 49% annual drag at 10
+bps and takes the net Sharpe to -2.18. Real information, too small to trade at
+this breadth. Report both numbers or neither.
 
 Run:  python scripts/diagnose_feature_ic.py
 """
@@ -51,6 +74,10 @@ FEE = 10e-4
 WINDOW_KW = dict(train_months=9, val_months=2, oos_months=4, step_months=4)
 # Override for a quick check: VGP_N_NULL=3 python scripts/diagnose_feature_ic.py
 N_NULL = int(os.environ.get("VGP_N_NULL", "99"))
+# Surrogates for the IC steps. Bonferroni over 12 features needs p <= 0.0042,
+# and an empirical p cannot resolve below 1/(1+N), so N must exceed 237.
+N_NULL_IC = int(os.environ.get("VGP_N_NULL_IC", "250"))
+IC_BLOCK = 1  # 1-day horizon: the block must be shorter than the effect
 BASELINE_FEATURE = "vol_20d"
 REBALANCE_DAYS = 21
 TERCILE = 0.33
@@ -80,6 +107,31 @@ def _ic_series(fm, fwd, f, lo=0, hi=None):
             continue
         out.append(np.corrcoef(xr, yr)[0, 1])
     return np.asarray(out)
+
+
+def _standardise_within_asset(fm):
+    """Remove each asset's own level and scale, per feature.
+
+    What remains is the timing component: not "is this asset volatile" but "is
+    this asset volatile FOR ITSELF right now". The raw feature is dominated by
+    the former, which no strategy can harvest and which any surrogate
+    preserving the asset's return distribution reproduces exactly.
+    """
+    mu = np.nanmean(fm, axis=0, keepdims=True)
+    sd = np.nanstd(fm, axis=0, keepdims=True)
+    # `sd > 0` is not a safe degeneracy test. A feature that never moves has a
+    # floating-point std around 1e-16 rather than exactly zero, and the matching
+    # 1-ULP error in `fm - mu` then divides out to a clean +/-1 — a constant
+    # column arrives looking like a unit-variance signal. Scale the floor to the
+    # feature's own magnitude so a genuinely flat series becomes NaN.
+    scale = np.maximum(np.abs(mu), 1.0)
+    degenerate = sd <= np.finfo(np.float64).eps * scale * fm.shape[0]
+    return (fm - mu) / np.where(degenerate, np.nan, sd)
+
+
+def _mean_ic(fm, fwd, f):
+    ic = _ic_series(fm, fwd, f)
+    return float(ic.mean()) if len(ic) else float("nan")
 
 
 def _t_stat(ic):
@@ -121,29 +173,65 @@ def main() -> None:
     fm, dates, assets, names, fwd = _panel(real)
     print(f"panel {fm.shape[0]} dates x {fm.shape[1]} features x {fm.shape[2]} assets\n")
 
-    print("1. INFORMATION COEFFICIENT vs next-day return")
-    print(f"{'feature':>16} {'mean rank IC':>13} {'t':>7}")
-    scored = []
-    for f, name in enumerate(names):
-        ic = _ic_series(fm, fwd, f)
-        scored.append((name, ic.mean(), _t_stat(ic)))
-    for name, mean, t in sorted(scored, key=lambda r: -abs(r[2])):
-        print(f"{name:>16} {mean:>+13.4f} {t:>7.2f}")
-    print(f"\n   |t| > {abs(round(2.9, 1))} clears Bonferroni for {len(names)} tests.\n")
+    # Both IC steps need the same surrogate panels, so build them once.
+    print(f"building {N_NULL_IC} surrogates (block_size={IC_BLOCK}) for the IC steps...")
+    sur_panels = []
+    for r in range(N_NULL_IC):
+        try:
+            sur = block_bootstrap_ohlcv(real, np.random.default_rng(7000 + r), block_size=IC_BLOCK)
+            sur_panels.append(_panel(sur))
+        except Exception as exc:  # a bad surrogate must not abandon the control
+            logging.getLogger(__name__).warning("IC surrogate %d failed: %s", r, exc)
+    n_sur = len(sur_panels)
+    print(f"  {n_sur} usable\n")
 
-    print("2. SPLIT-HALF STABILITY (sign and magnitude must hold)")
-    half = fm.shape[0] // 2
-    print(f"{'feature':>16} {'1st half':>10} {'t':>7} {'2nd half':>10} {'t':>7}  holds")
-    for name, _m, t in sorted(scored, key=lambda r: -abs(r[2])):
-        if abs(t) < 2:
+    print("1. RAW IC vs next-day return, AND HOW MUCH THE NULL REPRODUCES")
+    print("   A raw IC ranks assets by a static property as much as by any signal.")
+    print("   'null' is the same statistic on signal-free data: if it matches the")
+    print("   observed value, the IC carries no predictive information at all.")
+    print(f"{'feature':>16} {'raw IC':>9} {'t vs 0':>8} {'null IC':>9} {'reproduced':>11}")
+    raw_rows = []
+    for f, name in enumerate(names):
+        obs = _mean_ic(fm, fwd, f)
+        nul = float(np.nanmean([_mean_ic(sfm, sfwd, f) for sfm, _d, _a, _n, sfwd in sur_panels]))
+        raw_rows.append((name, obs, _t_stat(_ic_series(fm, fwd, f)), nul))
+    for name, obs, t, nul in sorted(raw_rows, key=lambda r: -abs(r[2])):
+        pct = f"{100 * nul / obs:>10.0f}%" if obs else f"{'n/a':>11}"
+        print(f"{name:>16} {obs:>+9.4f} {t:>8.2f} {nul:>+9.4f} {pct}")
+    print("\n   The t column is against ZERO and is NOT evidence. Read the last column,")
+    print("   and only for features whose raw IC is large: the ratio is a ratio of two")
+    print("   near-zero numbers further down and means nothing there.\n")
+
+    print("2. TIMING IC — feature standardised within its own asset, scored vs the null")
+    print("   This is the only component a strategy can harvest.")
+    dm = _standardise_within_asset(fm)
+    sur_dm = [(_standardise_within_asset(sfm), sfwd) for sfm, _d, _a, _n, sfwd in sur_panels]
+    crit = 0.05 / len(names)
+    header = f"{'feature':>16} {'timing IC':>10} {'null mean':>10} {'null sd':>9}"
+    print(f"{header} {'z':>7} {'p':>8}  verdict")
+    timing = []
+    for f, name in enumerate(names):
+        obs = _mean_ic(dm, fwd, f)
+        arr = np.asarray([_mean_ic(sdm, sfwd, f) for sdm, sfwd in sur_dm], dtype=float)
+        arr = arr[np.isfinite(arr)]
+        if len(arr) < 3 or not np.isfinite(obs):
             continue
-        f = names.index(name)
-        a, b = _ic_series(fm, fwd, f, 0, half), _ic_series(fm, fwd, f, half)
-        holds = "yes" if np.sign(a.mean()) == np.sign(b.mean()) else "NO"
-        print(
-            f"{name:>16} {a.mean():>+10.4f} {_t_stat(a):>7.2f} "
-            f"{b.mean():>+10.4f} {_t_stat(b):>7.2f}  {holds}"
-        )
+        m, sd = arr.mean(), arr.std(ddof=1)
+        z = (obs - m) / sd if sd > 0 else float("nan")
+        # Two-sided empirical p against the surrogate spread, never against zero.
+        k = int((np.abs(arr - m) >= abs(obs - m)).sum())
+        pv = (1 + k) / (1 + len(arr))
+        timing.append((name, obs, m, sd, z, pv))
+    for name, obs, m, sd, z, pv in sorted(timing, key=lambda r: -abs(r[4])):
+        verdict = "SIGNAL" if pv <= crit else ("marginal" if pv <= 0.05 else "nothing")
+        print(f"{name:>16} {obs:>+10.4f} {m:>+10.4f} {sd:>9.4f} {z:>7.2f} {pv:>8.4f}  {verdict}")
+    floor = 1 / (1 + n_sur) if n_sur else float("nan")
+    print(f"\n   Bonferroni over {len(names)} features: p <= {crit:.4f}. Floor is {floor:.4f}.")
+    if floor > crit:
+        print("   WARNING: the floor exceeds the threshold — raise VGP_N_NULL_IC above 237.")
+    signals = [r[0] for r in timing if r[5] <= crit]
+    print(f"   Features with timing signal: {', '.join(signals) if signals else 'NONE'}")
+    print("   A timing IC that beats the null still has to survive turnover and costs.\n")
 
     print(
         f"\n3. BASELINE — market-neutral tercile tilt on {BASELINE_FEATURE}, "
