@@ -41,6 +41,28 @@ Binance for the missing three and raise `FetchError`. That raise is deliberate �
 a partial universe changes the experiment — and the shipped scripts all declare
 it, so they run offline.
 
+### Verifying you have the data the results were computed on
+
+```bash
+make verify-data
+```
+
+Checks every file in `data/` against `data/MANIFEST.json` — sha256 per file,
+plus the universe arithmetic and the fingerprint tying the data to `results/`.
+Run it first when a re-run does not reproduce: it separates "wrong data" from
+"wrong code" in seconds, and it needs no venv.
+
+`data/` holds 27 of the 30 requested symbols; **HYPE, AERO and FLUID are
+deliberately absent** and named in the manifest with the reason. The committed
+results were computed on exactly this set — universe fingerprint
+`af8fe4ee067f`, 27 fetched, **21 retained** after `FeatureEngine`'s
+`min_obs_fraction` filter, 701 dates. Results on a different universe are not
+comparable, so **compare fingerprints, not asset counts**: every row of
+`results.csv` carries `n_assets` and `universe_fingerprint`.
+
+`tests/test_data_manifest.py` enforces the same checks in CI, so drift fails a
+push rather than surfacing months later as an unreproducible number.
+
 `make start` runs three walk-forward windows, three seeds and a 99-run null
 control. **It takes several hours**; the null control is 99 full experiments and
 is most of that time. For a quick check that the install works, `make smoke`.
