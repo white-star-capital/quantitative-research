@@ -21,14 +21,32 @@ VGP is a research tool, not a trading system. The primary output is reproducible
 
 ## Quick Start
 
+**To see the results**, all you need is Docker:
+
 ```bash
 git clone <repo-url>
 cd quantitative-research/vector_genetic_programming
+make start
+```
+
+That builds a small image and serves the dashboard at
+<http://localhost:8000> — the verdict, the observed result against all 99
+signal-free control runs, every walk-forward row, and the feature diagnostic.
+It takes seconds: the page is generated from `results/` by a pure
+standard-library script, so the image carries no vectorbt, no numba and no
+compiler. Override the port with `make start PORT=9000`.
+
+No Docker? `make dashboard` writes the identical page to
+`dashboard/index.html`, which opens directly in a browser.
+
+**To run the experiment yourself**, you need the Python environment:
+
+```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 make test     # full suite
-make start    # the headline experiment, end to end
+make vgp      # the headline experiment, end to end
 ```
 
 That is the whole procedure, and it needs no network. The market data ships in
@@ -63,9 +81,10 @@ comparable, so **compare fingerprints, not asset counts**: every row of
 `tests/test_data_manifest.py` enforces the same checks in CI, so drift fails a
 push rather than surfacing months later as an unreproducible number.
 
-`make start` runs three walk-forward windows, three seeds and a 99-run null
+`make vgp` runs three walk-forward windows, three seeds and a 99-run null
 control. **It takes several hours**; the null control is 99 full experiments and
 is most of that time. For a quick check that the install works, `make smoke`.
+When it finishes, `make dashboard` regenerates the page from the new `results/`.
 
 `make test` collects 209 tests: 207 pass and 2 skip (the optional MLflow pair).
 One is marked `slow` — a cross-process determinism canary that spawns 10

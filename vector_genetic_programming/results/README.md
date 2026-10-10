@@ -1,6 +1,6 @@
 # results/
 
-Run date: 2026-09-15 · universe fingerprint `af8fe4ee067f` · reproduce with `make start`
+Run date: 2026-09-15 · universe fingerprint `af8fe4ee067f` · reproduce with `make vgp`
 
 ## Verdict: no evidence of skill
 
@@ -9,7 +9,7 @@ selection on a held-out validation slice, and a **99-run** null control whose
 surrogate was verified faithful in all 8 fidelity windows.
 
 This is the first result the project has produced that **reproduces**: it is the
-first run on the deterministic crossover (see below), so re-running `make start`
+first run on the deterministic crossover (see below), so re-running `make vgp`
 returns these numbers rather than a different draw.
 
 | statistic | observed | null median | null p95 | p |
@@ -323,12 +323,12 @@ than "close to significant".
 ```bash
 git clone <repo> && cd vector_genetic_programming
 python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-make start
+make vgp
 ```
 
 That is the whole procedure. The market data ships in `data/` as ordinary
 committed files — 27 assets, 956 KB — so there is no Git LFS step, nothing to
-copy out of a sibling project, and no setup command before `make start`.
+copy out of a sibling project, and no setup command before `make vgp`.
 
 Previously the data lived in `data_pipeline_example/cache/`, which the
 `*.parquet` gitignore rule excluded, so a fresh clone had none of it. Running

@@ -699,7 +699,7 @@ def test_walk_forward_oos_windows_are_disjoint():
 
 
 def test_committed_market_data_is_present_and_readable():
-    """`data/` ships with the repo, so `make start` needs no setup step.
+    """`data/` ships with the repo, so `make vgp` needs no setup step.
 
     The dataset used to live in `data_pipeline_example/cache/` and was covered
     by the `*.parquet` gitignore rule, so a fresh clone had none of it. Running

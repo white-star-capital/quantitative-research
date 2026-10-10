@@ -118,6 +118,12 @@ jobs:
       - name: Verify dependency set resolves and is self-consistent
         run: pip check
 
+      # The dashboard is generated from results/, never hand-edited. Without
+      # this gate a new run merges with last run's numbers still on the page —
+      # the exact drift that left a two-run-stale result in README.md.
+      - name: Verify the dashboard matches results/
+        run: python3 scripts/build_dashboard.py --check
+
   ipo-vol:
     name: IPO vol (Python 3.12)
     runs-on: ubuntu-latest
@@ -159,3 +165,32 @@ jobs:
       # insert; pytest is invoked from the project root for that reason.
       - name: Run test suite
         run: python -m pytest tests/ -q --durations=10
+
+  dashboard-image:
+    name: Dashboard image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: vector_genetic_programming
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # `make start` is the first command in the README, so the image building
+      # and actually serving the page is part of the contract.
+      - name: Build the dashboard image
+        run: docker build -t vgp-dashboard .
+
+      - name: Serve it and check it answers with the committed result
+        run: |
+          docker run -d --rm --name vgp-dash -p 8000:8000 vgp-dashboard
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/ -o served.html && break
+            sleep 1
+          done
+          test -s served.html
+          grep -q "No evidence of skill" served.html
+          grep -q '"typical_oos":-0.533' served.html
+          docker rm -f vgp-dash

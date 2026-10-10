@@ -6,7 +6,7 @@ across all windows and seeds, prints results, and writes results/ artifacts.
 
 Usage
 -----
-    make start
+    make vgp
     python scripts/run.py
 
 Output
@@ -40,7 +40,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 # Daily OHLCV as {SYMBOL}_1d.parquet. COMMITTED to the repository: 27 assets is
 # 956 KB, small enough to live in git as ordinary objects, so a plain
-# `git clone` gives a working dataset and `make start` runs with no setup step.
+# `git clone` gives a working dataset and `make vgp` runs with no setup step.
 # It previously lived in data_pipeline_example/cache/ and was gitignored, so
 # every user had to git-lfs-pull the sibling risk_premium_pca project and copy
 # files across before anything would run.
