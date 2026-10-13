@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VGP Terminal</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%230d1013%27/%3E%3Crect x=%271%27 y=%274%27 width=%273%27 height=%278%27 fill=%27%233987e5%27/%3E%3Crect x=%275.5%27 y=%272%27 width=%273%27 height=%2710%27 fill=%27%233987e5%27/%3E%3Crect x=%2710%27 y=%276%27 width=%273%27 height=%276%27 fill=%27%23d95926%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Dark-first by intent: this is a terminal, read in a dim room beside other
+   terminals. Light is a full second palette, not an inversion.
+   Layout: status rail -> KPI grid -> null panels -> run matrix -> universe +
+   config -> control. Density over whitespace; every panel is a bordered cell. */
+:root {
+  --bg:        #0d1013;
+  --panel:     #14181c;
+  --panel-2:   #191e23;
+  --rule:      #262d34;
+  --rule-2:    #323b44;
+  --fg:        #e6eaee;
+  --fg-2:      #9aa5b1;
+  --fg-3:      #6b7681;
+  --null:      #3987e5;
+  --null-soft: #1b3a63;
+  --observed:  #d95926;
+  --good:      #35b835;
+  --warn:      #c98500;
+  --bad:       #e26a6a;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f5f6; --panel: #ffffff; --panel-2: #fafbfb;
+    --rule: #dfe3e7; --rule-2: #c8cfd6;
+    --fg: #11161b; --fg-2: #4d5760; --fg-3: #7b858f;
+    --null: #2a78d6; --null-soft: #cde2fb; --observed: #eb6834;
+    --good: #0ca30c; --warn: #9a6600; --bad: #d03b3b;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f4f5f6; --panel: #ffffff; --panel-2: #fafbfb;
+  --rule: #dfe3e7; --rule-2: #c8cfd6;
+  --fg: #11161b; --fg-2: #4d5760; --fg-3: #7b858f;
+  --null: #2a78d6; --null-soft: #cde2fb; --observed: #eb6834;
+  --good: #0ca30c; --warn: #9a6600; --bad: #d03b3b;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 13px; line-height: 1.45; }
+.num, code, pre, input, select { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+h2 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-3); font-family: var(--mono); }
+
+/* --- status rail --------------------------------------------------------- */
+.rail { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--panel); border-bottom: 1px solid var(--rule-2); }
+.rail-in { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 9px 16px; }
+.brand { font-family: var(--mono); font-weight: 600; letter-spacing: .14em; font-size: 12px; }
+.rail .f { font-family: var(--mono); font-size: 11.5px; color: var(--fg-3); white-space: nowrap; }
+.rail .f b { color: var(--fg-2); font-weight: 500; }
+.spacer { flex: 1 1 auto; }
+.chip { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border: 1px solid currentColor; border-radius: 2px; white-space: nowrap; }
+.chip.bad { color: var(--bad); } .chip.good { color: var(--good); } .chip.warn { color: var(--warn); } .chip.mute { color: var(--fg-3); }
+button.ghost { font-family: var(--mono); font-size: 11px; background: none; border: 1px solid var(--rule-2); color: var(--fg-2); padding: 3px 9px; border-radius: 2px; cursor: pointer; }
+button.ghost:hover { color: var(--fg); border-color: var(--fg-3); }
+
+.wrap { padding: 14px 16px 60px; display: flex; flex-direction: column; gap: 14px; max-width: 1560px; margin: 0 auto; }
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; min-width: 0; }
+.panel > .hd { display: flex; align-items: center; gap: 10px; padding: 7px 11px; border-bottom: 1px solid var(--rule); background: var(--panel-2); flex-wrap: wrap; }
+.panel > .bd { padding: 11px; }
+.hint { font-size: 11.5px; color: var(--fg-3); font-family: var(--mono); }
+
+/* --- KPI grid ------------------------------------------------------------ */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.kpi { background: var(--panel); padding: 9px 11px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kpi .k { font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .v { font-family: var(--mono); font-size: 19px; font-weight: 500; letter-spacing: -.02em; }
+.kpi .s { font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); }
+.pos { color: var(--good); } .neg { color: var(--bad); } .flat { color: var(--fg); }
+
+/* --- null panels --------------------------------------------------------- */
+.nulls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+@media (max-width: 1180px) { .nulls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px)  { .nulls { grid-template-columns: minmax(0, 1fr); } }
+.nd .bd { padding: 8px 9px 4px; }
+.nd svg { width: 100%; height: auto; display: block; overflow: visible; }
+.bar { fill: var(--null-soft); stroke: var(--null); stroke-width: 1; }
+.bar:hover { fill: var(--null); }
+.axis { stroke: var(--rule-2); }
+.tick { font-family: var(--mono); font-size: 8.5px; fill: var(--fg-3); }
+.ndrow { display: flex; justify-content: space-between; gap: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); padding: 0 1px 6px; }
+
+/* --- tables -------------------------------------------------------------- */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+th { font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--fg-3); font-weight: 600; background: var(--panel-2); position: sticky; top: 0; cursor: pointer; user-select: none; }
+th:hover { color: var(--fg-2); }
+th[aria-sort="ascending"]::after { content: " \2191"; } th[aria-sort="descending"]::after { content: " \2193"; }
+th:first-child, td:first-child { text-align: left; }
+tbody tr:hover { background: var(--panel-2); }
+tbody tr:last-child td { border-bottom: none; }
+td.w { color: var(--fg-3); }
+
+/* --- universe ------------------------------------------------------------ */
+.ticks { display: flex; flex-wrap: wrap; gap: 4px; }
+.tkr { font-family: var(--mono); font-size: 10.5px; padding: 1px 6px; border: 1px solid var(--rule-2); border-radius: 2px; color: var(--fg-2); }
+.tkr.out { color: var(--fg-3); border-style: dashed; text-decoration: line-through; }
+.tkr.fail { color: var(--bad); border-color: var(--bad); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); }
+.sw { display: inline-block; width: 9px; height: 9px; vertical-align: -1px; margin-right: 5px; border-radius: 1px; }
+
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .cols2 { grid-template-columns: minmax(0, 1fr); } }
+
+dl.kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-family: var(--mono); font-size: 11.5px; }
+dl.kv dt { color: var(--fg-3); white-space: nowrap; }
+dl.kv dd { margin: 0; text-align: right; }
+
+/* --- control ------------------------------------------------------------- */
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px; }
+.fld { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fld label { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); }
+.fld input { background: var(--bg); border: 1px solid var(--rule-2); color: var(--fg); padding: 5px 7px; border-radius: 2px; font-size: 12px; width: 100%; }
+.fld input:focus-visible { outline: 2px solid var(--null); outline-offset: 1px; }
+.fld .rng { font-family: var(--mono); font-size: 10px; color: var(--fg-3); }
+.actions { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; margin-top: 11px; }
+button.go { font-family: var(--mono); font-size: 12px; padding: 7px 16px; border-radius: 2px; border: 1px solid var(--good); background: none; color: var(--good); cursor: pointer; }
+button.go:disabled { color: var(--fg-3); border-color: var(--rule-2); cursor: not-allowed; }
+button.stop { border-color: var(--bad); color: var(--bad); }
+pre.cmd, pre.log { margin: 0; background: var(--bg); border: 1px solid var(--rule); border-radius: 2px; padding: 9px; font-size: 11px; color: var(--fg-2); overflow-x: auto; white-space: pre; }
+pre.log { max-height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+.msg { font-family: var(--mono); font-size: 11.5px; padding: 7px 9px; border-radius: 2px; border: 1px solid var(--rule-2); color: var(--fg-2); }
+.msg.err { border-color: var(--bad); color: var(--bad); }
+.note { font-size: 12px; color: var(--fg-2); max-width: 90ch; }
+.note b { color: var(--fg); font-weight: 600; }
+
+#tip { position: fixed; pointer-events: none; opacity: 0; transition: opacity .08s; background: var(--fg); color: var(--bg); font-family: var(--mono); font-size: 11px; padding: 5px 8px; border-radius: 2px; z-index: 60; white-space: nowrap; }
+#tip.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="rail">
+  <div class="rail-in">
+    <span class="brand">VGP</span>
+    <span class="f">OOS <b id="r-gen">—</b></span>
+    <span class="f">UNIV <b id="r-fp">—</b></span>
+    <span class="f">ASSETS <b id="r-assets">—</b></span>
+    <span class="f">FEE <b id="r-fee">10.0 bps</b></span>
+    <span class="f">NULLS <b id="r-nulls">—</b></span>
+    <span class="f">EVALS <b id="r-evals">—</b></span>
+    <span class="spacer"></span>
+    <span class="chip bad" id="r-verdict">NO EVIDENCE OF SKILL</span>
+    <button class="ghost" id="theme">THEME</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="kpis" id="kpis"></div>
+
+  <section class="panel">
+    <div class="hd">
+      <h2>Null control &mdash; observed vs signal-free surrogates</h2>
+      <span class="hint" id="nullhint"></span>
+      <span class="spacer"></span>
+      <span class="legend">
+        <span><span class="sw" style="background:var(--null-soft);border:1px solid var(--null)"></span>null runs</span>
+        <span><span class="sw" style="background:var(--observed)"></span>observed</span>
+      </span>
+    </div>
+    <div class="bd">
+      <div class="nulls" id="nulls"></div>
+      <p class="note" style="margin-top:11px">
+        <b>TYPICAL OOS is the one that matters.</b> MAX asks whether the best of many tries looks lucky, which flatters a search.
+        TYPICAL asks whether the median window beats chance, and only that corresponds to money.
+      </p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="hd">
+      <h2>Run matrix</h2>
+      <span class="hint">click a header to sort &middot; <span id="rowcount"></span></span>
+    </div>
+    <div class="scroll">
+      <table id="matrix">
+        <thead><tr id="mhead"></tr></thead>
+        <tbody id="mbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="cols2">
+    <section class="panel">
+      <div class="hd"><h2>Universe</h2><span class="hint" id="unihint"></span></div>
+      <div class="bd" style="display:flex;flex-direction:column;gap:10px">
+        <dl class="kv" id="unikv"></dl>
+        <div>
+          <div class="legend" style="margin-bottom:6px">
+            <span>retained</span>
+            <span><span class="sw" style="border:1px dashed var(--rule-2)"></span>dropped by features</span>
+            <span><span class="sw" style="border:1px solid var(--bad)"></span>fetch failed</span>
+          </div>
+          <div class="ticks" id="tickers"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="hd"><h2>Deflated Sharpe &amp; trial set</h2></div>
+      <div class="bd" style="display:flex;flex-direction:column;gap:10px">
+        <dl class="kv" id="dsrkv"></dl>
+        <p class="note">
+          <b>DSR clears 0.95 while the null control returns p = 0.700.</b> Both are correct and answer different questions.
+          DSR corrects for selection <i>across</i> trials and is blind by construction to bias shared by <i>every</i> trial.
+          Seven such defects were found in this project and it saw none of them. Where they disagree, believe the null control.
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="hd">
+      <h2>New run</h2>
+      <span class="chip mute" id="runstate">CHECKING</span>
+      <span class="spacer"></span>
+      <span class="hint" id="runreason"></span>
+    </div>
+    <div class="bd" style="display:flex;flex-direction:column;gap:12px">
+      <div class="form" id="form"></div>
+      <div class="actions">
+        <button class="go" id="launch" disabled>START RUN</button>
+        <button class="go stop" id="cancel" hidden>CANCEL</button>
+        <span class="hint" id="eta"></span>
+      </div>
+      <div id="msg" hidden></div>
+      <div>
+        <div class="hint" style="margin-bottom:5px">Equivalent command &mdash; runs anywhere, no server needed</div>
+        <pre class="cmd" id="cmd"></pre>
+      </div>
+      <div id="logwrap" hidden>
+        <div class="hint" style="margin-bottom:5px">Live log &mdash; <span id="logmeta"></span></div>
+        <pre class="log" id="log"></pre>
+      </div>
+      <p class="note">
+        A run writes to its own directory under <code>runs/</code> and never touches the committed <code>results/</code>.
+        Defaults reproduce the published experiment. The null control is 99 full experiments, so it dominates the runtime.
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script id="vgp-data" type="application/json">{"nulls":{"max_is":[2.5293,3.2261,3.2888,3.4821,3.206,2.5097,2.4373,5.3716,3.3834,2.6348,1.9407,2.071,2.6737,1.3979,4.0562,4.0356,1.8955,2.8437,3.4273,3.5548,2.4149,3.5437,1.7067,2.2728,3.1841,2.7698,2.1861,3.0552,3.3915,2.6012,2.7175,2.1374,2.1304,2.7921,2.7057,1.9423,2.954,3.4159,2.1241,2.8879,2.3257,3.1752,3.1984,2.8799,2.3926,1.9418,2.907,3.0434,3.1958,2.497,4.3072,3.1671,2.4108,3.2759,4.5981,3.079,2.4529,3.3483,2.1543,3.2528,3.0689,2.1034,2.8679,3.1896,2.2894,4.1222,2.3174,3.038,2.1696,3.9419,2.2579,2.2597,2.629,5.4731,3.5428,4.8101,1.9208,2.9209,3.0414,2.4308,3.4568,2.8314,2.7555,2.3849,2.3148,2.9845,2.2603,2.4914,3.0491,2.5675,2.1944,2.5683,2.8797,2.2325,3.9395,2.2602,2.3274,2.3865,2.3817],"max_oos":[2.4053,1.3194,-1.3018,0.724,4.4428,2.8143,2.6401,-0.4762,1.4838,1.1442,0.841,3.4445,0.3703,1.1395,3.1401,-0.3577,-0.8255,1.289,2.0864,3.4988,3.923,1.4309,1.8168,1.7466,0.9929,1.3686,2.3444,0.3325,1.8367,-0.6912,0.1376,1.7263,1.5134,2.19,1.6852,3.0939,-0.9308,1.7134,3.1153,-0.4147,3.6852,1.4606,0.3624,2.7829,0.9991,0.7322,2.2864,2.6145,0.494,2.4604,3.1814,0.4388,1.8866,2.2537,2.7083,5.0337,2.2246,0.0296,2.6881,0.7878,-0.75,0.5746,0.4499,1.4783,-0.1341,2.6637,0.0597,1.7986,2.5236,0.5081,0.593,2.6591,-0.4341,1.278,0.5141,3.1448,2.6227,1.5424,0.9595,2.2631,2.8276,0.8847,2.4542,1.4427,1.6429,4.158,2.5066,-0.0654,1.3191,0.9986,0.0836,1.2917,1.5554,0.4657,1.4094,3.095,2.6048,1.2066,2.1561],"typical_is":[1.7727,2.2834,2.0169,2.2803,2.2524,2.4604,1.6254,3.8134,2.9827,1.9758,1.5161,1.9436,1.693,1.1638,3.0984,3.6509,1.5399,2.5716,3.2698,3.4185,1.9594,1.538,1.2737,1.7447,2.0625,2.1489,2.1851,2.0094,2.835,1.8844,1.9016,1.8903,1.3938,2.2477,2.2359,1.7873,1.3266,3.2988,1.7703,2.7128,2.0395,2.1219,2.5482,1.9497,1.2925,1.8849,2.2693,2.9213,2.2508,2.3709,3.578,2.8694,2.3187,2.4858,3.9773,2.0282,2.3734,1.6828,1.9276,3.1407,2.3969,1.9861,2.3638,1.9647,1.6551,2.5747,2.2128,1.9152,2.1651,3.5078,2.2482,1.6338,1.9591,5.0523,1.9681,2.7679,1.6803,2.7634,2.8218,1.7893,2.4307,1.1889,1.9849,2.0809,1.9784,2.3567,2.0552,2.4363,1.8598,2.3678,1.3745,2.3691,2.6886,2.2143,3.1327,2.1668,2.2689,1.451,2.2627],"typical_oos":[1.2377,0.9172,-1.4623,-1.8924,1.0345,2.2912,-0.5867,-1.7343,-0.663,0.5098,-0.277,2.8427,-0.6842,-1.4848,1.2244,-2.4279,-0.889,1.1344,0.7456,0.4773,0.2848,0.794,0.0146,-0.5775,-1.7937,-0.425,2.3155,-0.7895,1.0066,-1.616,0.1322,0.8774,0.5699,0.3913,0.5569,0.3831,-1.8211,0.4422,2.7066,-1.4153,0.3242,0.2022,0.0894,1.6032,-0.6628,-0.6482,0.7141,2.0933,-0.0577,-0.8431,1.7575,-0.3555,1.5187,-0.4679,2.644,0.9593,0.9734,-1.7947,2.4708,0.2661,-0.8313,0.249,0.1414,-1.516,-0.3852,1.1982,-1.9124,-0.8865,2.1719,-0.0184,-0.6873,0.2548,-1.5154,1.1962,-1.6832,1.3374,1.3381,1.3973,0.3477,1.3736,1.6281,-1.175,2.0984,-0.9185,0.8131,2.206,-0.3164,-0.424,0.7668,0.8043,0.0253,0.6115,-0.0957,-0.59,-2.1728,-0.0977,0.8221,0.8606,-0.5057]},"runs":[{"w":0,"seed":0,"start":"2025-04-01","end":"2025-07-31","is_":3.066,"val":0.817,"oos":1.207,"trades":270,"nodes":9,"front":19,"dsr":0.8191,"dsr_bests":0.9169,"min_trades":22,"evals":5565,"status":"ok","selection":"validation","train_end":"2025-01-31"},{"w":0,"seed":1,"start":"2025-04-01","end":"2025-07-31","is_":4.057,"val":-0.323,"oos":1.564,"trades":227,"nodes":6,"front":7,"dsr":0.9699,"dsr_bests":0.991,"min_trades":22,"evals":5610,"status":"ok","selection":"validation","train_end":"2025-01-31"},{"w":0,"seed":2,"start":"2025-04-01","end":"2025-07-31","is_":2.821,"val":-0.152,"oos":1.103,"trades":155,"nodes":9,"front":12,"dsr":0.7548,"dsr_bests":0.8777,"min_trades":22,"evals":5633,"status":"ok","selection":"validation","train_end":"2025-01-31"},{"w":1,"seed":0,"start":"2025-08-01","end":"2025-11-30","is_":2.285,"val":3.656,"oos":-1.759,"trades":343,"nodes":10,"front":19,"dsr":0.5942,"dsr_bests":0.7899,"min_trades":15,"evals":5573,"status":"ok","selection":"validation","train_end":"2025-05-31"},{"w":1,"seed":1,"start":"2025-08-01","end":"2025-11-30","is_":2.216,"val":2.649,"oos":-2.239,"trades":330,"nodes":18,"front":12,"dsr":0.5646,"dsr_bests":0.7683,"min_trades":15,"evals":5611,"status":"ok","selection":"validation","train_end":"2025-05-31"},{"w":1,"seed":2,"start":"2025-08-01","end":"2025-11-30","is_":1.199,"val":2.445,"oos":1.849,"trades":187,"nodes":4,"front":11,"dsr":0.1831,"dsr_bests":0.3571,"min_trades":15,"evals":5656,"status":"ok","selection":"validation","train_end":"2025-05-31"},{"w":2,"seed":0,"start":"2025-12-01","end":"2026-03-31","is_":0.727,"val":2.207,"oos":-0.533,"trades":142,"nodes":2,"front":12,"dsr":0.0558,"dsr_bests":0.1642,"min_trades":12,"evals":5578,"status":"ok","selection":"validation","train_end":"2025-09-30"},{"w":2,"seed":1,"start":"2025-12-01","end":"2026-03-31","is_":1.858,"val":2.562,"oos":-1.749,"trades":331,"nodes":4,"front":10,"dsr":0.4012,"dsr_bests":0.6421,"min_trades":12,"evals":5615,"status":"ok","selection":"validation","train_end":"2025-09-30"},{"w":2,"seed":2,"start":"2025-12-01","end":"2026-03-31","is_":1.532,"val":4.061,"oos":0.057,"trades":246,"nodes":9,"front":27,"dsr":0.2535,"dsr_bests":0.4904,"min_trades":12,"evals":5614,"status":"ok","selection":"validation","train_end":"2025-09-30"}],"observed":{"max_is":3.066,"max_oos":1.207,"typical_is":2.216,"typical_oos":-0.533},"nullmed":{"max_is":2.77,"max_oos":1.484,"typical_is":2.167,"typical_oos":0.255},"nullp95":{"max_is":4.141,"max_oos":3.517,"typical_is":3.515,"typical_oos":2.294},"p":{"max_is":0.34,"max_oos":0.62,"typical_is":0.47,"typical_oos":0.7},"null_header":{"n_runs":99,"block_size":20,"fidelity_windows":8,"verdict":"the search finds comparable performance in data with no signal. Treat the headline result as unproven regardless of DSR."},"universe":{"fingerprint":"af8fe4ee067f","n_requested":30,"n_fetched":27,"n_retained":21,"n_dates":701,"is_complete":false,"requested":["BTC","ETH","BNB","HYPE","XRP","PENDLE","UNI","JUP","TAO","LINK","ZEC","DOGE","MORPHO","AERO","SOL","AVAX","POL","WLFI","WIF","PEPE","AAVE","COMP","FLUID","SHIB","SUSHI","CRV","SYRUP","ENA","ONDO","EUL"],"fetched":["BTC","ETH","BNB","XRP","PENDLE","UNI","JUP","TAO","LINK","ZEC","DOGE","MORPHO","SOL","AVAX","POL","WLFI","WIF","PEPE","AAVE","COMP","SHIB","SUSHI","CRV","SYRUP","ENA","ONDO","EUL"],"retained":["AAVE","AVAX","BNB","BTC","COMP","CRV","DOGE","ENA","ETH","JUP","LINK","PENDLE","PEPE","SHIB","SOL","SUSHI","TAO","UNI","WIF","XRP","ZEC"],"dropped_by_features":["MORPHO","POL","WLFI","SYRUP","ONDO","EUL"],"fetch_failed":{"HYPEUSDT":"ProxyError: HTTPSConnectionPool(host='api.binance.com', port=443): Max retries exceeded with url: /api/v3/klines?symbol=HYPEUSDT&interval=1d&startTime=1704067200000&endTime=1775087999000&limit=1000 (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))","AEROUSDT":"ProxyError: HTTPSConnectionPool(host='api.binance.com', port=443): Max retries exceeded with url: /api/v3/klines?symbol=AEROUSDT&interval=1d&startTime=1704067200000&endTime=1775087999000&limit=1000 (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))","FLUIDUSDT":"ProxyError: HTTPSConnectionPool(host='api.binance.com', port=443): Max retries exceeded with url: /api/v3/klines?symbol=FLUIDUSDT&interval=1d&startTime=1704067200000&endTime=1775087999000&limit=1000 (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))"},"null_control":{"n_runs":99,"block_size":20,"universe_matches_observed":true}},"n_evaluations":50455,"fingerprint":"af8fe4ee067f","n_assets":21,"dsr":{"n_trials":38774,"n_evaluations":50455,"trial_sr_std":0.49483399964616853,"source":"all_evaluations","n_trials_bests":9,"trial_sr_std_bests":1.0201483343189544,"max_all":0.9698509812041034,"max_bests":0.9910357584291066},"through":"2026-03-31","from":"2025-04-01"}</script>
+<script>
+const D = JSON.parse(document.getElementById("vgp-data").textContent);
+
+/* ---------- helpers ---------- */
+const sg = (v, d = 3) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d);
+const cls = v => (v > 0 ? "pos" : v < 0 ? "neg" : "flat");
+const el = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const tip = el("tip");
+function showTip(e, t) {
+  tip.textContent = t; tip.classList.add("on");
+  const r = tip.getBoundingClientRect(), p = 13;
+  let x = e.clientX + p, y = e.clientY + p;
+  if (x + r.width > innerWidth - 6) x = e.clientX - r.width - p;
+  if (y + r.height > innerHeight - 6) y = e.clientY - r.height - p;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => tip.classList.remove("on");
+
+/* ---------- theme ---------- */
+el("theme").onclick = () => {
+  const now = document.documentElement.getAttribute("data-theme");
+  const next = now === "light" ? "dark" : now === "dark" ? "" : "light";
+  if (next) document.documentElement.setAttribute("data-theme", next);
+  else document.documentElement.removeAttribute("data-theme");
+  try { localStorage.setItem("vgp-theme", next); } catch (_) {}
+  drawNulls();
+};
+try { const t = localStorage.getItem("vgp-theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (_) {}
+
+/* ---------- status rail ---------- */
+const U = D.universe || {}, NH = D.null_header || {};
+el("r-gen").textContent = `${D.from} \u2192 ${D.through}`;
+el("r-fp").textContent = D.fingerprint;
+el("r-assets").textContent = `${U.n_retained ?? D.n_assets}/${U.n_fetched ?? "?"}/${U.n_requested ?? "?"}`;
+el("r-nulls").textContent = `${NH.n_runs ?? "?"} × blk ${NH.block_size ?? "?"}`;
+el("r-evals").textContent = D.n_evaluations.toLocaleString();
+
+/* ---------- KPI grid ---------- */
+const oosVals = D.runs.map(r => r.oos);
+const posWindows = oosVals.filter(v => v > 0).length;
+const KPI = [
+  ["typical OOS", sg(D.observed.typical_oos), `null ${sg(D.nullmed.typical_oos)}`, cls(D.observed.typical_oos)],
+  ["p (typ OOS)", D.p.typical_oos.toFixed(3), "0.05 to reject", D.p.typical_oos <= 0.05 ? "pos" : "neg"],
+  ["max OOS", sg(D.observed.max_oos), `p ${D.p.max_oos.toFixed(3)}`, cls(D.observed.max_oos)],
+  ["typical IS", sg(D.observed.typical_is), `p ${D.p.typical_is.toFixed(3)}`, cls(D.observed.typical_is)],
+  ["max IS", sg(D.observed.max_is), `p ${D.p.max_is.toFixed(3)}`, cls(D.observed.max_is)],
+  ["DSR (all evals)", D.dsr.max_all.toFixed(3), `${D.dsr.n_trials.toLocaleString()} trials`, D.dsr.max_all >= 0.95 ? "pos" : "flat"],
+  ["DSR (bests)", D.dsr.max_bests.toFixed(3), `${D.dsr.n_trials_bests} trials`, D.dsr.max_bests >= 0.95 ? "pos" : "flat"],
+  ["rows", String(D.runs.length), `${posWindows} OOS positive`, "flat"],
+  ["evaluations", D.n_evaluations.toLocaleString(), "across all windows", "flat"],
+  ["fidelity", String(NH.fidelity_windows ?? "—"), "windows verified", "pos"],
+];
+el("kpis").innerHTML = KPI.map(([k, v, s, c]) =>
+  `<div class="kpi"><span class="k">${k}</span><span class="v ${c}">${v}</span><span class="s">${esc(s)}</span></div>`).join("");
+
+/* ---------- null distribution panels ---------- */
+const PANELS = [
+  ["max_is", "MAX best IS"], ["max_oos", "MAX best OOS"],
+  ["typical_is", "TYPICAL IS"], ["typical_oos", "TYPICAL OOS"],
+];
+el("nullhint").textContent =
+  `${NH.n_runs ?? "?"} surrogate runs · block ${NH.block_size ?? "?"} bars · empirical p floor ${(1 / (1 + (NH.n_runs || 1))).toFixed(3)}`;
+
+function drawNulls() {
+  el("nulls").innerHTML = PANELS.map(([key, title]) => {
+    const vals = D.nulls[key], obs = D.observed[key], pv = D.p[key];
+    const lo = Math.min(...vals, obs), hi = Math.max(...vals, obs);
+    const pad = (hi - lo) * 0.04 || 0.1, min = lo - pad, max = hi + pad;
+    const NB = 20, w = (max - min) / NB, bins = new Array(NB).fill(0);
+    for (const v of vals) bins[Math.min(NB - 1, Math.max(0, Math.floor((v - min) / w)))]++;
+    const peak = Math.max(...bins);
+
+    const W = 300, H = 132, L = 6, R = 6, T = 20, B = 18;
+    const pw = W - L - R, ph = H - T - B;
+    const x = v => L + ((v - min) / (max - min)) * pw;
+
+    let bars = "";
+    bins.forEach((c, i) => {
+      if (!c) return;
+      const x0 = x(min + i * w), x1 = x(min + (i + 1) * w), bh = (c / peak) * ph;
+      bars += `<rect class="bar" x="${(x0 + 0.8).toFixed(1)}" y="${(T + ph - bh).toFixed(1)}" `
+            + `width="${Math.max(1, x1 - x0 - 1.6).toFixed(1)}" height="${bh.toFixed(1)}" rx="1" `
+            + `data-t="${c} of ${vals.length} runs · ${(min + i * w).toFixed(2)} to ${(min + (i + 1) * w).toFixed(2)}"></rect>`;
+    });
+    const ox = x(obs), right = ox < W * 0.6;
+    return `<section class="panel nd">
+      <div class="hd" style="padding:6px 9px"><h2>${title}</h2></div>
+      <div class="bd">
+        <div class="ndrow">
+          <span style="color:var(--observed);font-weight:600">${sg(obs)}</span>
+          <span>null ${sg(D.nullmed[key], 2)} · p95 ${sg(D.nullp95[key] ?? 0, 2)}</span>
+          <span style="color:${pv <= 0.05 ? "var(--good)" : "var(--fg-2)"}">p ${pv.toFixed(3)}</span>
+        </div>
+        <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${title}: observed ${obs.toFixed(3)}, p ${pv.toFixed(3)}, against ${vals.length} signal-free runs">
+          ${bars}
+          <line class="axis" x1="${L}" y1="${T + ph}" x2="${W - R}" y2="${T + ph}"></line>
+          <text class="tick" x="${L}" y="${H - B + 12}" text-anchor="start">${sg(min, 1)}</text>
+          <text class="tick" x="${W - R}" y="${H - B + 12}" text-anchor="end">${sg(max, 1)}</text>
+          <line x1="${ox.toFixed(1)}" y1="${T - 9}" x2="${ox.toFixed(1)}" y2="${T + ph}" stroke="var(--observed)" stroke-width="2.5"></line>
+          <text x="${(right ? ox + 5 : ox - 5).toFixed(1)}" y="${T - 11}" text-anchor="${right ? "start" : "end"}"
+                fill="var(--observed)" style="font-family:var(--mono);font-size:10px;font-weight:600">${sg(obs, 2)}</text>
+        </svg>
+      </div></section>`;
+  }).join("");
+  document.querySelectorAll(".bar").forEach(b => {
+    b.addEventListener("mousemove", e => showTip(e, b.dataset.t));
+    b.addEventListener("mouseleave", hideTip);
+  });
+}
+drawNulls();
+
+/* ---------- run matrix ---------- */
+const COLS = [
+  ["w", "win", r => "W" + r.w, r => r.w],
+  ["period", "oos period", r => `<span class="w">${r.start} → ${r.end}</span>`, r => r.start],
+  ["seed", "seed", r => r.seed, r => r.seed],
+  ["is_", "IS", r => `<span class="${cls(r.is_)}">${sg(r.is_)}</span>`, r => r.is_],
+  ["val", "val", r => `<span class="${cls(r.val)}">${sg(r.val)}</span>`, r => r.val],
+  ["oos", "OOS", r => `<b class="${cls(r.oos)}">${sg(r.oos)}</b>`, r => r.oos],
+  ["dsr", "dsr", r => r.dsr.toFixed(3), r => r.dsr],
+  ["dsr_bests", "dsr(b)", r => r.dsr_bests.toFixed(3), r => r.dsr_bests],
+  ["trades", "trades", r => r.trades, r => r.trades],
+  ["min_trades", "min", r => `<span class="w">${r.min_trades}</span>`, r => r.min_trades],
+  ["nodes", "nodes", r => r.nodes, r => r.nodes],
+  ["front", "front", r => r.front, r => r.front],
+  ["evals", "evals", r => r.evals.toLocaleString(), r => r.evals],
+  ["status", "status", r => `<span class="w">${esc(r.status)}</span>`, r => r.status],
+  ["selection", "selected on", r => `<span class="w">${esc(r.selection)}</span>`, r => r.selection],
+];
+let sortKey = null, sortDir = 1;
+el("mhead").innerHTML = COLS.map(c => `<th data-k="${c[0]}" scope="col">${c[1]}</th>`).join("");
+el("rowcount").textContent = `${D.runs.length} rows`;
+
+function paint() {
+  let rows = D.runs.slice();
+  if (sortKey) {
+    const col = COLS.find(c => c[0] === sortKey);
+    rows.sort((a, b) => {
+      const x = col[3](a), y = col[3](b);
+      return (x > y ? 1 : x < y ? -1 : 0) * sortDir;
+    });
+  }
+  el("mbody").innerHTML = rows.map(r => `<tr>${COLS.map(c => `<td>${c[2](r)}</td>`).join("")}</tr>`).join("");
+  document.querySelectorAll("#mhead th").forEach(th =>
+    th.setAttribute("aria-sort", th.dataset.k === sortKey ? (sortDir === 1 ? "ascending" : "descending") : "none"));
+}
+el("mhead").onclick = e => {
+  const th = e.target.closest("th"); if (!th) return;
+  if (sortKey === th.dataset.k) sortDir = -sortDir; else { sortKey = th.dataset.k; sortDir = 1; }
+  paint();
+};
+paint();
+
+/* ---------- universe ---------- */
+el("unihint").textContent = U.is_complete === false ? "PARTIAL — declared" : "";
+el("unikv").innerHTML = [
+  ["fingerprint", D.fingerprint], ["requested", U.n_requested], ["fetched", U.n_fetched],
+  ["retained", U.n_retained], ["dates", U.n_dates], ["complete", String(U.is_complete)],
+].filter(([, v]) => v !== undefined).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+
+const failed = new Set(Object.keys(U.fetch_failed || {}).map(s => s.replace(/USDT$/, "")));
+const dropped = new Set((U.dropped_by_features || []).map(s => s.replace(/USDT$/, "")));
+el("tickers").innerHTML = (U.requested || []).map(t => {
+  const k = String(t).replace(/USDT$/, "");
+  const c = failed.has(k) ? "tkr fail" : dropped.has(k) ? "tkr out" : "tkr";
+  const why = failed.has(k) ? "fetch failed" : dropped.has(k) ? "dropped by min_obs_fraction" : "retained";
+  return `<span class="${c}" title="${why}">${esc(k)}</span>`;
+}).join("");
+
+/* ---------- DSR ---------- */
+el("dsrkv").innerHTML = [
+  ["dsr (all evaluations)", D.dsr.max_all.toFixed(4)],
+  ["dsr (bests only)", D.dsr.max_bests.toFixed(4)],
+  ["trials counted", D.dsr.n_trials.toLocaleString()],
+  ["evaluations", D.dsr.n_evaluations.toLocaleString()],
+  ["trial SR spread", D.dsr.trial_sr_std.toFixed(4)],
+  ["trial source", D.dsr.source],
+  ["null control p (typ OOS)", D.p.typical_oos.toFixed(3)],
+].map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+
+/* ---------- control ---------- */
+const FORM_ORDER = ["fee_bps", "n_null_runs", "n_seeds", "pop_size", "n_gen", "train_months", "oos_months"];
+const LABEL = {
+  fee_bps: "fee (bps)", n_null_runs: "null runs", n_seeds: "seeds", pop_size: "population",
+  n_gen: "generations", train_months: "train (mo)", oos_months: "OOS (mo)",
+};
+let SPEC = null, pollTimer = null;
+
+/* Runtime estimate, calibrated on the committed run rather than guessed: the
+   default configuration (3 windows x (3 seeds + 99 null runs x 1 seed) x 200
+   individuals x 30 generations) took 7.8 hours end to end. Everything scales
+   with the evaluation count, so one measured point fixes the constant.
+   The window count falls out of the 27-month panel, not the form, so it is
+   derived the way generate_windows does: one window per OOS step that fits. */
+const CAL_EVALS = 3 * (3 + 99) * 200 * 30;   // 1,836,000 evaluations
+const CAL_MINUTES = 468;                      // 7.8 hours, measured
+// Fixed cost paid once per run whatever the size: load, feature matrix, and the
+// ~11.5s numba warmup. Without it the estimator says 0 for the 48s smoke run.
+const CAL_FIXED_MIN = 0.8;
+function estimate(v) {
+  // 701 trading days of panel, not the calendar span of the request.
+  const panelMonths = 23;
+  const windows = Math.max(1, Math.floor((panelMonths - Number(v.train_months) - 2) / Number(v.oos_months)));
+  const evals = windows * (Number(v.n_seeds) + Number(v.n_null_runs)) * Number(v.pop_size) * Number(v.n_gen);
+  const mins = CAL_FIXED_MIN + evals / CAL_EVALS * CAL_MINUTES;
+  const span = mins < 1 ? "<1 min"
+    : mins < 90 ? `~${Math.round(mins)} min`
+    : `~${(mins / 60).toFixed(1)} hours`;
+  return `${windows} window${windows === 1 ? "" : "s"} \u00b7 ${evals.toLocaleString()} evaluations \u00b7 ${span}`;
+}
+
+function values() {
+  const o = {};
+  for (const k of FORM_ORDER) {
+    const i = el("f-" + k);
+    if (i) o[k] = i.value === "" ? SPEC[k].default : Number(i.value);
+  }
+  return o;
+}
+function renderCmd() {
+  if (!SPEC) return;
+  const v = values();
+  const envs = FORM_ORDER.filter(k => Number(v[k]) !== Number(SPEC[k].default))
+    .map(k => `${SPEC[k].env}=${v[k]}`);
+  envs.push("VGP_RESULTS_DIR=runs/my-run");
+  el("cmd").textContent = envs.join(" \\\n  ") + " \\\n  .venv/bin/python scripts/run.py";
+  el("eta").textContent = estimate(v);
+}
+function setMsg(text, isErr) {
+  const m = el("msg");
+  m.hidden = !text; m.className = "msg" + (isErr ? " err" : ""); m.textContent = text || "";
+}
+
+async function refresh() {
+  let s;
+  try {
+    s = await (await fetch("api/state", { cache: "no-store" })).json();
+  } catch (_) {
+    // Opened as a file, or served by a plain static server: the page still works,
+    // it just cannot launch anything. Say so instead of failing silently.
+    el("runstate").textContent = "STATIC";
+    el("runstate").className = "chip mute";
+    el("runreason").textContent = "no run server — copy the command below";
+    if (!SPEC) buildForm(DEFAULT_SPEC);
+    return;
+  }
+  if (!SPEC) buildForm(s.params);
+  const run = s.run || {};
+  const canStart = s.can_run && !run.running;
+  el("launch").disabled = !canStart;
+  el("cancel").hidden = !run.running;
+  el("runstate").textContent = run.running ? "RUNNING" : s.can_run ? "READY" : "VIEW ONLY";
+  el("runstate").className = "chip " + (run.running ? "warn" : s.can_run ? "good" : "mute");
+  el("runreason").textContent = s.reason || "";
+  if (run.running || run.log) {
+    el("logwrap").hidden = false;
+    el("log").textContent = run.log || "";
+    el("logmeta").textContent = `${run.out_dir || ""}${run.elapsed != null ? " · " + run.elapsed + "s" : ""}`
+      + (run.running ? "" : run.returncode != null ? ` · exit ${run.returncode}` : "");
+  }
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(refresh, run.running ? 3000 : 15000);
+}
+
+const DEFAULT_SPEC = {
+  fee_bps: { min: 0, max: 100, default: 10, int: false, env: "VGP_FEE_BPS" },
+  n_null_runs: { min: 0, max: 999, default: 99, int: true, env: "VGP_N_NULL_RUNS" },
+  n_seeds: { min: 1, max: 10, default: 3, int: true, env: "VGP_N_SEEDS" },
+  pop_size: { min: 10, max: 1000, default: 200, int: true, env: "VGP_POP_SIZE" },
+  n_gen: { min: 1, max: 200, default: 30, int: true, env: "VGP_N_GEN" },
+  train_months: { min: 3, max: 36, default: 9, int: true, env: "VGP_TRAIN_MONTHS" },
+  oos_months: { min: 1, max: 12, default: 4, int: true, env: "VGP_OOS_MONTHS" },
+};
+
+function buildForm(spec) {
+  SPEC = spec;
+  el("form").innerHTML = FORM_ORDER.filter(k => spec[k]).map(k => {
+    const s = spec[k];
+    return `<div class="fld">
+      <label for="f-${k}">${LABEL[k] || k}</label>
+      <input id="f-${k}" type="number" value="${s.default}" min="${s.min}" max="${s.max}"
+             step="${s.int ? 1 : 0.5}" inputmode="decimal">
+      <span class="rng">${s.min}–${s.max} · default ${s.default}</span>
+    </div>`;
+  }).join("");
+  el("form").addEventListener("input", renderCmd);
+  renderCmd();
+}
+
+el("launch").onclick = async () => {
+  setMsg("");
+  el("launch").disabled = true;
+  try {
+    const res = await fetch("api/run", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values()),
+    });
+    const j = await res.json();
+    if (!res.ok) setMsg(j.error || "run refused", true);
+    else setMsg(`started — pid ${j.pid}, writing to runs/${j.out_dir}`);
+  } catch (e) {
+    setMsg("could not reach the run server", true);
+  }
+  refresh();
+};
+el("cancel").onclick = async () => {
+  try { await fetch("api/cancel", { method: "POST" }); } catch (_) {}
+  refresh();
+};
+
+refresh();
+</script>
+</body>
+</html>

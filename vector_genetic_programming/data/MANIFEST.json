@@ -1,0 +1,157 @@
+{
+  "description": "Checksums for the market data that produced results/. Verify with `make verify-data`. A mismatch means the data is not what the committed results were computed on, so a re-run will not reproduce them.",
+  "universe_requested": [
+    "BTC",
+    "ETH",
+    "BNB",
+    "HYPE",
+    "XRP",
+    "PENDLE",
+    "UNI",
+    "JUP",
+    "TAO",
+    "LINK",
+    "ZEC",
+    "DOGE",
+    "MORPHO",
+    "AERO",
+    "SOL",
+    "AVAX",
+    "POL",
+    "WLFI",
+    "WIF",
+    "PEPE",
+    "AAVE",
+    "COMP",
+    "FLUID",
+    "SHIB",
+    "SUSHI",
+    "CRV",
+    "SYRUP",
+    "ENA",
+    "ONDO",
+    "EUL"
+  ],
+  "n_requested": 30,
+  "n_committed": 27,
+  "missing": [
+    "HYPE",
+    "AERO",
+    "FLUID"
+  ],
+  "missing_reason": "Not re-fetchable at collection time and not shipped. Loaders must therefore pass allow_partial=True with a min_assets floor, which is what scripts/run.py does. The committed results were computed on exactly this set: universe fingerprint af8fe4ee067f, 30 requested, 27 fetched, 21 retained after FeatureEngine's min_obs_fraction filter, 701 dates.",
+  "results_fingerprint": "af8fe4ee067f",
+  "n_retained_in_results": 21,
+  "n_dates_in_results": 701,
+  "total_bytes": 925154,
+  "files": {
+    "AAVEUSDT_1d.parquet": {
+      "sha256": "5b12fad8de797a55148880dac051d2577ea99b0c84206d0fe927b15398b5c187",
+      "bytes": 37392
+    },
+    "AVAXUSDT_1d.parquet": {
+      "sha256": "66ab0d422bf513968b1c56692e92954289d83ec28378976221da58eabffe23af",
+      "bytes": 35000
+    },
+    "BNBUSDT_1d.parquet": {
+      "sha256": "6c7f5a8f65ec71e1ed2916b1ceb27778af1633ede1b202af11108fbefac8a471",
+      "bytes": 36189
+    },
+    "BTCUSDT_1d.parquet": {
+      "sha256": "e5b0a5cc6dcc6826af47a80a7a8b2f3e6f2c77cea78e0ec7cead683b84230fab",
+      "bytes": 40980
+    },
+    "COMPUSDT_1d.parquet": {
+      "sha256": "aea05d95fa85f86ba2a0bf46be270b4b0845bd284473eebbc51612dec0926362",
+      "bytes": 35736
+    },
+    "CRVUSDT_1d.parquet": {
+      "sha256": "d74e2dada524358eaf920604c8455065cbfc6d7e94d19d433e78e111071d6dee",
+      "bytes": 44951
+    },
+    "DOGEUSDT_1d.parquet": {
+      "sha256": "e5e99c4cb6d1c2f0604842706d2913f9917aee916899988c8b1fe0fa99a48a9c",
+      "bytes": 47466
+    },
+    "ENAUSDT_1d.parquet": {
+      "sha256": "534f7a73ec2b987409355ecb26e51d07860ab6e1fc67b68701718eeb4c704d77",
+      "bytes": 37110
+    },
+    "ETHUSDT_1d.parquet": {
+      "sha256": "e96edef625a825d279e9e3d793991155339e76ed37e9b1d655d5d6a0b50c4629",
+      "bytes": 39728
+    },
+    "EULUSDT_1d.parquet": {
+      "sha256": "4934bd685e819dd8ee61eadbb01a1c35606bafc14b65eb84ec60898088f48c62",
+      "bytes": 11785
+    },
+    "JUPUSDT_1d.parquet": {
+      "sha256": "379394b02c97714a03c1cfe2f146066b508ac8932b238f4a1db6a769096994f1",
+      "bytes": 40881
+    },
+    "LINKUSDT_1d.parquet": {
+      "sha256": "523ecf20a81fcb591308700d264558f5c4f4b41b1c64902f9457c6e9c66ea20f",
+      "bytes": 35523
+    },
+    "MORPHOUSDT_1d.parquet": {
+      "sha256": "4960b70fd50171ba65c78b6fec42ff7330566e5e9fec80a4a59cddf71b6ecf1f",
+      "bytes": 11670
+    },
+    "ONDOUSDT_1d.parquet": {
+      "sha256": "2013fa520a7d0614bf2cd13bc207461c525d789e9de2b8c519ac18d054307128",
+      "bytes": 21580
+    },
+    "PENDLEUSDT_1d.parquet": {
+      "sha256": "e0542d7684e28513c02e9076d4cda8f6150bcb977b429da5b2a5e1d092051fc8",
+      "bytes": 38588
+    },
+    "PEPEUSDT_1d.parquet": {
+      "sha256": "28ab2463a3b2b812e18ae95252c5d6d41f5fa9f1928e89c7eb33472d5c5c959d",
+      "bytes": 42246
+    },
+    "POLUSDT_1d.parquet": {
+      "sha256": "0679abdfbdfa50c7c20772b2de33048e096e3e15b79f4c085ec6a7661d97cf8d",
+      "bytes": 30673
+    },
+    "SHIBUSDT_1d.parquet": {
+      "sha256": "13e4d15584431effdf5bc00204d3968d2c0ef0d439d58ec4775f7af026779021",
+      "bytes": 44144
+    },
+    "SOLUSDT_1d.parquet": {
+      "sha256": "4924bfac9b8e0d7d2bad558e9a85521cd64dd745dd0b4e46aa545706e90122ae",
+      "bytes": 37026
+    },
+    "SUSHIUSDT_1d.parquet": {
+      "sha256": "576fdbefa47c6eb953a2c8ace7cd49c488d836ca36853478cb5552970ba51a88",
+      "bytes": 35840
+    },
+    "SYRUPUSDT_1d.parquet": {
+      "sha256": "d05ab7548c15e7927244078fd3765b1b5b40ba47148a0850d1c27febf3e8c1d9",
+      "bytes": 19982
+    },
+    "TAOUSDT_1d.parquet": {
+      "sha256": "1fd7902a44c23764b696b180c34bb2a01231c91db24c9ba968ed2e15e7e4aada",
+      "bytes": 31750
+    },
+    "UNIUSDT_1d.parquet": {
+      "sha256": "cdca23cc1a9ebc2312cb7e9121b52f1ff38db2891b2e4fda03f8737f975e38a5",
+      "bytes": 38183
+    },
+    "WIFUSDT_1d.parquet": {
+      "sha256": "79c5332019f1708d5c266eda2693477ac3945173e3b5995901808ccf763cd46e",
+      "bytes": 35196
+    },
+    "WLFIUSDT_1d.parquet": {
+      "sha256": "2c253c6a241fe678a69ae8e77c73d48880ad3fa7aec9355cf0ebb0da1c095023",
+      "bytes": 14475
+    },
+    "XRPUSDT_1d.parquet": {
+      "sha256": "d6ec1d500817fa5036418d16659e01949a96b6c0112a13ee1576d1d797f1c641",
+      "bytes": 43827
+    },
+    "ZECUSDT_1d.parquet": {
+      "sha256": "95de6fcd33f98b71fa6d77081d61efcf58f82c8a31398a1411ecd678a405922b",
+      "bytes": 37233
+    }
+  }
+}

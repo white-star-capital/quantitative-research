@@ -1,2 +1,10 @@
 .DS_Store
 .claude/worktrees/
+
+# Python bytecode. 61 .pyc files were tracked across risk_premium_pca/ and
+# farming_anthropic_ipo_volatility/ before this rule existed. Stale committed
+# bytecode shadows deleted modules on checkout, so an import can succeed on a
+# machine where the source is gone — a failure that reproduces for one person
+# and not another.
+__pycache__/
+*.py[cod]

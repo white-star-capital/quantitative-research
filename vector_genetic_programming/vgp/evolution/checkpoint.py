@@ -15,6 +15,7 @@ D-09: Both rng_state AND np_rng_state must be restored on resume to guarantee
       reproducibility. DEAP operators use Python random; population init uses numpy.
       Missing either causes divergence starting from the next generation.
 """
+
 from __future__ import annotations
 
 import random
@@ -55,8 +56,8 @@ def save_checkpoint(
         "population": population,
         "halloffame": halloffame,
         "logbook": logbook,
-        "rng_state": random.getstate(),           # Python random module state
-        "np_rng_state": np.random.get_state(),    # numpy legacy RNG state
+        "rng_state": random.getstate(),  # Python random module state
+        "np_rng_state": np.random.get_state(),  # numpy legacy RNG state
         "generation": generation,
         "seed": seed,
     }

@@ -1,35 +1,138 @@
-"""Smoke tests: verify numba/numpy/vectorbt compatibility.
+"""Smoke tests: verify the installed dependency set is coherent and usable.
 
 This test file is the GATE that must pass before any backtest code is added.
 It is run on every push to main via GitHub Actions (see .github/workflows/ci.yml).
 
-CRITICAL: test_numpy_version_below_2_3 will FAIL if numpy>=2.3 is installed.
-NumPy 2.3 hard-breaks numba. The pyproject.toml pin (numpy>=2.0.0,<2.3) prevents
-this from happening in normal installs, but this test provides a runtime safety net.
+Two classes of dependency failure are covered:
+
+1. A version outside what a dependency actually supports (numpy vs numba).
+   Asserted against the INSTALLED package's own declared requirement rather
+   than a hardcoded bound — an earlier revision hardcoded numpy<2.3, which was
+   numba 0.61's ceiling. numba 0.67 raised it to <2.6, so the hardcoded
+   assertion outlived the constraint it described and began failing on a
+   perfectly valid environment.
+
+2. A pyproject.toml that declares a set no resolver can satisfy. This repo
+   shipped `vectorbt==1.0.0` (which caps pandas<3.0) alongside
+   `pandas>=3.0.0`, so `pip install -e .` failed outright for every user while
+   the test suite — run against a hand-built environment — stayed green.
 """
 
-import numpy as np
 import numba
+import numpy as np
 import pandas as pd
 import pytest
+from packaging.requirements import Requirement
 from packaging.version import Version
 
 
-def test_numpy_version_below_2_3():
-    """Assert numpy is <2.3 — required for numba compatibility.
+def _requirements_of(dist: str) -> list[Requirement]:
+    """Parse an installed distribution's declared requirements."""
+    from importlib.metadata import requires
 
-    NumPy 2.3 (mid-2026) breaks numba's internal C extension APIs.
-    numba>=0.61.2 supports numpy 2.0, 2.1, 2.2 — but NOT 2.3+.
-    If this test fails, downgrade numpy or wait for a numba release that
-    supports the newer numpy version.
+    out = []
+    for raw in requires(dist) or []:
+        try:
+            req = Requirement(raw)
+        except Exception:  # pragma: no cover — malformed metadata
+            continue
+        # Skip requirements that only apply to an optional extra
+        if req.marker is not None and "extra" in str(req.marker):
+            continue
+        out.append(req)
+    return out
 
-    Uses packaging.version.Version for correct semantic comparison — string
-    comparison fails for numpy 2.10+ ("2.10" < "2.3" is True lexicographically).
+
+def test_numpy_satisfies_installed_numba_requirement():
+    """numpy must sit inside the range the INSTALLED numba declares.
+
+    numba pins numpy tightly because it binds numpy's C extension APIs. Which
+    range that is depends on the numba version, so read it from numba rather
+    than hardcoding a bound that goes stale (see module docstring).
     """
-    version = np.__version__
-    assert Version(version) < Version("2.3"), (
-        f"numpy {version} is installed but numpy<2.3 is required for numba compatibility. "
-        f"Run: pip install 'numpy>=2.0.0,<2.3'"
+    numpy_reqs = [r for r in _requirements_of("numba") if r.name.lower() == "numpy"]
+    assert numpy_reqs, "numba declares no numpy requirement — metadata unexpected"
+
+    for req in numpy_reqs:
+        assert req.specifier.contains(np.__version__, prereleases=True), (
+            f"numpy {np.__version__} is installed but numba "
+            f"{Version(numba.__version__)} requires numpy{req.specifier}. "
+            f"These must agree or numba fails at JIT compilation time."
+        )
+
+
+def test_project_dependencies_are_satisfied_by_environment():
+    """Every dependency pin in pyproject.toml must be met by what is installed.
+
+    Guards against a pyproject that cannot be installed at all: if the declared
+    set is mutually contradictory, no environment can satisfy all of it, and
+    this fails wherever the contradiction bites.
+    """
+    import tomllib
+    from importlib.metadata import PackageNotFoundError, version
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    if not pyproject.is_file():  # pragma: no cover — source checkouts always have it
+        pytest.skip("pyproject.toml not found")
+
+    declared = tomllib.loads(pyproject.read_text())["project"]["dependencies"]
+
+    unmet = []
+    for raw in declared:
+        req = Requirement(raw)
+        try:
+            installed = version(req.name)
+        except PackageNotFoundError:
+            unmet.append(f"{req.name} is declared but not installed")
+            continue
+        if not req.specifier.contains(installed, prereleases=True):
+            unmet.append(f"{req.name} {installed} installed, pyproject requires {req.specifier}")
+
+    assert not unmet, (
+        "pyproject.toml dependencies are not satisfied by this environment:\n  "
+        + "\n  ".join(unmet)
+        + "\nEither the pins are wrong or the environment is stale; run "
+        "`pip install -e .` and re-check."
+    )
+
+
+def test_dependency_set_is_mutually_consistent():
+    """Each installed project dependency must have ITS OWN requirements met.
+
+    This is the `pip check` invariant, and the one that the original
+    vectorbt==1.0.0 / pandas>=3.0.0 contradiction violated: vectorbt requires
+    pandas<3.0, so no resolver could honour both. Declaring a pin is not the
+    same as that pin being installable alongside the others.
+    """
+    import tomllib
+    from importlib.metadata import PackageNotFoundError, version
+    from pathlib import Path
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    if not pyproject.is_file():  # pragma: no cover
+        pytest.skip("pyproject.toml not found")
+
+    declared = tomllib.loads(pyproject.read_text())["project"]["dependencies"]
+    conflicts = []
+    for raw in declared:
+        dist = Requirement(raw).name
+        try:
+            version(dist)
+        except PackageNotFoundError:
+            continue
+        for req in _requirements_of(dist):
+            try:
+                have = version(req.name)
+            except PackageNotFoundError:
+                continue  # optional / not part of this project's surface
+            if not req.specifier.contains(have, prereleases=True):
+                conflicts.append(
+                    f"{dist} requires {req.name}{req.specifier} but {req.name} {have} is installed"
+                )
+
+    assert not conflicts, "Installed dependencies conflict with each other:\n  " + "\n  ".join(
+        conflicts
     )
 
 
@@ -40,6 +143,7 @@ def test_numba_jit_compiles():
     that causes an ImportError or RuntimeError at JIT compilation time, not at
     import time.
     """
+
     @numba.njit
     def _sum(x: np.ndarray) -> float:
         return np.sum(x)

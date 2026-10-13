@@ -6,11 +6,11 @@ with dtype float32. 1000 random trees are generated and executed to verify
 PrimitiveSetTyped enforces type safety throughout.
 No network access. No deap evolution — only tree generation and execution.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
-
 
 _T = 200  # timesteps for all array fixtures
 
@@ -32,16 +32,16 @@ def y(rng):
 
 def test_arithmetic_primitives_dtype(x, y):
     """All arithmetic primitives return float32 [T] arrays (GP-08)."""
-    from vgp.gp.primitives import prim_add, prim_sub, prim_mul, prim_protected_div, prim_neg
+    from vgp.gp.primitives import prim_add, prim_mul, prim_neg, prim_protected_div, prim_sub
 
     for fn_2arg in [prim_add, prim_sub, prim_mul, prim_protected_div]:
         result = fn_2arg(x, y)
-        assert result.dtype == np.float32, (
-            f"{fn_2arg.__name__} returned {result.dtype}, expected float32"
-        )
-        assert result.shape == (_T,), (
-            f"{fn_2arg.__name__} returned shape {result.shape}, expected ({_T},)"
-        )
+        assert (
+            result.dtype == np.float32
+        ), f"{fn_2arg.__name__} returned {result.dtype}, expected float32"
+        assert result.shape == (
+            _T,
+        ), f"{fn_2arg.__name__} returned shape {result.shape}, expected ({_T},)"
 
     result = prim_neg(x)
     assert result.dtype == np.float32, f"prim_neg returned {result.dtype}, expected float32"
@@ -51,19 +51,29 @@ def test_arithmetic_primitives_dtype(x, y):
 def test_rolling_primitives_shape_and_dtype(x):
     """All rolling primitives return float32 [T] arrays (GP-08)."""
     from vgp.gp.primitives import (
-        rolling_mean_5, rolling_mean_20, rolling_std_5,
-        rolling_std_20, rolling_max_20, rolling_min_20,
+        rolling_max_20,
+        rolling_mean_5,
+        rolling_mean_20,
+        rolling_min_20,
+        rolling_std_5,
+        rolling_std_20,
     )
 
-    for fn in [rolling_mean_5, rolling_mean_20, rolling_std_5,
-               rolling_std_20, rolling_max_20, rolling_min_20]:
+    for fn in [
+        rolling_mean_5,
+        rolling_mean_20,
+        rolling_std_5,
+        rolling_std_20,
+        rolling_max_20,
+        rolling_min_20,
+    ]:
         result = fn(x)
-        assert result.dtype == np.float32, (
-            f"{fn.__name__} returned {result.dtype}, expected float32"
-        )
-        assert result.shape == (_T,), (
-            f"{fn.__name__} returned shape {result.shape}, expected ({_T},)"
-        )
+        assert (
+            result.dtype == np.float32
+        ), f"{fn.__name__} returned {result.dtype}, expected float32"
+        assert result.shape == (
+            _T,
+        ), f"{fn.__name__} returned shape {result.shape}, expected ({_T},)"
 
 
 def test_protected_div_zero_denominator(x):
@@ -84,14 +94,14 @@ def test_protected_div_near_zero_denominator(x):
 
     tiny = np.full(_T, 1e-8, dtype=np.float32)  # below epsilon threshold
     result = prim_protected_div(x, tiny)
-    assert np.all(result == 1.0), (
-        f"Expected 1.0 for |y|<1e-7, got values outside 1.0: {np.unique(result)}"
-    )
+    assert np.all(
+        result == 1.0
+    ), f"Expected 1.0 for |y|<1e-7, got values outside 1.0: {np.unique(result)}"
 
 
 def test_scalar_is_subclass_of_vector():
     """Scalar must be a subclass of Vector for DEAP type-chain to work (GP-01)."""
-    from vgp.gp.primitives import Vector, Scalar
+    from vgp.gp.primitives import Scalar, Vector
 
     assert issubclass(Scalar, Vector), (
         "Scalar must be a subclass of Vector so DEAP's issubclass() check allows "
@@ -102,6 +112,7 @@ def test_scalar_is_subclass_of_vector():
 def test_1000_random_trees_no_error():
     """1000 random trees generate and execute without IndexError or dtype failure (GP-08)."""
     from deap import creator, gp
+
     from vgp.gp.gp_types import build_pset
     from vgp.gp.tree_evaluator import TreeEvaluator
 
@@ -122,6 +133,4 @@ def test_1000_random_trees_no_error():
         except Exception as exc:
             errors.append(f"Tree {i}: {type(exc).__name__}: {exc}")
 
-    assert not errors, (
-        f"{len(errors)} of 1000 trees failed:\n" + "\n".join(errors[:5])
-    )
+    assert not errors, f"{len(errors)} of 1000 trees failed:\n" + "\n".join(errors[:5])
