@@ -15,6 +15,7 @@ import {
   InvalidScope,
   Loading,
   NoOutputYet,
+  SlotRetired,
   UnknownSlot,
   Unsupported,
 } from "./states.tsx";
@@ -115,6 +116,7 @@ function LatestPanel({ slotId, latest }: { slotId: string; latest: Polled<Latest
   const { data, problem, error, unsupported, loading } = latest;
 
   if (problem?.slug === "unknown-slot") return <UnknownSlot slotId={slotId} />;
+  if (problem?.slug === "slot-retired") return <SlotRetired slotId={slotId} />;
   if (problem?.status === 400) return <InvalidScope problems={[problem.detail ?? "REJECTED BY API"]} />;
   if (problem?.slug === "no-output-yet" && !data) return <NoOutputYet />;
   if (unsupported && !data) return <Unsupported raw={unsupported.raw} reason={unsupported.reason} />;

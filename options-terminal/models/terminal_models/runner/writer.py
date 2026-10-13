@@ -4,5 +4,6 @@
 - take an advisory lock on (slot_id, scope_key, role) so runs don't overlap (M-19);
 - insert one model_runs row in a single transaction;
 - NOTIFY model_runs '<slot_id>' on success (C-13);
-- sync the slots table from registry.yaml on deploy (M-14).
+- sync the slots table from registry.yaml on deploy (M-14), including shadow_implementations,
+  marking removed slots retired, then NOTIFY slots (CONTRACTS C-13a).
 """

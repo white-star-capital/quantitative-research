@@ -143,7 +143,7 @@ slots:
 
 - **M-12** Exactly one production implementation per slot. Zero or more shadows.
 - **M-13** The registry loader validates on startup and in CI: referenced implementations exist, versions match manifests, scopes satisfy the slot's dimensions and allowlist.
-- **M-14** Registry changes go through PR review. The runner syncs the `slots` table (production impl/version, status) from the registry on each deploy.
+- **M-14** Registry changes go through PR review. The runner syncs the `slots` table (production impl/version, `shadow_implementations`, status) from the registry on each deploy, then `NOTIFY slots` (CONTRACTS C-13a). A slot removed from the registry is set to `status = 'retired'`, never deleted, so its run history stays readable.
 
 ## 5. Lifecycle: adding, swapping, retiring
 

@@ -160,6 +160,7 @@ CREATE TABLE slots (
     definition         JSONB NOT NULL,          -- full slot YAML as JSON
     production_impl    TEXT,                    -- from registry.yaml
     production_version TEXT,
+    shadow_implementations JSONB NOT NULL DEFAULT '[]',  -- 0002: [{implementation, version}]
     status             TEXT NOT NULL CHECK (status IN ('active','retired')),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -183,6 +184,8 @@ CREATE TABLE model_runs (
 
 CREATE INDEX model_runs_latest
     ON model_runs (slot_id, scope_key, role, status, as_of DESC);
+CREATE INDEX model_runs_latest_by_impl
+    ON model_runs (slot_id, scope_key, role, implementation_id, status, as_of DESC);
 ```
 
 - **C-9** `scope_key` is canonical: keys sorted, `k=v` joined by `&`, values URL-encoded. Python and Rust MUST share a test vector set for this function.
@@ -190,6 +193,8 @@ CREATE INDEX model_runs_latest
 - **C-11** "Latest" for a slot and scope = the most recent `as_of` with `role = 'production'` and `status = 'success'`. Failed runs never become latest.
 - **C-12** Two DB roles: `runner_rw` (INSERT on `model_runs`, UPSERT on `slots`) and `api_ro` (SELECT only). The API MUST connect as `api_ro`.
 - **C-13** The runner SHOULD `NOTIFY model_runs, '<slot_id>'` after each successful insert so the API can invalidate its cache.
+- **C-13a** The registry sync (MODELS M-14) MUST `NOTIFY slots` after it changes the `slots` table, so the API reloads its slot catalog without a restart. Slots and implementations come and go; nothing downstream may hard-code them.
+- **C-11a** "Latest" for a shadow = the same rule with `role = 'shadow'` and a given `implementation_id`. A slot can have any number of shadows.
 
 ## 7. Contract tests (required in CI)
 

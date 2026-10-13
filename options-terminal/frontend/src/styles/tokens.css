@@ -1,5 +1,6 @@
 /* front_end_design.md §2. Exact values; never derive a second palette. */
 :root {
+  color-scheme: dark;
   --bg: #000000;
   --bg-raise: #0c0c0c;
   --rule: #3a3a3a;

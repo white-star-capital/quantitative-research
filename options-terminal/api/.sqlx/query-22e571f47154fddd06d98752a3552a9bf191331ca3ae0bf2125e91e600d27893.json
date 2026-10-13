@@ -1,0 +1,158 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT slot_id, title, description, payload_kind, payload_version,\n                      scope_dimensions, max_age_seconds, definition, production_impl,\n                      production_version, shadow_implementations, status\n               FROM slots ORDER BY slot_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "slot_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "slot_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "payload_kind",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "payload_kind"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "payload_version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "payload_version"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "scope_dimensions",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "scope_dimensions"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "max_age_seconds",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "max_age_seconds"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "definition",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "definition"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "production_impl",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "production_impl"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "production_version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "production_version"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "shadow_implementations",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "shadow_implementations"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "slots",
+            "name": "status"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "22e571f47154fddd06d98752a3552a9bf191331ca3ae0bf2125e91e600d27893"
+}

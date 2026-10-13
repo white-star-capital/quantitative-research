@@ -18,6 +18,15 @@ export function NoOutputYet() {
   );
 }
 
+export function SlotRetired({ slotId }: { slotId: string }) {
+  return (
+    <div className="notice">
+      SLOT {slotId.toUpperCase()} IS RETIRED · RUN HISTORY STAYS AVAILABLE VIA THE API ·{" "}
+      <a href="#/">BACK TO CATALOG</a>
+    </div>
+  );
+}
+
 export function UnknownSlot({ slotId }: { slotId: string }) {
   return (
     <div className="notice bad">

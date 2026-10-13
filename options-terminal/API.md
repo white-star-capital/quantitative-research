@@ -35,17 +35,27 @@ All under `/v1`. Path parameters use Axum 0.8 syntax (`/{slot_id}`), not `/:slot
 | `GET /ready` | `200` if DB reachable and slots table loaded; `503` otherwise |
 | `GET /openapi.json` | OpenAPI 3.1 document |
 | `GET /v1/slots` | Active slots: id, title, description, payload kind/version, scope dimensions and allowed values, `max_age_seconds`, current production implementation/version |
-| `GET /v1/slots/{slot_id}` | One slot's full definition |
-| `GET /v1/slots/{slot_id}/latest?<scope params>` | Latest successful production envelope for that scope + `meta` |
-| `GET /v1/slots/{slot_id}/runs?<scope params>&from&to&status&role&limit&cursor&include_payload` | Run history, newest first, cursor-paginated |
+| `GET /v1/slots/{slot_id}` | One slot's full definition, status (`active`/`retired`) and its implementations (production + all shadows) |
+| `GET /v1/slots/{slot_id}/latest?<scope params>&role&implementation` | Latest successful envelope for that scope + `meta` (production by default) |
+| `GET /v1/slots/{slot_id}/runs?<scope params>&from&to&status&role&implementation&limit&cursor&include_payload` | Run history, newest first, cursor-paginated |
 | `GET /v1/runs/{run_id}` | One envelope by run ID (any role, any status) |
 | `GET /v1/schemas/{kind}/{version}` | The JSON Schema for a payload kind |
 
 Query parameter rules:
 - **A-3** Scope params are the slot's declared dimensions, e.g. `?underlying=BTC`. Missing a required dimension → `400` listing the missing keys. Unknown params → `400`. Value outside the slot's allowlist → `400` listing allowed values.
-- **A-4** `role` defaults to `production`. `role=shadow` is accepted on `/latest` and `/runs` so the desk can inspect shadow outputs (MODELS §5). Shadow responses MUST carry `meta.role = "shadow"`.
+- **A-4** `role` defaults to `production`. `role=shadow` is accepted on `/latest` and `/runs` so the desk can inspect shadow outputs (MODELS §5). Shadow responses MUST carry `meta.role = "shadow"`. A slot can have any number of shadows, so `/latest?role=shadow` MUST also carry `implementation=<id>`; missing or unknown → `400` listing the slot's current shadow implementations. On `/runs`, `implementation` is an optional filter for any role.
 - **A-5** `/runs`: `limit` default 50, max 500. `include_payload` default `false`; when `true`, max `limit` is 50. `from`/`to` are UTC timestamps filtering on `as_of`. `cursor` is opaque (encode `as_of` + `run_id`).
-- **A-6** `/latest` with no successful run for that scope → `404` with problem type `no-output-yet`, distinct from unknown slot (`404`, `unknown-slot`).
+- **A-6** `/latest` with no successful run for that scope → `404` with problem type `no-output-yet`, distinct from unknown slot (`404`, `unknown-slot`). `/latest` on a retired slot → `410`, `slot-retired`; its `/runs` and `/runs/{run_id}` keep working.
+
+### 3.1 Models come and go
+
+The set of slots and implementations changes without API deploys. Adding, swapping, shadowing or retiring a model is a registry change in `models/` (MODELS §5); the API MUST pick it up from the database alone.
+
+- **A-27** No slot ID, implementation ID or payload kind is compiled into the server. Routes are generic over `{slot_id}`; validation (A-3, A-20) uses the in-memory slot catalog.
+- **A-28** The slot catalog is loaded from the `slots` table at startup (`/ready` is `503` until it loads), reloaded on `NOTIFY slots` (CONTRACTS C-13a), and also reloaded every 60 s in case a notification is missed. A failed reload keeps the previous catalog and logs an error.
+- **A-29** "Latest production" follows CONTRACTS C-11, whatever the implementation. After a promotion, the old implementation's last output is served (and goes stale on schedule) until the new one produces a successful run; after a rollback, the reverse. `meta` and the envelope always name the implementation that produced what's shown.
+- **A-30** Cache keys include the implementation for shadow lookups: `(slot_id, scope_key, role, implementation | "*")`. A catalog reload that changes a slot's implementations clears that slot's cache entries.
+- **A-31** Envelopes carry `payload_kind` as a string and the payload as opaque JSON (A-21), so a new slot or implementation never needs Rust changes.
 
 ## 4. Response format
 
@@ -118,24 +128,30 @@ api/
 ├── .sqlx/                     # offline query metadata
 ├── src/
 │   ├── main.rs                # composition root only: config → state → router → serve
+│   ├── lib.rs
 │   ├── config.rs              # env-driven, validated at startup
-│   ├── state.rs               # AppState + FromRef impls
+│   ├── state.rs               # AppState + FromRef impls, payload schemas from contracts/
 │   ├── error.rs               # AppError → problem+json
-│   ├── domain/                # Envelope (envelope fields typed, payload as serde_json::Value), Slot, Meta
+│   ├── catalog.rs             # hot-reloading slot catalog (A-27, A-28)
+│   ├── cache.rs               # latest-envelope cache + LISTEN model_runs/slots task
+│   ├── domain/                # Slot, StoredRun (payload as serde_json::Value), RunMeta, scope_key
 │   ├── repo/
 │   │   ├── mod.rs             # trait RunRepository, trait SlotRepository
-│   │   └── postgres.rs
-│   ├── cache.rs               # latest-envelope cache + LISTEN task
+│   │   ├── postgres.rs
+│   │   └── memory.rs          # test-only in-memory repos
 │   ├── routes/
-│   │   ├── mod.rs             # router assembly, nesting under /v1, middleware stack
+│   │   ├── mod.rs             # router assembly, nesting under /v1, middleware stack, OpenAPI
+│   │   ├── params.rs          # query splitting, identifier and timestamp checks
 │   │   ├── health.rs
 │   │   ├── slots.rs
 │   │   ├── runs.rs
-│   │   └── schemas.rs
+│   │   ├── schemas.rs
+│   │   └── tests.rs           # handler + lifecycle tests on in-memory repos (A-23)
 │   └── middleware/
 │       ├── auth.rs            # no-op in v1 (A-17)
-│       └── headers.rs
-└── tests/                     # integration tests against a fixture-seeded Postgres
+│       ├── headers.rs
+│       └── problem.rs         # every error → problem+json with request_id
+└── tests/                     # integration tests against real Postgres (#[ignore]; run with --ignored)
 ```
 
 ```rust
