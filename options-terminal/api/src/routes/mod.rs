@@ -1,5 +1,6 @@
 //! Router assembly: generic routes under /v1, the auth seam, and the middleware stack.
 
+pub mod evaluate;
 pub mod health;
 pub mod params;
 pub mod runs;
@@ -58,6 +59,7 @@ const BODY_LIMIT: usize = 16 * 1024;
         slots::get_slot,
         slots::latest,
         slots::runs,
+        evaluate::evaluate,
         runs::get_run,
         schemas::get_schema,
     ),
@@ -94,8 +96,13 @@ pub fn rate_limit(per_minute: u32, burst: u32) -> Option<RateLimit> {
 }
 
 /// GET-only routes (A-1); axum answers other methods on these paths with 405.
-/// `rate_limit` is None in handler tests, which run without a socket address.
-pub fn router(state: AppState, rate_limit: Option<RateLimit>) -> Router {
+/// Limits are None in handler tests, which run without a socket address. `/evaluate` has its
+/// own bucket (A-35), separate from the rest of /v1.
+pub fn router(
+    state: AppState,
+    rate_limit: Option<RateLimit>,
+    eval_rate_limit: Option<RateLimit>,
+) -> Router {
     let config = state.config.clone();
 
     let mut v1 = Router::new()
@@ -104,12 +111,18 @@ pub fn router(state: AppState, rate_limit: Option<RateLimit>) -> Router {
         .route("/slots/{slot_id}/latest", get(slots::latest))
         .route("/slots/{slot_id}/runs", get(slots::runs))
         .route("/runs/{run_id}", get(runs::get_run))
-        .route("/schemas/{kind}/{version}", get(schemas::get_schema))
-        .layer(from_fn_with_state(state.clone(), auth));
+        .route("/schemas/{kind}/{version}", get(schemas::get_schema));
     // Probes (/health, /ready) are not rate limited, so load balancers never see 429.
     if let Some(config) = rate_limit {
         v1 = v1.layer(GovernorLayer::<_, _, Body>::new(config));
     }
+    let mut eval = Router::new().route("/slots/{slot_id}/evaluate", get(evaluate::evaluate));
+    if let Some(config) = eval_rate_limit {
+        eval = eval.layer(GovernorLayer::<_, _, Body>::new(config));
+    }
+    let v1 = v1
+        .merge(eval)
+        .layer(from_fn_with_state(state.clone(), auth));
 
     let app: Router = Router::new()
         .route("/health", get(health::health))

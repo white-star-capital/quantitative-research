@@ -106,11 +106,12 @@ async fn app(pool: PgPool, background: bool) -> (axum::Router, Catalog) {
         slots,
         catalog: catalog.clone(),
         cache,
+        surfaces: options_terminal_api::state::surface_cache(),
         schemas: Arc::new(Schemas::default()),
         config: Arc::new(config),
         clock: Arc::new(chrono::Utc::now),
     };
-    (router(state, None), catalog)
+    (router(state, None, None), catalog)
 }
 
 async fn get(app: &axum::Router, uri: &str) -> (StatusCode, Value) {
@@ -269,4 +270,67 @@ async fn api_ro_role_cannot_write(pool: PgPool) {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("permission denied"), "{err}");
+}
+
+#[sqlx::test(migrations = "../contracts/db/migrations")]
+#[ignore = "needs Postgres: DATABASE_URL=… cargo test --test postgres -- --ignored"]
+async fn evaluate_against_a_stored_shadow_run(pool: PgPool) {
+    // Frozen run on the synthetic test chain (contracts/fixtures/pricing: math vectors, not market data).
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/fixtures/pricing/evaluate_synthetic.json"
+    );
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let envelope = &doc["run"];
+    let definition = json!({
+        "slot_id": "bs_pricer",
+        "scope": { "dimensions": ["underlying"], "allowed": { "underlying": ["BTC", "ETH", "SOL", "HYPE"] } },
+        "evaluation": doc["config"],
+    });
+    sqlx::query(
+        "INSERT INTO slots (slot_id, title, description, payload_kind, payload_version, scope_dimensions,
+            max_age_seconds, definition, shadow_implementations, status)
+         VALUES ('bs_pricer', 'Pricer', '', 'composite', '1', ARRAY['underlying'], 900, $1,
+            '[{\"implementation\":\"bs_pricer_black76\",\"version\":\"1.0.0\"}]', 'active')",
+    )
+    .bind(definition)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO model_runs (run_id, slot_id, implementation_id, implementation_version, role, scope_key,
+            scope, status, as_of, started_at, finished_at, input_hash, git_sha, envelope)
+         VALUES ($1::uuid, 'bs_pricer', 'bs_pricer_black76', '1.0.0', 'shadow', 'underlying=BTC',
+            '{\"underlying\":\"BTC\"}', 'success', $2::timestamptz, $2::timestamptz, $2::timestamptz,
+            'sha256:0', 'a1b2c3d', $3)",
+    )
+    .bind(envelope["run_id"].as_str().unwrap())
+    .bind(envelope["as_of"].as_str().unwrap())
+    .bind(envelope)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (app, _) = app(pool, false).await;
+
+    let uri = "/v1/slots/bs_pricer/evaluate?underlying=BTC&role=shadow&implementation=bs_pricer_black76\
+               &option_type=call&expiry=2026-11-13T08:00:00Z&strike=105&size=2";
+    let (s, b) = get(&app, uri).await;
+    assert_eq!(s, StatusCode::OK, "{b}");
+    let want = doc["cases"][0]["expected"]["data"]["fair"]["per_unit_usd"]
+        .as_f64()
+        .unwrap();
+    let got = b["data"]["fair"]["per_unit_usd"].as_f64().unwrap();
+    assert!((got - want).abs() <= 1e-9 * want, "{got} vs {want}");
+    assert_eq!(b["meta"]["role"], "shadow");
+    assert_eq!(
+        b["meta"]["stale"], true,
+        "the frozen run is older than max_age"
+    );
+    assert!(
+        b["data"]["flags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["code"] == "run_stale")
+    );
 }

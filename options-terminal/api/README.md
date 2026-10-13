@@ -28,8 +28,16 @@ DATABASE_URL=… cargo sqlx prepare -- --all-targets
 | `CONTRACTS_DIR` | `../contracts` | Payload schemas served at `/v1/schemas/{kind}/{version}` |
 | `API_PROBLEM_BASE_URL` | `https://options-terminal/problems` | Prefix for problem `type` URLs |
 | `API_RATE_PER_MINUTE` / `API_RATE_BURST` | `120` / `30` | Per IP, `/v1` only; probes are never limited |
+| `API_EVAL_RATE_PER_MINUTE` / `API_EVAL_RATE_BURST` | `60` / `20` | Separate per-IP bucket for `/v1/slots/{slot_id}/evaluate` (A-35) |
 | `DB_MAX_CONNECTIONS` | `10` | |
 | `RUST_LOG` | `info` | JSON logs with `request_id`; data responses also log `run_id` |
+
+## Evaluation endpoint
+
+`GET /v1/slots/{slot_id}/evaluate` (API §3.2) dispatches on the slot's `evaluation.evaluator`. Today that's `black76_surface_v1` for `bs_pricer` (guide §6).
+- `src/pricing/` is a 1:1 port of `models/terminal_models/core/quant/`.
+- `tests/pricing_parity.rs` (blocking) holds it to every vector in `contracts/fixtures/pricing/`.
+- Responses are `no-store`, and the query string is never logged (P-5). The reverse proxy must not log it either (M4 deployment check).
 
 ## Still open for M2
 

@@ -69,13 +69,16 @@ async fn run() -> Result<(), String> {
         slots,
         catalog,
         cache,
+        surfaces: options_terminal_api::state::surface_cache(),
         schemas: Arc::new(schemas),
         config: config.clone(),
         clock: Arc::new(Utc::now),
     };
     let limiter = routes::rate_limit(config.rate_per_minute, config.rate_burst)
         .ok_or("API_RATE_PER_MINUTE / API_RATE_BURST produce an invalid limiter")?;
-    let app = routes::router(state, Some(limiter));
+    let eval_limiter = routes::rate_limit(config.eval_rate_per_minute, config.eval_rate_burst)
+        .ok_or("API_EVAL_RATE_PER_MINUTE / API_EVAL_RATE_BURST produce an invalid limiter")?;
+    let app = routes::router(state, Some(limiter), Some(eval_limiter));
 
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await

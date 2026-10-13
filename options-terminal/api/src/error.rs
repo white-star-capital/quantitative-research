@@ -24,6 +24,15 @@ pub enum AppError {
     UnknownSchema(String, String),
     #[error("{0}")]
     InvalidQuery(String),
+    #[error("Slot '{0}' has no evaluation endpoint")]
+    NoEvaluator(String),
+    #[error("Run '{0}' does not exist")]
+    RunNotFound(String),
+    #[error("Run '{0}' failed; there is nothing to evaluate")]
+    RunFailed(String),
+    /// Evaluation input errors (guide §6.2); the code is the problem slug.
+    #[error("{}", .0.message)]
+    Evaluate(crate::pricing::evaluate::EvalError),
     #[error("{0}")]
     Unavailable(&'static str),
     #[error("internal error")]
@@ -39,6 +48,10 @@ impl AppError {
             Self::UnknownRun(_) => "unknown-run",
             Self::UnknownSchema(..) => "unknown-schema",
             Self::InvalidQuery(_) => "invalid-query",
+            Self::NoEvaluator(_) => "no-evaluator",
+            Self::RunNotFound(_) => "run_not_found",
+            Self::RunFailed(_) => "run_failed",
+            Self::Evaluate(e) => e.code,
             Self::Unavailable(_) => "unavailable",
             Self::Internal(_) => "internal",
         }
@@ -51,7 +64,10 @@ impl AppError {
             | Self::UnknownRun(_)
             | Self::UnknownSchema(..) => StatusCode::NOT_FOUND,
             Self::SlotRetired(_) => StatusCode::GONE,
-            Self::InvalidQuery(_) => StatusCode::BAD_REQUEST,
+            Self::InvalidQuery(_) | Self::RunFailed(_) | Self::Evaluate(_) => {
+                StatusCode::BAD_REQUEST
+            }
+            Self::NoEvaluator(_) | Self::RunNotFound(_) => StatusCode::NOT_FOUND,
             Self::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }

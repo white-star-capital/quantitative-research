@@ -51,6 +51,7 @@ impl Harness {
             slots: repo.clone() as Arc<dyn SlotRepository>,
             catalog: catalog.clone(),
             cache: cache.clone(),
+            surfaces: crate::state::surface_cache(),
             schemas: Arc::new(Schemas::default()),
             config: Arc::new(config),
             clock: Arc::new(move || *clock_now.lock().unwrap()),
@@ -60,7 +61,7 @@ impl Harness {
             catalog,
             cache,
             now,
-            app: router(state, None),
+            app: router(state, None, None),
         }
     }
 
@@ -514,6 +515,7 @@ async fn openapi_documents_every_route() {
         "/v1/slots/{slot_id}",
         "/v1/slots/{slot_id}/latest",
         "/v1/slots/{slot_id}/runs",
+        "/v1/slots/{slot_id}/evaluate",
         "/v1/runs/{run_id}",
         "/v1/schemas/{kind}/{version}",
     ] {
@@ -543,4 +545,246 @@ async fn cors_allows_configured_origin_only() {
         )
         .await;
     assert!(hd.get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+}
+
+// ---- /evaluate (API §3.2, guide §6.2) ------------------------------------------------------
+
+mod evaluate {
+    use super::*;
+    use crate::domain::{Slot, StoredRun};
+
+    const SHADOW: &str = "role=shadow&implementation=bs_pricer_black76";
+    const CONTRACT: &str = "option_type=call&expiry=2026-11-13T08:00:00Z&strike=105&size=2";
+
+    /// The frozen synthetic run from the parity vectors (math vectors, not market data).
+    fn vectors() -> Value {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../contracts/fixtures/pricing/evaluate_synthetic.json"
+        );
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn pricer_slot(doc: &Value) -> Slot {
+        let mut s = slot("bs_pricer");
+        s.allowed = std::collections::BTreeMap::from([(
+            "underlying".into(),
+            vec!["BTC".into(), "ETH".into(), "SOL".into(), "HYPE".into()],
+        )]);
+        s.production = None;
+        s.shadows = vec![ImplementationRef {
+            implementation: "bs_pricer_black76".into(),
+            version: "1.0.0".into(),
+        }];
+        s.definition = serde_json::json!({ "evaluation": doc["config"].clone() });
+        s
+    }
+
+    fn stored(doc: &Value, status: &str) -> StoredRun {
+        let mut envelope = doc["run"].clone();
+        let mut run_id = uuid::Uuid::parse_str(envelope["run_id"].as_str().unwrap()).unwrap();
+        if status == "failed" {
+            run_id = uuid::Uuid::now_v7();
+            envelope["run_id"] = Value::String(run_id.to_string());
+            envelope["status"] = "failed".into();
+            envelope["payload"] = Value::Null;
+        }
+        StoredRun {
+            run_id,
+            slot_id: "bs_pricer".into(),
+            implementation_id: "bs_pricer_black76".into(),
+            role: Role::Shadow,
+            as_of: t0(),
+            envelope,
+        }
+    }
+
+    fn harness() -> (Harness, Value) {
+        let doc = vectors();
+        let h = Harness::new().with_slots(vec![pricer_slot(&doc), slot("vol_surface")]);
+        h.repo.add_run(BTC, "success", stored(&doc, "success"));
+        (h, doc)
+    }
+
+    #[tokio::test]
+    async fn shadow_period_evaluation_matches_the_python_reference() {
+        let (h, doc) = harness();
+        let (s, hd, b) = h
+            .get(&format!(
+                "/v1/slots/bs_pricer/evaluate?underlying=BTC&{SHADOW}&{CONTRACT}"
+            ))
+            .await;
+        assert_eq!(s, StatusCode::OK, "{b}");
+        assert_eq!(hd[header::CACHE_CONTROL], "no-store");
+        assert_eq!(b["meta"]["role"], "shadow");
+        let expected = &doc["cases"][0]["expected"]["data"];
+        let (got, want) = (
+            b["data"]["fair"]["per_unit_usd"].as_f64().unwrap(),
+            expected["fair"]["per_unit_usd"].as_f64().unwrap(),
+        );
+        assert!((got - want).abs() <= 1e-9 * want, "{got} vs {want}");
+        assert_eq!(
+            b["data"]["market"]["interpolation"],
+            expected["market"]["interpolation"]
+        );
+    }
+
+    #[tokio::test]
+    async fn production_default_has_no_run_during_shadow_period() {
+        let (h, _) = harness();
+        let (s, hd, b) = h
+            .get(&format!(
+                "/v1/slots/bs_pricer/evaluate?underlying=BTC&{CONTRACT}"
+            ))
+            .await;
+        assert_problem(s, &hd, &b, StatusCode::NOT_FOUND, "no-output-yet");
+    }
+
+    #[tokio::test]
+    async fn pinned_runs() {
+        let (h, doc) = harness();
+        let ok = doc["run"]["run_id"].as_str().unwrap();
+        let (s, _, b) = h
+            .get(&format!(
+                "/v1/slots/bs_pricer/evaluate?underlying=BTC&run_id={ok}&{CONTRACT}"
+            ))
+            .await;
+        assert_eq!(s, StatusCode::OK, "{b}");
+        assert_eq!(b["data"]["run_id"], ok);
+
+        let failed = stored(&doc, "failed");
+        let failed_id = failed.run_id;
+        h.repo.add_run(BTC, "failed", failed);
+        let cases = [
+            (
+                format!("run_id={failed_id}"),
+                StatusCode::BAD_REQUEST,
+                "run_failed",
+            ),
+            (
+                "run_id=0192f3a0-6b1e-7c3a-9a51-000000000999".to_owned(),
+                StatusCode::NOT_FOUND,
+                "run_not_found",
+            ),
+            (
+                "run_id=nope".to_owned(),
+                StatusCode::NOT_FOUND,
+                "run_not_found",
+            ),
+            (
+                format!("run_id={ok}&role=shadow"),
+                StatusCode::BAD_REQUEST,
+                "invalid-query",
+            ),
+        ];
+        for (q, code, slug) in cases {
+            let (s, hd, b) = h
+                .get(&format!(
+                    "/v1/slots/bs_pricer/evaluate?underlying=BTC&{q}&{CONTRACT}"
+                ))
+                .await;
+            assert_problem(s, &hd, &b, code, slug);
+        }
+        // A pinned run must belong to the requested scope.
+        let (s, _, _) = h
+            .get(&format!(
+                "/v1/slots/bs_pricer/evaluate?underlying=ETH&run_id={ok}&{CONTRACT}"
+            ))
+            .await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn request_errors_are_problems_named_by_field() {
+        let (h, _) = harness();
+        let base = format!("/v1/slots/bs_pricer/evaluate?underlying=BTC&{SHADOW}");
+        let cases = [
+            (
+                "option_type=call&expiry=2026-11-13&strike=105",
+                "invalid_expiry",
+            ),
+            (
+                "option_type=call&expiry=2026-10-13T16:00:00Z&strike=105",
+                "expiry_in_past",
+            ),
+            (
+                "option_type=call&expiry=2026-11-13T08:00:00Z&strike=abc",
+                "invalid_strike",
+            ),
+            (
+                "option_type=call&expiry=2026-11-13T08:00:00Z&strike=105&premium=5&premium_unit=usd_per_unit",
+                "premium_requires_side",
+            ),
+            // No counterparty parameter exists (P-8): unknown params are rejected (A-3).
+            (
+                "option_type=call&expiry=2026-11-13T08:00:00Z&strike=105&counterparty=Acme",
+                "invalid-query",
+            ),
+        ];
+        for (q, slug) in cases {
+            let (s, hd, b) = h.get(&format!("{base}&{q}")).await;
+            assert_problem(s, &hd, &b, StatusCode::BAD_REQUEST, slug);
+        }
+    }
+
+    #[tokio::test]
+    async fn slots_without_an_evaluator_have_no_endpoint() {
+        let (h, _) = harness();
+        let (s, hd, b) = h
+            .get(&format!(
+                "/v1/slots/vol_surface/evaluate?underlying=BTC&{CONTRACT}"
+            ))
+            .await;
+        assert_problem(s, &hd, &b, StatusCode::NOT_FOUND, "no-evaluator");
+    }
+
+    #[derive(Clone, Default)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Captured {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Process-wide capture. A thread-local subscriber misses events whose callsites other test
+    /// threads already cached as disabled, so this test installs a global one once.
+    fn captured_logs() -> Captured {
+        static SINK: std::sync::OnceLock<Captured> = std::sync::OnceLock::new();
+        SINK.get_or_init(|| {
+            let sink = Captured::default();
+            let writer = sink.clone();
+            let subscriber = tracing_subscriber::fmt()
+                .with_max_level(tracing::Level::TRACE)
+                .with_writer(move || writer.clone())
+                .finish();
+            tracing::subscriber::set_global_default(subscriber).expect("only this test sets it");
+            sink
+        })
+        .clone()
+    }
+
+    /// P-5: logs for /evaluate carry the path and request_id, never the query string.
+    #[tokio::test]
+    async fn query_string_never_reaches_the_logs() {
+        let captured = captured_logs();
+        let (h, _) = harness();
+        let secret = "premium=4321.987&premium_unit=usd_total&side=sell&spot_ref=99.123";
+        let (s, _, _) = h
+            .get(&format!(
+                "/v1/slots/bs_pricer/evaluate?underlying=BTC&{SHADOW}&{CONTRACT}&{secret}"
+            ))
+            .await;
+        assert_eq!(s, StatusCode::OK);
+        let logs = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+        assert!(logs.contains("/v1/slots/bs_pricer/evaluate"), "{logs}");
+        assert!(logs.contains("served evaluation"), "{logs}");
+        for leak in ["4321.987", "99.123", "premium_unit", "spot_ref="] {
+            assert!(!logs.contains(leak), "log leaked {leak}: {logs}");
+        }
+    }
 }

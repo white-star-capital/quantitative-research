@@ -134,42 +134,8 @@ pub async fn latest(
         return Err(AppError::SlotRetired(slot_id));
     }
     let (control, scope_params) = split(pairs, &["role", "implementation"])?;
-    let role = parse_role(control.get("role"))?;
-    let implementation = match (role, control.get("implementation")) {
-        (Role::Production, None) => None,
-        (Role::Production, Some(_)) => {
-            return Err(AppError::InvalidQuery(
-                "implementation is only accepted with role=shadow; use /runs to filter production history".into(),
-            ));
-        }
-        (Role::Shadow, Some(i)) if slot.is_shadow(i) => Some(i.clone()),
-        (Role::Shadow, _) => return Err(shadow_choice(&slot)),
-    };
     let scope = scope::validate(&slot, &scope_params).map_err(AppError::InvalidQuery)?;
-    let key = CacheKey {
-        slot_id: slot.slot_id.clone(),
-        scope_key: scope::scope_key(&scope),
-        role,
-        implementation,
-    };
-
-    let run = match cache.get(&key) {
-        Some(run) => run,
-        None => {
-            let run = runs
-                .latest(
-                    &key.slot_id,
-                    &key.scope_key,
-                    role,
-                    key.implementation.as_deref(),
-                )
-                .await?
-                .ok_or(AppError::NoOutputYet)?;
-            let run = Arc::new(run);
-            cache.insert(key, run.clone());
-            run
-        }
-    };
+    let (role, run) = resolve_latest(&slot, &scope, &control, &cache, runs.as_ref()).await?;
 
     let meta = RunMeta::new(role, run.as_of, slot.max_age_seconds, clock());
     let etag = format!("\"{}\"", run.run_id);
@@ -285,6 +251,49 @@ pub async fn runs(
         data: rows.into_iter().map(|r| r.envelope).collect(),
         meta: json!({ "api_version": "1", "next_cursor": next_cursor }),
     }))
+}
+
+/// Latest successful run for (slot, scope), production by default; shadows need
+/// `implementation` (A-4). Shared by /latest and /evaluate so both see the same run.
+pub async fn resolve_latest(
+    slot: &Slot,
+    scope: &std::collections::BTreeMap<String, String>,
+    control: &std::collections::BTreeMap<String, String>,
+    cache: &LatestCache,
+    runs: &dyn RunRepository,
+) -> Result<(Role, Arc<StoredRun>), AppError> {
+    let role = parse_role(control.get("role"))?;
+    let implementation = match (role, control.get("implementation")) {
+        (Role::Production, None) => None,
+        (Role::Production, Some(_)) => {
+            return Err(AppError::InvalidQuery(
+                "implementation is only accepted with role=shadow; use /runs to filter production history".into(),
+            ));
+        }
+        (Role::Shadow, Some(i)) if slot.is_shadow(i) => Some(i.clone()),
+        (Role::Shadow, _) => return Err(shadow_choice(slot)),
+    };
+    let key = CacheKey {
+        slot_id: slot.slot_id.clone(),
+        scope_key: scope::scope_key(scope),
+        role,
+        implementation,
+    };
+    if let Some(run) = cache.get(&key) {
+        return Ok((role, run));
+    }
+    let run = runs
+        .latest(
+            &key.slot_id,
+            &key.scope_key,
+            role,
+            key.implementation.as_deref(),
+        )
+        .await?
+        .ok_or(AppError::NoOutputYet)?;
+    let run = Arc::new(run);
+    cache.insert(key, run.clone());
+    Ok((role, run))
 }
 
 fn parse_role(value: Option<&String>) -> Result<Role, AppError> {

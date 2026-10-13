@@ -23,6 +23,9 @@ pub struct Config {
     pub problem_base_url: String,
     pub rate_per_minute: u32,
     pub rate_burst: u32,
+    /// Separate bucket for evaluation endpoints (A-35).
+    pub eval_rate_per_minute: u32,
+    pub eval_rate_burst: u32,
     pub request_timeout: Duration,
     pub catalog_refresh: Duration,
     pub cache_ttl: Duration,
@@ -91,6 +94,8 @@ impl Config {
                 .to_owned(),
             rate_per_minute: parse_u32("API_RATE_PER_MINUTE", "120")?,
             rate_burst: parse_u32("API_RATE_BURST", "30")?,
+            eval_rate_per_minute: parse_u32("API_EVAL_RATE_PER_MINUTE", "60")?,
+            eval_rate_burst: parse_u32("API_EVAL_RATE_BURST", "20")?,
             request_timeout: Duration::from_secs(5),
             catalog_refresh: Duration::from_secs(60),
             cache_ttl: Duration::from_secs(10),

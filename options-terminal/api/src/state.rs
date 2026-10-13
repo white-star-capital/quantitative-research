@@ -55,12 +55,21 @@ impl Schemas {
     }
 }
 
+/// Surfaces rebuilt from stored runs, keyed by run_id. Runs are immutable, so no invalidation
+/// is needed (P-2).
+pub type SurfaceCache = moka::sync::Cache<uuid::Uuid, Arc<crate::pricing::surface::StoredRun>>;
+
+pub fn surface_cache() -> SurfaceCache {
+    moka::sync::Cache::new(16)
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub runs: Arc<dyn RunRepository>,
     pub slots: Arc<dyn SlotRepository>,
     pub catalog: Catalog,
     pub cache: LatestCache,
+    pub surfaces: SurfaceCache,
     pub schemas: Arc<Schemas>,
     pub config: Arc<Config>,
     pub clock: Clock,
@@ -81,6 +90,7 @@ from_ref!(
     slots: Arc<dyn SlotRepository>,
     catalog: Catalog,
     cache: LatestCache,
+    surfaces: SurfaceCache,
     schemas: Arc<Schemas>,
     config: Arc<Config>,
     clock: Clock,
