@@ -352,7 +352,8 @@ def chain_section(surface: Surface, by_expiry, ctx: RunContext, r: float) -> dic
             node = nodes.get(row["instrument_name"])
             sigma = node.iv if node else expiry.sigma(k).sigma  # type: ignore[union-attr]
             g = black76(F, row["strike"], T, sigma, r, call, S)
-            if not lo <= abs(g["delta"]) <= hi:
+            # Node rows are always kept: evaluation rebuilds the surface from them (guide §6.3).
+            if node is None and not lo <= abs(g["delta"]) <= hi:
                 continue
             fair, dte = g["price"], T * 365
             bid = node.iv_bid if node else _solve(row["bid_usd"], F, row["strike"], T, r, call, S)

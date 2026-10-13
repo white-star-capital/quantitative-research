@@ -268,7 +268,7 @@ def implied_vol(F, K, T, price, r, is_call, S, lo=0.01, hi=5.0, tol=1e-10, maxit
 ### 3.7 Grids for display
 
 - **k grid:** −0.50 to +0.50 in steps of 0.025 (41 points). Smile and surface sections evaluate σ on this grid, **`null` outside each expiry's node range**. The display never extrapolates; only evaluation does, with a flag.
-- **Chain:** every listed strike per expiry with \|forward delta\| between 0.02 and 0.98, calls and puts. Listed nodes use their mark IV; non-node rows (ITM side) use σ_i(k) from the OTM nodes, so a call and put at the same strike share one IV and put-call parity holds exactly.
+- **Chain:** every listed strike per expiry with \|forward delta\| between 0.02 and 0.98, calls and puts, **plus every node row regardless of delta**: evaluation rebuilds the surface from the stored node rows (§6.3), so dropping wing nodes would give `/evaluate` a narrower smile than the model used. Listed nodes use their mark IV; non-node rows (ITM side) use σ_i(k) from the OTM nodes, so a call and put at the same strike share one IV and put-call parity holds exactly.
 
 ---
 

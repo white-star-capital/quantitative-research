@@ -83,8 +83,20 @@ def test_chain_reproduces_marks_and_parity(envelope):
         assert r["fair_usd"] == pytest.approx(r["venue_mark_usd"], rel=1e-12)
     itm = [r for r in chain if not r["is_node"]]
     assert itm and all(r["node_quality"] == "interpolated" for r in itm)
-    for r in chain:
+    for r in itm:
         assert 0.02 <= abs(r["delta"]) <= 0.98
+
+
+def test_stored_payload_rebuilds_the_model_surface(envelope):
+    """Evaluation must see exactly the nodes the model used (no delta filter on node rows)."""
+    ctx = scalars(get_section(envelope["payload"], "context"))
+    rebuilt = surface_from_payload(
+        envelope["run_id"], envelope["as_of"], envelope["scope"], envelope["payload"]
+    )
+    assert sum(len(e.nodes) for e in rebuilt.surface.expiries) == ctx["n_nodes"]
+    expiries = records(get_section(envelope["payload"], "expiries"))
+    for e, row in zip(rebuilt.surface.expiries, expiries, strict=True):
+        assert (e.k_min, e.k_max) == (row["k_min"], row["k_max"])
 
 
 def test_display_grids_never_extrapolate(envelope):

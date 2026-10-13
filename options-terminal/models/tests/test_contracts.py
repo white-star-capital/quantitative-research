@@ -70,3 +70,28 @@ def test_pricing_vectors_cover_guide_minimums():
     assert len(b76) >= 500
     reasons = {c["expected"]["reason"] for c in iv}
     assert {None, "below_intrinsic", "above_max_price", "below_min_vol", "above_max_vol"} <= reasons
+
+
+def test_evaluation_vectors_are_reproducible_and_cover_every_flag_and_error():
+    from terminal_models.tools.gen_eval_vectors import main as gen_eval
+
+    assert gen_eval(["--check"]) == 0
+    doc = json.loads((ROOT / "fixtures" / "pricing" / "evaluate_synthetic.json").read_text())
+    assert set(doc["flags"]) == {
+        "strike_extrapolated",
+        "tenor_extrapolated_short",
+        "tenor_extrapolated_long",
+        "low_quality_nodes",
+        "expiry_time_differs_from_venue",
+        "quote_stale",
+        "spot_moved",
+        "run_stale",
+    }
+    assert {
+        "expiry_in_past",
+        "tenor_out_of_range",
+        "strike_out_of_range",
+        "premium_requires_side",
+        "pct_spot_requires_spot_ref",
+        "invalid_premium",
+    } <= set(doc["error_codes"])
