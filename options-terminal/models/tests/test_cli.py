@@ -17,5 +17,10 @@ def test_validate_registry_reports_problems(tmp_path, capsys):
 
 
 def test_unimplemented_commands_fail_loudly(capsys):
-    assert main(["run", "vol_surface", "--scope", "underlying=BTC", "--dry-run"]) == 2
+    assert main(["diff", "bs_pricer", "--against", "shadow:bs_pricer_black76"]) == 2
     assert "not implemented" in capsys.readouterr().err
+
+
+def test_as_of_needs_a_snapshot(capsys):
+    assert main(["run", "bs_pricer", "--as-of", "2026-10-13T17:00:00Z", "--dry-run"]) == 2
+    assert "--as-of needs --snapshot" in capsys.readouterr().err

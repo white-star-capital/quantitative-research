@@ -111,7 +111,7 @@ max_input_skew_seconds: 30        # only for implementations that combine source
 params:
   min_strikes_per_expiry: 7
   seed: 42
-bounds:                        # hard validation; violation = failed run
+bounds:                        # hard; keyed by value key (column/item/series key, or z); abs_<key> bounds |value|
   z: { min: 0.01, max: 5.0 }
 sanity_checks:                 # soft; violation = warning on a successful run
   - calendar_arbitrage

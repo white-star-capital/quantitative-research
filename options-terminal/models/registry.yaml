@@ -1,3 +1,12 @@
-# Production switchboard (MODELS.md §4). Exactly one production implementation per slot.
-# Empty until the first implementation lands in library/ (M1).
-slots: {}
+# Production switchboard (MODELS.md §4). Exactly one production implementation per slot, except
+# during a slot's initial shadow period (M-12).
+slots:
+  bs_pricer:
+    production: null                   # first model: shadow until validated (guide §9 step 6)
+    shadow:
+      - { implementation: bs_pricer_black76, version: 1.0.0 }
+    scopes:
+      - { underlying: BTC }
+      - { underlying: ETH }
+      - { underlying: SOL }
+      - { underlying: HYPE }

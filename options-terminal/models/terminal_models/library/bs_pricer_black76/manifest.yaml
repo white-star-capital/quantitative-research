@@ -1,0 +1,29 @@
+implementation_id: bs_pricer_black76
+version: 1.0.0
+fills_slot: bs_pricer
+owner: alejandro
+description: Black-76 on Deribit marks; piecewise-linear total-variance surface.
+schedule: "*/5 * * * *"
+timeout_seconds: 60
+max_input_age_seconds: 120
+params:
+  usd_rate: 0.0
+  min_tte_hours: 1
+  min_nodes_per_expiry: { BTC: 5, ETH: 5, SOL: 3, HYPE: 3 }
+  max_node_spread_vp: 10
+  chain_delta_range: [0.02, 0.98]
+  k_grid: { min: -0.5, max: 0.5, step: 0.025 }
+  rv_windows_days: [7, 30]
+  atm_tenors_days: [1, 7, 30, 90]
+  event_ratio_flag: 1.3
+  candle_lookback_days: 31
+bounds:                       # keyed by value key (column / item / series / surface "z")
+  iv_mark: { min: 0.01, max: 5.0 }
+  z: { min: 0.01, max: 5.0 }
+  fair_usd: { min: 0 }
+  abs_delta: { max: 1.0 }
+sanity_checks:
+  - calendar_arbitrage
+  - put_call_parity
+  - mark_reproduction
+  - spot_vs_perp

@@ -12,6 +12,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 from terminal_models.core.paths import contracts_dir
+from terminal_models.core.payloads import PayloadError, get_section, records, scalars
 
 PAYLOAD_SOFT_LIMIT_BYTES = 2 * 1024 * 1024  # C-6: SHOULD stay under
 PAYLOAD_HARD_LIMIT_BYTES = 5 * 1024 * 1024  # C-6: rejected over
@@ -156,24 +157,173 @@ def check_payload_size(payload: Any) -> list[dict[str, str]]:
     return []
 
 
-SanityCheck = Callable[[dict[str, Any]], list[dict[str, str]]]
+# ---- manifest bounds (hard) ----------------------------------------------------------------
+
+
+def _bounded_values(kind: str, payload: dict[str, Any], where: str):
+    """Yield (path, key, value) for every number that carries a key."""
+    if kind == "composite":
+        for sec in payload["sections"]:
+            yield from _bounded_values(sec["payload_kind"], sec["payload"], f"{where}{sec['key']}/")
+    elif kind == "scalar_set":
+        for it in payload["items"]:
+            yield f"{where}{it['key']}", it["key"], it["value"]
+    elif kind in ("curve", "timeseries"):
+        for sr in payload["series"]:
+            for v in sr["values"]:
+                yield f"{where}{sr['key']}", sr["key"], v
+    elif kind == "surface":
+        for row in payload["z"]["values"]:
+            for v in row:
+                yield f"{where}z", "z", v
+    elif kind == "table":
+        keys = [c["key"] for c in payload["columns"]]
+        for row in payload["rows"]:
+            for key, v in zip(keys, row, strict=True):
+                yield f"{where}{key}", key, v
+
+
+def check_bounds(kind: str, payload: dict[str, Any], bounds: dict[str, Any]) -> None:
+    """Manifest `bounds` are keyed by value key (column, item, series, or `z` for surfaces);
+    an `abs_` prefix bounds the absolute value. Any violation fails the run."""
+    if not bounds:
+        return
+    for path, key, value in _bounded_values(kind, payload, ""):
+        if not isinstance(value, int | float) or isinstance(value, bool):
+            continue
+        for name, x in ((key, value), (f"abs_{key}", abs(value))):
+            b = bounds.get(name)
+            if b is None:
+                continue
+            lo, hi = getattr(b, "min", None), getattr(b, "max", None)
+            if (lo is not None and x < lo) or (hi is not None and x > hi):
+                raise ValidationFailure(
+                    "out_of_bounds", f"{path}: {value!r} outside {name} [{lo}, {hi}]"
+                )
+
+
+# ---- sanity checks (MODELS §6, guide §5.4) ------------------------------------------------
+
+Warnings = list[dict[str, str]]
+SanityCheck = Callable[[dict[str, Any], dict[str, Any]], Warnings]
+
+MARK_TOLERANCE = 0.01
+MARK_HARD_FAIL_SHARE = 0.20
+PARITY_TOLERANCE = 1e-6
+SPOT_PERP_TOLERANCE = 0.02
+
+
+def _need(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    try:
+        return get_section(payload, key)
+    except PayloadError as exc:
+        raise ValidationFailure(
+            "sanity_check_inapplicable", f"payload has no '{key}' section"
+        ) from exc
+
+
+def mark_reproduction(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
+    """With r = 0, Black-76 at the venue's mark IV must reproduce the venue's mark price.
+    Misses beyond 20% of nodes mean a units/conversion bug: hard failure."""
+    if params.get("usd_rate", 0.0) != 0.0:
+        return []
+    rows = [
+        row
+        for row in records(_need(payload, "chain"))
+        if row["is_node"] and row["venue_mark_usd"] is not None
+    ]
+    misses = [
+        (
+            abs(row["fair_usd"] - row["venue_mark_usd"]) / row["venue_mark_usd"],
+            row["instrument_name"],
+        )
+        for row in rows
+    ]
+    misses = [m for m in misses if m[0] >= MARK_TOLERANCE]
+    if not misses:
+        return []
+    worst = max(misses)
+    message = (
+        f"{len(misses)} of {len(rows)} nodes off venue mark by >= 1% "
+        f"(worst {worst[1]}: {worst[0]:.1%})"
+    )
+    if len(misses) > MARK_HARD_FAIL_SHARE * len(rows):
+        raise ValidationFailure("mark_reproduction", message)
+    return [{"code": "mark_reproduction", "message": message}]
+
+
+def put_call_parity(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
+    """call − put = DF·(F − K) for every listed strike pair; holds by construction (hard)."""
+    r = scalars(_need(payload, "context")).get("usd_rate", 0.0)
+    expiries = {e["expiry_ts"]: e for e in records(_need(payload, "expiries"))}
+    pairs: dict[tuple[str, float], dict[str, float]] = {}
+    for row in records(_need(payload, "chain")):
+        pairs.setdefault((row["expiry_ts"], row["strike"]), {})[row["option_type"]] = row[
+            "fair_usd"
+        ]
+    for (expiry_ts, strike), legs in pairs.items():
+        if "call" not in legs or "put" not in legs:
+            continue
+        e = expiries[expiry_ts]
+        df = math.exp(-r * e["dte"] / 365)
+        residual = legs["call"] - legs["put"] - df * (e["forward"] - strike)
+        if abs(residual) > PARITY_TOLERANCE * e["forward"]:
+            raise ValidationFailure(
+                "put_call_parity", f"{expiry_ts} K={strike}: residual {residual:.3g}"
+            )
+    return []
+
+
+def calendar_arbitrage(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
+    """Total variance must not fall with tenor at fixed moneyness (warning; no clamping)."""
+    surf = _need(payload, "surface")
+    tenors = surf["y"]["values"]
+    found = []
+    for i in range(len(tenors) - 1):
+        lower, upper = surf["z"]["values"][i], surf["z"]["values"][i + 1]
+        for k, a, b in zip(surf["x"]["values"], lower, upper, strict=True):
+            if a is None or b is None:
+                continue
+            drop = a * a * tenors[i] / 365 - b * b * tenors[i + 1] / 365
+            if drop > 1e-12:
+                found.append((drop, k, tenors[i], tenors[i + 1]))
+    if not found:
+        return []
+    drop, k, t_a, t_b = max(found)
+    return [
+        {
+            "code": "calendar_arbitrage",
+            "message": f"total variance falls at {len(found)} grid points "
+            f"(worst k={k:+.3f} between {t_a:.1f}d and {t_b:.1f}d)",
+        }
+    ]
+
+
+def spot_vs_perp(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
+    ctx = scalars(_need(payload, "context"))
+    spot, perp = ctx.get("spot"), ctx.get("perp_last")
+    if not spot or not perp:
+        return []
+    gap = abs(spot / perp - 1)
+    if gap < SPOT_PERP_TOLERANCE:
+        return []
+    return [{"code": "spot_vs_perp", "message": f"index and perp differ by {gap:.2%}"}]
 
 
 def _pending(name: str) -> SanityCheck:
-    def check(payload: dict[str, Any]) -> list[dict[str, str]]:
-        raise NotImplementedError(f"sanity check '{name}' is implemented in M1")
+    def check(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
+        raise NotImplementedError(f"sanity check '{name}' is not implemented yet")
 
     return check
 
 
 # MODELS.md §6. Implementations opt in by name via manifest `sanity_checks`.
 SANITY_CHECKS: dict[str, SanityCheck] = {
-    name: _pending(name)
-    for name in (
-        "calendar_arbitrage",
-        "butterfly_arbitrage",
-        "put_call_parity",
-        "monotonic_tenor",
-        "greeks_signs",
-    )
+    "calendar_arbitrage": calendar_arbitrage,
+    "put_call_parity": put_call_parity,
+    "mark_reproduction": mark_reproduction,
+    "spot_vs_perp": spot_vs_perp,
+    "butterfly_arbitrage": _pending("butterfly_arbitrage"),
+    "monotonic_tenor": _pending("monotonic_tenor"),
+    "greeks_signs": _pending("greeks_signs"),
 }

@@ -45,6 +45,11 @@ name = "library implementations do not import adapters or runner"
 type = "forbidden"
 source_modules = ["terminal_models.library"]
 forbidden_modules = ["terminal_models.adapters", "terminal_models.runner"]
+# An implementation's own tests drive it through the runner; M-2 constrains implementation code.
+ignore_imports = [
+    "terminal_models.library.*.tests.** -> terminal_models.runner.**",
+    "terminal_models.library.*.tests.** -> terminal_models.adapters.**",
+]
 
 [[tool.importlinter.contracts]]
 name = "library implementations are independent"

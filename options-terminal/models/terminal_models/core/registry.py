@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from terminal_models.core.manifest import IDENTIFIER, SEMVER, Manifest, load_manifest
 from terminal_models.core.slots import SlotDefinition
@@ -25,9 +25,20 @@ class ImplementationRef(BaseModel):
 
 class SlotEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    production: ImplementationRef  # M-12: exactly one
+    # M-12: exactly one, except a slot's initial shadow period (null, with at least one shadow).
+    production: ImplementationRef | None
     shadow: list[ImplementationRef] = Field(default_factory=list)
     scopes: list[dict[str, str]] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _production_or_shadow(self) -> SlotEntry:
+        if self.production is None and not self.shadow:
+            raise ValueError("production may be null only while at least one shadow runs")
+        return self
+
+    def refs(self) -> list[tuple[str, ImplementationRef]]:
+        prod = [("production", self.production)] if self.production else []
+        return prod + [("shadow", s) for s in self.shadow]
 
 
 class Registry(BaseModel):
@@ -53,7 +64,7 @@ def validate_registry(
             problems.append(f"{slot_id}: no slot definition in contracts/slots/")
             continue
 
-        refs = [("production", entry.production)] + [("shadow", s) for s in entry.shadow]
+        refs = entry.refs()
         seen = [ref.implementation for _, ref in refs]
         if len(seen) != len(set(seen)):
             problems.append(f"{slot_id}: an implementation is listed more than once")

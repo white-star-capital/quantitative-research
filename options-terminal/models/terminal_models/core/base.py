@@ -39,6 +39,8 @@ class InputData:
     name: str
     snapshot_at: datetime
     data: Any
+    # Raw venue response bodies, persisted with the snapshot for replay (M-9); never hashed.
+    raw: Any = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,11 @@ class RunContext:
     inputs: dict[str, InputData]
     params: dict[str, Any]
     logger: logging.Logger
+    warnings: list[dict[str, str]] = field(default_factory=list)
+
+    def warn(self, code: str, message: str) -> None:
+        """Non-fatal finding; lands in the envelope's `warnings`."""
+        self.warnings.append({"code": code, "message": message})
 
 
 class Model(ABC):

@@ -127,3 +127,15 @@ def test_production_is_required(tmp_path):
     )
     with pytest.raises(ValueError):
         load_registry(path)
+
+
+def test_shadow_only_slot_is_allowed(slots, library):
+    reg = registry(
+        production=None, shadow=[{"implementation": "vol_surface_sabr", "version": "0.3.0"}]
+    )
+    assert set(validate_registry(reg, slots, library)) == {"vol_surface_sabr"}
+
+
+def test_null_production_needs_a_shadow():
+    with pytest.raises(ValueError, match="at least one shadow"):
+        registry(production=None)

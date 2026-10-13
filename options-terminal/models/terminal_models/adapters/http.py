@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import time
 from typing import Any
 
@@ -20,11 +21,13 @@ class HttpSource:
         timeout_seconds: float = 10.0,
         max_attempts: int = 4,
         backoff_seconds: float = 1.0,
+        jitter: float = 0.0,
         client: httpx.Client | None = None,
     ) -> None:
         self.base_url = base_url
         self.max_attempts = max_attempts
         self.backoff_seconds = backoff_seconds
+        self.jitter = jitter
         self.client = client or httpx.Client(base_url=base_url, timeout=timeout_seconds)
 
     def request_json(self, method: str, path: str, **kwargs: Any) -> Any:
@@ -50,7 +53,8 @@ class HttpSource:
                     time.sleep(int(retry_after))
                     continue
             if attempt < self.max_attempts:
-                time.sleep(self.backoff_seconds * 2 ** (attempt - 1))
+                delay = self.backoff_seconds * 2 ** (attempt - 1)
+                time.sleep(delay + random.uniform(0, delay * self.jitter))
         raise AdapterError(
             "source_unavailable",
             f"{method} {path} failed after {self.max_attempts} attempts: {last_error}",

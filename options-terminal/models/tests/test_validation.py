@@ -98,6 +98,8 @@ def test_sanity_checks_registered():
         "calendar_arbitrage",
         "butterfly_arbitrage",
         "put_call_parity",
+        "mark_reproduction",
+        "spot_vs_perp",
         "monotonic_tenor",
         "greeks_signs",
     }

@@ -317,7 +317,7 @@ evaluation:
 
 | Section key | Kind | Content |
 |---|---|---|
-| `context` | `scalar_set` | spot, spot_change_24h, atm_iv_1d/7d/30d/90d, rv_7d/30d, vrp_30d, term_ratio, event_flag, rr25_30d, bf25_30d, dvol (BTC/ETH), usd_rate, n_expiries, n_nodes, n_nodes_good |
+| `context` | `scalar_set` | spot, spot_change_24h, atm_iv_1d/7d/30d/90d, rv_7d/30d, vrp_30d, term_ratio, event_flag, rr25_30d, bf25_30d, dvol (BTC/ETH), perp_last (for `spot_vs_perp`), usd_rate, n_expiries, n_nodes, n_nodes_good. Values may carry `flags` (e.g. `tenor_extrapolated_short`). |
 | `term_structure` | `curve` | x = tenor_days of listed expiries; series `atm_iv`, `iv_25d_put`, `iv_25d_call` |
 | `smile` | `curve` | x = k grid; one series per expiry (key `exp_YYYYMMDD`), `null` outside node range |
 | `surface` | `surface` | x = k grid, y = tenor_days, z = IV (`null` outside node range) |
@@ -409,10 +409,12 @@ params:
   rv_windows_days: [7, 30]
   atm_tenors_days: [1, 7, 30, 90]
   event_ratio_flag: 1.3
-bounds:
-  iv: { min: 0.01, max: 5.0 }
-  price_usd: { min: 0 }
-  abs_delta: { max: 1.0 }
+  candle_lookback_days: 31
+bounds:                       # keyed by value key (MODELS §3.3); abs_ bounds the absolute value
+  iv_mark: { min: 0.01, max: 5.0 }
+  z: { min: 0.01, max: 5.0 }
+  fair_usd: { min: 0 }
+  abs_delta: { max: 1.0 }     # forward delta only: delta_spot = delta·F/S may exceed 1
 sanity_checks:
   - calendar_arbitrage
   - put_call_parity
@@ -563,7 +565,9 @@ Numbers are illustrative only; they are not computed.
 
 **Flags:** `quote_stale` (> `quote_max_age_minutes`), `spot_moved` (\|S/spot_ref − 1\| > `spot_move_flag_pct`), `run_stale`, `strike_extrapolated`, `tenor_extrapolated_short`, `tenor_extrapolated_long`, `low_quality_nodes` (any bracketing node not `good`), `expiry_time_differs_from_venue` (informational).
 
-**Errors (problem+json, 400):** `expiry_in_past`, `tenor_out_of_range`, `strike_out_of_range`, `premium_requires_side`, `pct_spot_requires_spot_ref`, `invalid_premium` (≤ 0), `run_not_found`, `run_failed` (pinned run has status failed).
+**Errors (problem+json, 400):** `expiry_in_past`, `tenor_out_of_range`, `strike_out_of_range`, `premium_requires_side`, `premium_requires_unit`, `pct_spot_requires_spot_ref`, `invalid_premium` (≤ 0), `invalid_spot_ref`, `invalid_option_type`, `invalid_size`, `run_not_found`, `run_failed` (pinned run has status failed).
+
+`premium_unit=pct_spot` takes the premium in percent (`2.45` = 2.45% of `spot_ref`). `quote_stale` compares `quoted_at` with the run's `as_of`, so the answer is reproducible for a pinned run.
 
 ### 6.3 Rust implementation
 
