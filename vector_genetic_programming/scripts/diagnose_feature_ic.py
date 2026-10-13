@@ -70,7 +70,10 @@ from vgp.data import DataLoader, FeatureEngine
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 CACHE_DIR = PROJECT_DIR / "data"
 START, END = "2024-01-01", "2026-04-01"
-FEE = 10e-4
+# Costs, in decimal. VGP_FEE_BPS=0 runs the research question — is there
+# predictable structure at all — rather than the tradeable one. The null
+# control runs at the same fee, so the comparison stays fair.
+FEE = float(os.environ.get("VGP_FEE_BPS", "10.0")) / 1e4
 WINDOW_KW = dict(train_months=9, val_months=2, oos_months=4, step_months=4)
 # Override for a quick check: VGP_N_NULL=3 python scripts/diagnose_feature_ic.py
 N_NULL = int(os.environ.get("VGP_N_NULL", "99"))

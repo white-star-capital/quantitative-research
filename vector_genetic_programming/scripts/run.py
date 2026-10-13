@@ -45,7 +45,10 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 # every user had to git-lfs-pull the sibling risk_premium_pca project and copy
 # files across before anything would run.
 CACHE_DIR = PROJECT_DIR / "data"
-RESULTS_DIR = PROJECT_DIR / "results"
+# Output directory. Overridable so a variant run (zero fees, a different
+# universe) does not overwrite the committed baseline in results/ — losing the
+# baseline is how two runs become incomparable with nothing to compare against.
+RESULTS_DIR = Path(os.environ.get("VGP_RESULTS_DIR", PROJECT_DIR / "results"))
 SEEDS = [0, 1, 2]
 POP_SIZE = 200  # individuals per generation
 N_GENERATIONS = 30  # generations per seed
@@ -92,7 +95,18 @@ WINDOW_KW = dict(train_months=9, val_months=2, oos_months=4, step_months=4)
 # warmup. Before hoisting that warmup was paid 66 times and the experiment ran
 # faster serially than on 3 cores.
 N_JOBS = max(1, (os.cpu_count() or 2) - 1)
-FEE_BPS = 10.0
+# Transaction costs. Applied INSIDE evaluate(), never post-hoc, because the GP
+# will otherwise evolve strategies that exploit their absence (CLAUDE.md
+# constraint 3).
+#
+# VGP_FEE_BPS=0 answers a different question from the default. At 10 bps the run
+# asks "is there a tradeable edge"; at 0 it asks "is there predictable structure
+# at all", which is a research question and not a claim about any book. The null
+# control stays valid either way — surrogates run at the SAME fee, so the
+# comparison is still like for like — but a zero-fee result must never be
+# reported as a strategy: at 1.34x daily turnover, 10 bps costs 49% a year, so a
+# zero-fee winner is a measurement, not a P&L.
+FEE_BPS = float(os.environ.get("VGP_FEE_BPS", "10.0"))
 MIN_TRADES = 50
 
 # Universe tolerance. fetch_ohlcv() raises by default when any symbol fails,
