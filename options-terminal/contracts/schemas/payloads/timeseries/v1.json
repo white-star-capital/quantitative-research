@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://options-terminal/contracts/schemas/payloads/timeseries/v1.json",
+  "title": "timeseries v1. C-4: t strictly increasing; every series has len(t) values (runner-checked).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "t",
+    "series"
+  ],
+  "properties": {
+    "t": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/utc"
+      }
+    },
+    "series": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/series"
+      }
+    }
+  },
+  "$defs": {
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quantity",
+        "scale"
+      ],
+      "properties": {
+        "quantity": {
+          "enum": [
+            "implied_vol",
+            "realized_vol",
+            "vol_spread",
+            "price",
+            "price_usd",
+            "delta",
+            "gamma",
+            "vega",
+            "theta",
+            "rate",
+            "ratio",
+            "probability",
+            "yield_annualized",
+            "bps",
+            "strike",
+            "moneyness_log",
+            "moneyness_simple",
+            "delta_bucket",
+            "tenor_days",
+            "expiry_date",
+            "timestamp",
+            "count",
+            "other"
+          ]
+        },
+        "scale": {
+          "enum": [
+            "decimal",
+            "percent",
+            "bps",
+            "absolute"
+          ]
+        },
+        "convention": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+    },
+    "series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "label",
+        "unit",
+        "values"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "label": {
+          "type": "string"
+        },
+        "unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://options-terminal/contracts/schemas/payloads/scalar_set/v1.json",
+  "title": "scalar_set v1: headline metrics (CONTRACTS §3)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "items"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "value",
+          "unit"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "number",
+              "boolean",
+              "null"
+            ]
+          },
+          "unit": {
+            "$ref": "#/$defs/unit"
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/key"
+            },
+            "description": "Qualifiers on this value, e.g. tenor_extrapolated_short"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quantity",
+        "scale"
+      ],
+      "properties": {
+        "quantity": {
+          "enum": [
+            "implied_vol",
+            "realized_vol",
+            "vol_spread",
+            "price",
+            "price_usd",
+            "delta",
+            "gamma",
+            "vega",
+            "theta",
+            "rate",
+            "ratio",
+            "probability",
+            "yield_annualized",
+            "bps",
+            "strike",
+            "moneyness_log",
+            "moneyness_simple",
+            "delta_bucket",
+            "tenor_days",
+            "expiry_date",
+            "timestamp",
+            "count",
+            "other"
+          ]
+        },
+        "scale": {
+          "enum": [
+            "decimal",
+            "percent",
+            "bps",
+            "absolute"
+          ]
+        },
+        "convention": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    }
+  }
+}

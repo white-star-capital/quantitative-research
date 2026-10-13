@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://options-terminal/contracts/schemas/payloads/composite/v1.json",
+  "title": "composite v1: several sections from one run. Each section's payload is validated against its own kind schema by the runner; nesting depth 1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sections"
+  ],
+  "properties": {
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "payload_kind",
+          "payload_version",
+          "payload"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/$defs/key"
+          },
+          "label": {
+            "type": "string"
+          },
+          "payload_kind": {
+            "enum": [
+              "scalar_set",
+              "curve",
+              "surface",
+              "timeseries",
+              "table"
+            ]
+          },
+          "payload_version": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "payload": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quantity",
+        "scale"
+      ],
+      "properties": {
+        "quantity": {
+          "enum": [
+            "implied_vol",
+            "realized_vol",
+            "vol_spread",
+            "price",
+            "price_usd",
+            "delta",
+            "gamma",
+            "vega",
+            "theta",
+            "rate",
+            "ratio",
+            "probability",
+            "yield_annualized",
+            "bps",
+            "strike",
+            "moneyness_log",
+            "moneyness_simple",
+            "delta_bucket",
+            "tenor_days",
+            "expiry_date",
+            "timestamp",
+            "count",
+            "other"
+          ]
+        },
+        "scale": {
+          "enum": [
+            "decimal",
+            "percent",
+            "bps",
+            "absolute"
+          ]
+        },
+        "convention": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    }
+  }
+}

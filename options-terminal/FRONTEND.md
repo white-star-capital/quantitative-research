@@ -23,7 +23,7 @@ Conflicts found while scaffolding. In each case the governing document wins:
 
 ## 1. Principles
 
-1. **Render by payload kind, not by slot.** One renderer per kind (`CONTRACTS.md` §3). A new slot with a known kind appears in the terminal with zero frontend code.
+1. **Render by payload kind, not by slot.** One renderer per kind (`CONTRACTS.md` §3). A new slot with a known kind appears in the terminal with zero frontend code. A slot MAY also register a **bespoke view**, keyed by its `display.default_view`, as an additive layer; the generic renderers must still render that slot, and users can always switch to the generic view.
 2. **Never present stale data as fresh.** Freshness is visible on every output.
 3. **The API is untrusted input.** Every string from the API is rendered as text.
 4. **Units come from the data.** Formatting is driven by `unit`, never by assumptions about a slot.

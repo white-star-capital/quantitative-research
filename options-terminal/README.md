@@ -10,6 +10,7 @@
 | `MODELS.md` | `models/` — Python model framework, registry, runner, swap/promotion lifecycle |
 | `API.md` | `api/` — Rust/Axum read-only JSON API |
 | `FRONTEND.md` | `frontend/` — terminal UI, rendering, staleness, security |
+| `BS_PRICER_IMPLEMENTATION_GUIDE.md` | First model: `bs_pricer` (Black-76 on Deribit for BTC/ETH/SOL/HYPE) across all four components |
 
 Requirement keywords: **MUST** = required for acceptance, **SHOULD** = expected unless there's a documented reason not to, **MAY** = optional.
 
@@ -46,6 +47,11 @@ Why:
 - **Latency.** GET requests are database/cache reads, not model runs.
 - **Modularity.** Models can be added, swapped or retired without touching the API.
 - **Auditability.** Every output is a stored, versioned run, so you can always answer "what did we show users at 14:00 yesterday, and which code produced it?"
+
+**One narrow exception: evaluation endpoints.** Some slots need request-time computation against a stored run (e.g. pricing an arbitrary strike, or evaluating an OTC quote; see `BS_PRICER_IMPLEMENTATION_GUIDE.md`). The API MAY expose such an endpoint only if it is:
+- a pure, deterministic function over a *stored* run;
+- specified in Python (`models/terminal_models/core/quant/`), with the Rust port held to it by shared parity vectors in `contracts/fixtures/pricing/`;
+- free of Python calls, market-data fetches and writes.
 
 ### 3.2 Data flow
 

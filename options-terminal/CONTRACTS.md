@@ -21,7 +21,8 @@ contracts/
 │   └── migrations/                 # ordered SQL migrations (single owner: contracts)
 ├── fixtures/
 │   ├── valid/<kind>/*.json         # golden fixtures, full envelopes
-│   └── invalid/<kind>/*.json       # each fixture violates exactly one rule; filename says which
+│   ├── invalid/<kind>/*.json       # each fixture violates exactly one rule; filename says which
+│   └── pricing/*.json              # Python→Rust parity vectors for evaluation math (README §3.1)
 └── README.md
 ```
 
@@ -85,17 +86,17 @@ Common building blocks:
 "unit": { "quantity": "implied_vol", "scale": "decimal" }
 ```
 
-`quantity` is from a controlled vocabulary (`implied_vol`, `realized_vol`, `price`, `price_usd`, `delta`, `gamma`, `vega`, `theta`, `rate`, `ratio`, `bps`, `strike`, `moneyness_log`, `moneyness_simple`, `delta_bucket`, `tenor_days`, `expiry_date`, `timestamp`, `count`, `other`). `scale` is one of `decimal`, `percent`, `bps`, `absolute`. Adding a vocabulary term is a contract PR.
+`quantity` is from a controlled vocabulary (`implied_vol`, `realized_vol`, `vol_spread`, `price`, `price_usd`, `delta`, `gamma`, `vega`, `theta`, `rate`, `ratio`, `probability`, `yield_annualized`, `bps`, `strike`, `moneyness_log`, `moneyness_simple`, `delta_bucket`, `tenor_days`, `expiry_date`, `timestamp`, `count`, `other`). `vol_spread` is a difference of vols, sent as a decimal and shown in vol points. `scale` is one of `decimal`, `percent`, `bps`, `absolute`. Adding a vocabulary term is a contract PR.
 
 Greeks MUST state their bump convention in `unit.convention` (e.g. vega `"per_1vol_point"`, theta `"per_calendar_day"`).
 
 | Kind | Use for | Shape |
 |---|---|---|
-| `scalar_set` | Headline metrics: ATM IV, 25Δ risk reversal, butterfly, forward | `items: [{key, label, value, unit}]` |
+| `scalar_set` | Headline metrics: ATM IV, 25Δ risk reversal, butterfly, forward | `items: [{key, label, value, unit, flags?}]`; `value` is number, boolean or null; `flags` qualify the value (e.g. `tenor_extrapolated_short`) |
 | `curve` | Smile (IV vs strike/delta), term structure (IV vs tenor), any y(x) | `x: {label, unit, values[]}`, `series: [{key, label, unit, values[]}]`, every `values` array the same length as `x.values` |
 | `surface` | Vol surface, any z(x, y) grid | `x: {label, unit, values[]}`, `y: {label, unit, values[]}`, `z: {label, unit, values[[...]]}` with `z.values` of shape `len(y) × len(x)`, row-major by y |
 | `timeseries` | Realized vs implied history, metric history | `t: [UTC timestamps, strictly increasing]`, `series: [{key, label, unit, values[]}]` |
-| `table` | Chains, greeks tables, ranked lists | `columns: [{key, label, type, unit?}]`, `rows: [[...]]`; `type` ∈ `number`, `string`, `timestamp`, `date` |
+| `table` | Chains, greeks tables, ranked lists | `columns: [{key, label, type, unit?}]`, `rows: [[...]]`; `type` ∈ `number`, `string`, `timestamp`, `date`, `boolean` |
 | `composite` | One run that produces several views (e.g. surface + smile + metrics) | `sections: [{key, label, payload_kind, payload_version, payload}]`; nesting depth 1 (no composite inside composite) |
 
 Rules for all kinds:
@@ -123,8 +124,10 @@ max_age_seconds: 900           # older than this → stale
 conventions: >
   x = log-moneyness ln(K/F), y = tenor in calendar days, z = implied vol (decimal).
 display:
-  default_view: heatmap        # renderer hint; frontend MAY ignore
+  default_view: heatmap        # renderer hint or bespoke view id; frontend MAY ignore
   order: 10                    # catalog ordering
+evaluation:                    # optional; only for slots with an evaluation endpoint (README §3.1)
+  evaluator: black76_surface_v1  # API dispatches GET /v1/slots/{slot_id}/evaluate on this id
 ```
 
 - **C-7** A slot's `payload_kind`, `payload_version` and `scope.dimensions` are its public contract. Changing any of them is a breaking change: create a new slot (`vol_surface_v2`) or bump the API version. Never mutate them in place.

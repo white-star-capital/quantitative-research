@@ -4,8 +4,8 @@ Read-only Rust HTTP server, built on Axum, that serves the latest model outputs 
 
 ## 1. Scope
 
-**In:** GET endpoints for slots, latest outputs, run history and schemas; health and readiness; OpenAPI document; caching, rate limiting, CORS, logging.
-**Out (v1):** authentication, writes of any kind, websockets/streaming, computation on payloads.
+**In:** GET endpoints for slots, latest outputs, run history and schemas; evaluation endpoints under the README §3.1 exception (§3.2); health and readiness; OpenAPI document; caching, rate limiting, CORS, logging.
+**Out (v1):** authentication, writes of any kind, websockets/streaming, computation on payloads other than §3.2 evaluation.
 
 - **A-1** The server MUST register only GET (and HEAD/OPTIONS as handled by middleware) routes. Any other method returns `405`.
 - **A-2** The server MUST connect to Postgres as `api_ro` (CONTRACTS C-12). Read-only at the DB is the real guarantee; A-1 is the second line.
@@ -38,6 +38,7 @@ All under `/v1`. Path parameters use Axum 0.8 syntax (`/{slot_id}`), not `/:slot
 | `GET /v1/slots/{slot_id}` | One slot's full definition, status (`active`/`retired`) and its implementations (production + all shadows) |
 | `GET /v1/slots/{slot_id}/latest?<scope params>&role&implementation` | Latest successful envelope for that scope + `meta` (production by default) |
 | `GET /v1/slots/{slot_id}/runs?<scope params>&from&to&status&role&implementation&limit&cursor&include_payload` | Run history, newest first, cursor-paginated |
+| `GET /v1/slots/{slot_id}/evaluate?…` | Evaluation over a stored run, for slots whose YAML declares `evaluation.evaluator` (§3.2) |
 | `GET /v1/runs/{run_id}` | One envelope by run ID (any role, any status) |
 | `GET /v1/schemas/{kind}/{version}` | The JSON Schema for a payload kind |
 
@@ -56,6 +57,15 @@ The set of slots and implementations changes without API deploys. Adding, swappi
 - **A-29** "Latest production" follows CONTRACTS C-11, whatever the implementation. After a promotion, the old implementation's last output is served (and goes stale on schedule) until the new one produces a successful run; after a rollback, the reverse. `meta` and the envelope always name the implementation that produced what's shown.
 - **A-30** Cache keys include the implementation for shadow lookups: `(slot_id, scope_key, role, implementation | "*")`. A catalog reload that changes a slot's implementations clears that slot's cache entries.
 - **A-31** Envelopes carry `payload_kind` as a string and the payload as opaque JSON (A-21), so a new slot or implementation never needs Rust changes.
+
+### 3.2 Evaluation endpoints
+
+README §3.1 allows one narrow kind of request-time computation. The first user is `bs_pricer` (`BS_PRICER_IMPLEMENTATION_GUIDE.md` §6).
+
+- **A-32** `GET /v1/slots/{slot_id}/evaluate` dispatches on the slot definition's `evaluation.evaluator`. A slot without an `evaluation` block, or with an evaluator this build doesn't know, returns `404` `no-evaluator`. Evaluators are pure functions of (stored run, query params): no DB writes, no market data, no Python.
+- **A-33** Each evaluator's math is ported from a Python reference in `models/terminal_models/core/quant/` and held to it by the vectors in `contracts/fixtures/pricing/`. CI runs those vectors (blocking); a disagreement is a Rust bug unless the Python tests prove otherwise.
+- **A-34** Evaluate responses carry `Cache-Control: no-store`. Logs for this route record path, status, latency and `request_id`, never the query string; the reverse proxy must do the same (deployment requirement).
+- **A-35** Evaluate has its own rate-limit bucket (default 60 req/min per IP, burst 20), separate from the rest of `/v1`.
 
 ## 4. Response format
 

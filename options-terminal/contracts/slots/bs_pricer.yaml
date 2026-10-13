@@ -1,0 +1,24 @@
+slot_id: bs_pricer
+title: Options pricer (Black-Scholes)
+description: >
+  Black-76 fair values, greeks and vol surface from Deribit marks, with
+  evaluation of any strike/expiry and OTC quotes against market.
+payload_kind: composite
+payload_version: "1"
+scope:
+  dimensions: [underlying]
+  allowed:
+    underlying: [BTC, ETH, SOL, HYPE]
+max_age_seconds: 900
+conventions: >
+  Prices USD per 1 unit of underlying. Black-76 on per-expiry forward, r from
+  manifest (default 0). IV decimal. k = ln(K/F). Calendar time, ACT/365, 24/7.
+  Greeks per section 3.5 of BS_PRICER_IMPLEMENTATION_GUIDE.md.
+display:
+  default_view: bs_pricer      # bespoke view; generic composite renderer as fallback
+  order: 1
+evaluation:
+  evaluator: black76_surface_v1
+  quote_max_age_minutes: 30
+  spot_move_flag_pct: 1.0
+  max_tenor_multiple: 2.0

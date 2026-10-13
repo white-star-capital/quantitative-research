@@ -52,6 +52,83 @@ def validate_payload(kind: str, version: str, payload: Any, root: Path | None = 
     _check(validator, payload, "invalid_payload")
 
 
+def validate_payload_full(kind: str, version: str, payload: Any, root: Path | None = None) -> None:
+    """Schema, then C-4 shape rules, recursing into composite sections (nesting depth 1)."""
+    validate_payload(kind, version, payload, root)
+    check_shapes(kind, payload)
+    if kind == "composite":
+        keys = [section["key"] for section in payload["sections"]]
+        if len(keys) != len(set(keys)):
+            raise ValidationFailure("invalid_payload", "composite: section keys must be unique")
+        for section in payload["sections"]:
+            try:
+                validate_payload_full(
+                    section["payload_kind"], section["payload_version"], section["payload"], root
+                )
+            except ValidationFailure as exc:
+                raise ValidationFailure(
+                    exc.code, f"section {section['key']}: {exc.message}"
+                ) from exc
+
+
+def _shape_error(message: str) -> ValidationFailure:
+    return ValidationFailure("invalid_shape", message)
+
+
+def _check_series(series: list[dict[str, Any]], n: int, axis: str) -> None:
+    keys = [s["key"] for s in series]
+    if len(keys) != len(set(keys)):
+        raise _shape_error("series keys must be unique")
+    for s in series:
+        if len(s["values"]) != n:
+            raise _shape_error(f"series {s['key']}: {len(s['values'])} values, {axis} has {n}")
+
+
+_CELL_TYPES: dict[str, tuple[type, ...]] = {
+    "number": (int, float),
+    "string": (str,),
+    "timestamp": (str,),
+    "date": (str,),
+    "boolean": (bool,),
+}
+
+
+def check_shapes(kind: str, payload: dict[str, Any]) -> None:
+    """C-4: cross-field rules JSON Schema can't express."""
+    if kind == "curve":
+        _check_series(payload["series"], len(payload["x"]["values"]), "x")
+    elif kind == "timeseries":
+        t = payload["t"]
+        if any(b <= a for a, b in zip(t, t[1:], strict=False)):
+            raise _shape_error("t must be strictly increasing")
+        _check_series(payload["series"], len(t), "t")
+    elif kind == "surface":
+        nx, ny = len(payload["x"]["values"]), len(payload["y"]["values"])
+        rows = payload["z"]["values"]
+        if len(rows) != ny or any(len(r) != nx for r in rows):
+            raise _shape_error(f"z must be {ny} rows of {nx} values (len(y) x len(x))")
+    elif kind == "table":
+        columns = payload["columns"]
+        keys = [c["key"] for c in columns]
+        if len(keys) != len(set(keys)):
+            raise _shape_error("column keys must be unique")
+        for i, row in enumerate(payload["rows"]):
+            if len(row) != len(columns):
+                raise _shape_error(f"row {i}: {len(row)} cells, {len(columns)} columns")
+            for col, cell in zip(columns, row, strict=True):
+                if cell is None:
+                    continue
+                ok = isinstance(cell, _CELL_TYPES[col["type"]])
+                if col["type"] == "number" and isinstance(cell, bool):
+                    ok = False
+                if not ok:
+                    raise _shape_error(f"row {i}, column {col['key']}: expected {col['type']}")
+    elif kind == "scalar_set":
+        keys = [item["key"] for item in payload["items"]]
+        if len(keys) != len(set(keys)):
+            raise _shape_error("item keys must be unique")
+
+
 def assert_no_nan_inf(value: Any, path: str = "") -> None:
     """C-3 / X-3: missing values are null, never NaN or Infinity."""
     if isinstance(value, float) and not math.isfinite(value):

@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://options-terminal/contracts/schemas/payloads/curve/v1.json",
+  "title": "curve v1: y(x) series sharing one x axis. C-4: every series has len(x.values) values (runner-checked).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "x",
+    "series"
+  ],
+  "properties": {
+    "x": {
+      "$ref": "#/$defs/axis"
+    },
+    "series": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/series"
+      }
+    }
+  },
+  "$defs": {
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quantity",
+        "scale"
+      ],
+      "properties": {
+        "quantity": {
+          "enum": [
+            "implied_vol",
+            "realized_vol",
+            "vol_spread",
+            "price",
+            "price_usd",
+            "delta",
+            "gamma",
+            "vega",
+            "theta",
+            "rate",
+            "ratio",
+            "probability",
+            "yield_annualized",
+            "bps",
+            "strike",
+            "moneyness_log",
+            "moneyness_simple",
+            "delta_bucket",
+            "tenor_days",
+            "expiry_date",
+            "timestamp",
+            "count",
+            "other"
+          ]
+        },
+        "scale": {
+          "enum": [
+            "decimal",
+            "percent",
+            "bps",
+            "absolute"
+          ]
+        },
+        "convention": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "axis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "unit",
+        "values"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "label",
+        "unit",
+        "values"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/key"
+        },
+        "label": {
+          "type": "string"
+        },
+        "unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

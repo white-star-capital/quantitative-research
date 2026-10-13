@@ -20,6 +20,13 @@ class SlotScope(BaseModel):
     allowed: dict[str, list[str]] = Field(default_factory=dict)
 
 
+class Evaluation(BaseModel):
+    """Optional evaluation endpoint (README §3.1, API §3.2). Extra keys are evaluator settings."""
+
+    model_config = ConfigDict(extra="allow")
+    evaluator: str = Field(pattern=IDENTIFIER)
+
+
 class SlotDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -32,6 +39,7 @@ class SlotDefinition(BaseModel):
     max_age_seconds: int = Field(gt=0)
     conventions: str = ""
     display: dict[str, Any] = Field(default_factory=dict)
+    evaluation: Evaluation | None = None
 
 
 def load_slots(root: Path | None = None) -> dict[str, SlotDefinition]:
