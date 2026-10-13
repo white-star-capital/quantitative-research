@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App.tsx";
+import "./views/bs_pricer/index.tsx"; // registers the bs_pricer bespoke view
 import "./styles/tokens.css";
 import "./styles/app.css";
 

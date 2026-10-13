@@ -31,20 +31,29 @@ Not dependencies:
 | Path | Purpose |
 |---|---|
 | `src/app/` | Desk shell (`App.tsx`), hash router with deep-link validation |
-| `src/api/` | Types mirroring `contracts/schemas`, runtime validator (F-5), `fetch` client, 60 s polling hook |
-| `src/format/` | Unit-driven formatting (F-15/F-16) |
-| `src/views/` | Catalog, slot view, §5 states, per-panel error boundary |
-| `src/renderers/` | One renderer per payload kind (M3: all currently `Pending`), SVG chart primitives |
+| `src/api/` | Types mirroring `contracts/schemas`, runtime envelope + payload checks (F-5), `fetch` client, 60 s polling hook |
+| `src/format/` | Unit-driven formatting (F-15/F-16) and the pricer conventions (guide §7.8) |
+| `src/renderers/` | One generic renderer per payload kind (tiles, line chart, heatmap, sortable table, composite) on hand-drawn SVG primitives in `chart/` |
+| `src/views/` | Catalog, slot view, §5 states, per-panel error boundary, bespoke-view registry |
+| `src/views/bs_pricer/` | `bs_pricer` bespoke view: cross-asset monitor, asset view with Chain / Vol / Pricer & OTC / Data |
+
+## Model lifecycle in the UI
+
+- **Shadow period:** during a slot's initial shadow period (no production model), views read the first shadow implementation and show a red SHADOW banner.
+- **Bespoke views:** these are additive and keyed by the slot's `display.default_view`. GENERIC/BESPOKE in the title bar switches to the generic renderers at any time (FRONTEND §1).
+- **Run pinning:** the pricer evaluates against the run on screen (`run_id`), so its numbers always match the chain being viewed.
+
+## Privacy
+
+The counterparty label, cost basis and blotter exist only in component state and the CSV the user exports; they are never sent (P-8). Per-viewer preferences (VRP gate, chain preset, band thresholds) use `localStorage`, wrapped in try/catch, and are conveniences only.
+
+## Charts and the design system
+
+Amber and cyan are the only series colours (`front_end_design.md` §2). A third or fourth series reuses them with dashes. The dataviz validator flags their lightness as outside its generic band. The design doc says this is deliberate for the terminal look, and its precedence rule wins; CVD separation passes (ΔE 22.3).
 
 ## Status
 
-This is scaffolding. The shell, routing, polling, validation, formatting and states are done. Still to do in M3:
-- the six payload renderers;
-- the crosshair and tooltip;
-- catalog freshness per slot (F-6);
-- history (F-13) and export (F-14);
-- payload-level validation, so that invalid payload fixtures land in Unsupported.
-
-No sample data exists anywhere. Until the API serves real runs, the UI shows its empty and error states.
+- **M3 renderers and the `bs_pricer` views are done.** They were verified end to end (runner → Postgres → API → UI) on a synthetic run.
+- **Still open:** catalog freshness per slot (F-6), history (F-13), and DOM/visual/E2E test tooling. That tooling is an exception request under the dependency policy; until then the E2E flow runs from a scratch Playwright install outside the repo.
 
 The CSP and caching headers (F-22, design §9.1/§9.3) are served by the deploy proxy, which is set up in M4 once the deployment target is chosen.

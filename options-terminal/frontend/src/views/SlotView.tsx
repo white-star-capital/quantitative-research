@@ -1,14 +1,16 @@
 // Slot view (FRONTEND.md §4.2): scope selectors, header with freshness, warnings,
 // payload body, audit footer.
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { encodeScope } from "../api/client.ts";
 import type { LatestResponse, Scope, SlotSummary } from "../api/types.ts";
 import { usePolled, type Polled } from "../api/usePolled.ts";
-import { checkLatest } from "../api/validate.ts";
+import { checkLatest, checkSlotDetail } from "../api/validate.ts";
 import { checkScope, defaultScope, formatHash } from "../app/router.ts";
 import { formatAge, formatUtc } from "../format/units.ts";
 import { rendererFor } from "../renderers/index.tsx";
+import { runSelection } from "./bs_pricer/logic.ts";
 import { PanelBoundary } from "./PanelBoundary.tsx";
+import { bespokeFor } from "./registry.ts";
 import {
   ErrorIndicator,
   FreshnessBadge,
@@ -30,9 +32,14 @@ interface Props {
 export function SlotView({ slotId, scope, slots, onAsOf }: Props) {
   const slot = slots.data?.find((s) => s.slot_id === slotId) ?? null;
   const scopeCheck = useMemo(() => (slot ? checkScope(slot, scope) : null), [slot, scope]);
-  const path =
-    slot && scopeCheck?.ok ? `/v1/slots/${encodeURIComponent(slotId)}/latest${encodeScope(scope)}` : null;
+  const id = encodeURIComponent(slotId);
+  const detail = usePolled(slot ? `/v1/slots/${id}` : null, checkSlotDetail);
+  // Production when there is one; the first shadow during a slot's initial shadow period (M-12).
+  const selection = useMemo(() => (detail.data ? runSelection(detail.data.implementations) : null), [detail.data]);
+  const path = slot && scopeCheck?.ok && selection ? `/v1/slots/${id}/latest${encodeScope({ ...scope, ...selection })}` : null;
   const latest = usePolled(path, checkLatest);
+  const Bespoke = slot ? bespokeFor(slot) : null;
+  const [generic, setGeneric] = useState(false);
   const asOf = latest.data?.data.as_of ?? null;
 
   useEffect(() => {
@@ -48,13 +55,38 @@ export function SlotView({ slotId, scope, slots, onAsOf }: Props) {
     return <UnknownSlot slotId={slotId} />;
   }
 
+  const toggle = Bespoke && (
+    <span className="view-toggle">
+      <button className={generic ? "" : "active"} onClick={() => setGeneric(false)}>BESPOKE</button>
+      <button className={generic ? "active" : ""} onClick={() => setGeneric(true)}>GENERIC</button>
+    </span>
+  );
+  if (Bespoke && !generic) {
+    if (!detail.data || !selection) {
+      return detail.error ? <ErrorIndicator error={detail.error} lastGoodAsOf={null} /> : <Loading what="SLOT" />;
+    }
+    return (
+      <section>
+        <div className="section-title">
+          <span>{slot.title}</span>
+          <span>{toggle} {slot.slot_id.toUpperCase()}</span>
+        </div>
+        {selection.role === "shadow" && <ShadowBanner implementation={selection.implementation ?? ""} />}
+        <PanelBoundary>
+          <Bespoke slot={slot} detail={detail.data} scope={scope} selection={selection} latest={latest} />
+        </PanelBoundary>
+      </section>
+    );
+  }
+
   return (
     <section>
       <div className="section-title">
         <span>{slot.title}</span>
-        <span>{slot.slot_id.toUpperCase()}</span>
+        <span>{toggle} {slot.slot_id.toUpperCase()}</span>
       </div>
       <ScopeBar slot={slot} scope={scope} />
+      {selection?.role === "shadow" && <ShadowBanner implementation={selection.implementation ?? ""} />}
       {scopeCheck && !scopeCheck.ok ? (
         <>
           <InvalidScope problems={scopeCheck.problems} />
@@ -70,6 +102,15 @@ export function SlotView({ slotId, scope, slots, onAsOf }: Props) {
         <LatestPanel slotId={slotId} latest={latest} />
       )}
     </section>
+  );
+}
+
+/** A slot in its initial shadow period shows its shadow run, labelled loudly (M-12). */
+export function ShadowBanner({ implementation }: { implementation: string }) {
+  return (
+    <div className="notice bad">
+      <span className="status bad">SHADOW</span> NO PRODUCTION MODEL YET · SHOWING {implementation.toUpperCase()} (UNDER VALIDATION)
+    </div>
   );
 }
 
@@ -161,7 +202,7 @@ function LatestPanel({ slotId, latest }: { slotId: string; latest: Polled<Latest
               RUN FAILED · {env.error.code} · {env.error.message}
             </div>
           ) : Renderer ? (
-            <Renderer payload={env.payload} />
+            <Renderer payload={env.payload} title={env.slot_id} />
           ) : (
             <Unsupported raw={env} reason={`${env.payload_kind} v${env.payload_version}`} />
           )}

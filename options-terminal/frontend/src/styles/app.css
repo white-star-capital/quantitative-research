@@ -350,3 +350,213 @@ dl.three dd {
 a {
   color: var(--amber);
 }
+
+/* ---- charts ---- */
+.chart {
+  position: relative;
+  padding: 4px 0;
+}
+.chart svg:focus-visible {
+  outline: 1px solid var(--amber-bright);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  min-height: var(--row);
+  color: var(--dim);
+  font-size: 11px;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tooltip {
+  position: absolute;
+  top: 28px;
+  z-index: 2;
+  min-width: 160px;
+  padding: 4px 8px;
+  background: var(--bg-raise);
+  border: 1px solid var(--rule);
+  pointer-events: none;
+  font-size: 11px;
+}
+.chart-footer {
+  padding-top: 2px;
+  font-size: 11px;
+}
+
+/* ---- tiles, badges, tabs, toggles ---- */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px;
+}
+.tile {
+  background: var(--bg-raise);
+  border: 1px solid var(--rule);
+  padding: 4px 8px;
+}
+.tile-value {
+  font-size: 22px;
+  line-height: 28px;
+  text-align: left;
+}
+.tile-sub {
+  font-size: 11px;
+}
+.badge {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--yellow);
+  color: var(--yellow);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+}
+.badge.bad {
+  border-color: var(--down);
+  color: var(--down);
+}
+.subsection {
+  margin-top: 6px;
+}
+.sub-title {
+  padding: 2px 0;
+}
+.tabs,
+.chips,
+.view-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.tabs {
+  padding: 2px 0;
+}
+.tabs button,
+.chips button,
+.view-toggle button,
+.btn {
+  min-height: var(--row);
+  padding: 2px 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--rule);
+  color: var(--paper);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  cursor: pointer;
+}
+.tabs button.active,
+.chips button.active,
+.view-toggle button.active {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.view-toggle button {
+  background: transparent;
+  color: #fff;
+  min-height: 18px;
+  padding: 0 6px;
+}
+.btn.primary {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.th-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+/* ---- chain ---- */
+table.grid td.strike {
+  text-align: center;
+  color: var(--amber);
+  border-left: 1px solid var(--rule);
+  border-right: 1px solid var(--rule);
+}
+table.grid td.itm {
+  background: #0f0d08;
+}
+table.grid td.weak {
+  opacity: 0.45;
+}
+table.grid td.interp {
+  font-style: italic;
+}
+table.grid tr.fwd td {
+  height: auto;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--amber-dim);
+  color: var(--amber-dim);
+  font-size: 10px;
+  text-align: center;
+}
+
+/* ---- pricer ---- */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 4px 10px;
+  padding: 4px 0;
+}
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.field-error {
+  color: var(--down);
+  font-size: 11px;
+}
+.verdict {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 2px;
+  margin: 4px 0;
+}
+.good {
+  color: var(--up);
+}
+.poor {
+  color: var(--down);
+}
+.mid {
+  color: var(--yellow);
+}
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+@media (max-width: 900px) {
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+}
+td.clickable-cell {
+  cursor: pointer;
+}
+td.clickable-cell:hover {
+  outline: 1px solid var(--amber-dim);
+  outline-offset: -1px;
+}
+.section-title > span:last-child {
+  white-space: nowrap;
+}

@@ -7,6 +7,7 @@ import {
   type Problem,
   type SlotSummary,
 } from "./types.ts";
+import { checkPayload } from "./payloads.ts";
 
 export type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -98,6 +99,10 @@ function envelope(v: unknown, path: string): Envelope {
     throw new Invalid(`${path}.status: expected success or failed`);
   }
   assertFinite(e.payload, `${path}.payload`);
+  if (e.status === "success") {
+    const shape = checkPayload(kind, e.payload);
+    if (!shape.ok) throw new Invalid(`${path}.payload: ${shape.error}`);
+  }
   return e as unknown as Envelope;
 }
 
@@ -165,4 +170,30 @@ export function asProblem(v: unknown): Problem | null {
     return p as unknown as Problem;
   });
   return r.ok ? r.value : null;
+}
+
+export interface SlotDetail {
+  slot_id: string;
+  status: "active" | "retired";
+  implementations: {
+    production: { implementation: string; version: string } | null;
+    shadow: { implementation: string; version: string }[];
+  };
+}
+
+/** GET /v1/slots/{slot_id}: only the fields the views use. */
+export function checkSlotDetail(v: unknown): Checked<SlotDetail> {
+  return run(() => {
+    const d = obj(v, "slot");
+    str(d.slot_id, "slot.slot_id", IDENTIFIER);
+    const impls = obj(d.implementations, "slot.implementations");
+    const ref = (x: unknown, p: string) => {
+      const r = obj(x, p);
+      str(r.implementation, `${p}.implementation`, IDENTIFIER);
+      str(r.version, `${p}.version`, SEMVER);
+    };
+    if (impls.production !== null) ref(impls.production, "slot.implementations.production");
+    arr(impls.shadow, "slot.implementations.shadow").forEach((s, i) => ref(s, `slot.implementations.shadow[${i}]`));
+    return d as unknown as SlotDetail;
+  });
 }

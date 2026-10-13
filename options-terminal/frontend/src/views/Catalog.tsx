@@ -4,6 +4,7 @@ import type { SlotSummary } from "../api/types.ts";
 import { defaultScope, formatHash } from "../app/router.ts";
 import { ErrorIndicator, Loading } from "./states.tsx";
 import type { Polled } from "../api/usePolled.ts";
+import { hasBespoke } from "./registry.ts";
 
 export function sortSlots(slots: SlotSummary[]): SlotSummary[] {
   return [...slots].sort(
@@ -14,7 +15,9 @@ export function sortSlots(slots: SlotSummary[]): SlotSummary[] {
 }
 
 export function slotHref(slot: SlotSummary): string {
-  return formatHash({ name: "slot", slotId: slot.slot_id, scope: defaultScope(slot) ?? {} });
+  // Bespoke views may have a scope-less landing view (e.g. the cross-asset monitor).
+  const scope = hasBespoke(slot) ? {} : (defaultScope(slot) ?? {});
+  return formatHash({ name: "slot", slotId: slot.slot_id, scope });
 }
 
 export function Catalog({ slots }: { slots: Polled<SlotSummary[]> }) {

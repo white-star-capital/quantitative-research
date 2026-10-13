@@ -11,6 +11,12 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 const CONVENTIONS: Record<string, string> = {
   per_1vol_point: "per 1 vol pt",
   per_calendar_day: "per cal day",
+  usd_per_1vol_point: "$ per 1 vol pt",
+  usd_per_calendar_day: "$ per day",
+  delta_change_per_1pct_spot: "per 1% spot",
+  forward: "fwd",
+  spot: "spot",
+  compounded: "APY",
 };
 
 function fixed(abs: number, decimals: number): string {
@@ -38,6 +44,13 @@ export function formatValue(
   if (unit.scale === "decimal" && VOL_QUANTITIES.has(unit.quantity)) {
     return `${formatNumber(value * 100, opts.decimals ?? 2, signed)}%`;
   }
+  // Vol differences travel as decimals and read as vol points (guide §4.2): 0.052 → "+5.2 vp".
+  if (unit.quantity === "vol_spread") {
+    return `${formatNumber(value * 100, opts.decimals ?? 1, opts.signed ?? true)} vp`;
+  }
+  if (unit.scale === "decimal" && ["probability", "ratio", "rate", "yield_annualized"].includes(unit.quantity)) {
+    return `${formatNumber(value * 100, opts.decimals ?? 1, signed)}%`;
+  }
   if (unit.scale === "percent") return `${formatNumber(value, opts.decimals ?? 2, signed)}%`;
   if (unit.scale === "bps" || unit.quantity === "bps") {
     return `${formatNumber(value, opts.decimals ?? 1, signed)} bps`;
@@ -48,6 +61,14 @@ export function formatValue(
   }
   if (unit.quantity === "count") return formatNumber(value, 0, signed);
   return formatNumber(value, opts.decimals ?? 4, signed);
+}
+
+/** One table cell, by column type and unit. Booleans read as words, never colour alone. */
+export function formatCell(cell: number | string | boolean | null, type: string, unit?: Unit): string {
+  if (cell === null) return MISSING;
+  if (typeof cell === "boolean") return cell ? "YES" : "NO";
+  if (typeof cell === "string") return type === "timestamp" ? formatUtc(cell) : cell;
+  return unit ? formatValue(cell, unit) : formatNumber(cell, 4);
 }
 
 /** Axis labels: $12.5K, $1.2M (front_end_design.md §3). */

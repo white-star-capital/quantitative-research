@@ -4,6 +4,7 @@ declare module "node:test" {
   type Fn = () => void | Promise<void>;
   export function describe(name: string, fn: Fn): void;
   export function it(name: string, fn: Fn): void;
+  export function it(name: string, options: { skip?: boolean }, fn: Fn): void;
   export function test(name: string, fn: Fn): void;
 }
 

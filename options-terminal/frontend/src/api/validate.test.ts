@@ -21,9 +21,9 @@ const BASE = {
   },
   code: { git_sha: "a1b2c3d" },
   warnings: [],
-  payload_kind: "surface",
+  payload_kind: "scalar_set",
   payload_version: "1",
-  payload: {},
+  payload: { items: [] },
 };
 
 const FAILED = { ...BASE, status: "failed", payload: null, error: { code: "stale_input", message: "old" } };
@@ -41,7 +41,8 @@ describe("checkEnvelope", () => {
     ["success with error", { ...BASE, error: { code: "x", message: "y" } }],
     ["non-UTC timestamp", { ...BASE, as_of: "2026-10-13T17:00:00+02:00" }],
     ["unknown kind", { ...BASE, payload_kind: "heatmap" }],
-    ["NaN in payload", { ...BASE, payload: { z: [Number.NaN] } }],
+    ["NaN in payload", { ...BASE, payload: { items: [], z: [Number.NaN] } }],
+    ["payload shape", { ...BASE, payload: { items: [{ key: "a" }] } }],
     ["missing field", { ...BASE, run_id: undefined }],
     ["not an object", "<html>"],
   ];
