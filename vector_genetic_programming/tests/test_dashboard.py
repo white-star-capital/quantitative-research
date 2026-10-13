@@ -95,3 +95,16 @@ def test_unmeasured_rows_are_not_drawn_as_results(builder, tmp_path, monkeypatch
 def test_template_still_has_its_placeholder():
     """Without it the builder would emit a page with no data and no error."""
     assert "__VGP_DATA__" in TEMPLATE.read_text()
+
+
+def test_the_build_is_a_pure_function_of_results(builder):
+    """Two builds of unchanged results/ must be byte-identical.
+
+    An earlier version embedded a wall-clock timestamp, which made every rebuild
+    differ — so `--check` could never pass and CI would have failed on any commit
+    that touched nothing. Anything time-varying or machine-varying in the page
+    breaks the staleness gate that makes the dashboard trustworthy.
+    """
+    first = builder.render(builder.collect())
+    second = builder.render(builder.collect())
+    assert first == second

@@ -191,6 +191,11 @@ jobs:
             sleep 1
           done
           test -s served.html
-          grep -q "No evidence of skill" served.html
+          grep -q "NO EVIDENCE OF SKILL" served.html
           grep -q '"typical_oos":-0.533' served.html
+          # The viewing image has no vectorbt, so it must report itself view-only
+          # rather than offering a New Run button that cannot work.
+          curl -sf http://127.0.0.1:8000/api/state -o state.json
+          grep -q '"can_run": false' state.json
+          grep -q 'vectorbt is not importable' state.json
           docker rm -f vgp-dash

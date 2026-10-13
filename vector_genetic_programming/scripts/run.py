@@ -49,9 +49,12 @@ CACHE_DIR = PROJECT_DIR / "data"
 # universe) does not overwrite the committed baseline in results/ — losing the
 # baseline is how two runs become incomparable with nothing to compare against.
 RESULTS_DIR = Path(os.environ.get("VGP_RESULTS_DIR", PROJECT_DIR / "results"))
-SEEDS = [0, 1, 2]
-POP_SIZE = 200  # individuals per generation
-N_GENERATIONS = 30  # generations per seed
+# Every knob below is overridable so the dashboard can launch a variant run
+# without editing source. The defaults ARE the committed experiment — changing a
+# default changes what `make vgp` means, so change the environment instead.
+SEEDS = list(range(int(os.environ.get("VGP_N_SEEDS", "3"))))
+POP_SIZE = int(os.environ.get("VGP_POP_SIZE", "200"))  # individuals per generation
+N_GENERATIONS = int(os.environ.get("VGP_N_GEN", "30"))  # generations per seed
 
 # Walk-forward geometry. THE SAME DICT IS USED FOR THE NULL CONTROL BELOW —
 # if the null ran a different number of windows, or different lengths, it would
@@ -86,7 +89,16 @@ N_GENERATIONS = 30  # generations per seed
 # Dec 2025 - Mar 2026 is dropped, which is why the "longer is better" intuition
 # inverts here. 4-month keeps every month of OOS while making each individual
 # window worth reading (SE 1.74 against 2.45).
-WINDOW_KW = dict(train_months=9, val_months=2, oos_months=4, step_months=4)
+# oos_months also sets step_months: overlapping OOS windows are the nested-window
+# bug this project already fixed once, so the step tracks the window by
+# construction rather than by remembering to change both.
+_OOS_MONTHS = int(os.environ.get("VGP_OOS_MONTHS", "4"))
+WINDOW_KW = dict(
+    train_months=int(os.environ.get("VGP_TRAIN_MONTHS", "9")),
+    val_months=2,
+    oos_months=_OOS_MONTHS,
+    step_months=_OOS_MONTHS,
+)
 
 # One warm pool serves the WHOLE experiment (evolution_pool below) — every
 # window, every seed, every null run — so the numba JIT warmup is paid once
@@ -132,7 +144,9 @@ MIN_ASSETS = 10  # below this the run aborts rather than reporting
 # procedure" has to mean the same number of them.
 # A p-value cannot resolve below 1/(1+N_NULL_RUNS); 20 runs buys p >= 0.048.
 # Set N_NULL_RUNS = 0 to skip, and then do not describe the result as validated.
-N_NULL_RUNS = 99  # 1/(1+99) = 0.01 — at 19 the floor WAS 0.05, so nothing
+N_NULL_RUNS = int(
+    os.environ.get("VGP_N_NULL_RUNS", "99")
+)  # 1/(1+99) = 0.01 — at 19 the floor WAS 0.05, so nothing
 # could ever be called significant; a p of exactly 0.05 was the best attainable
 # result and indistinguishable from the boundary.
 NULL_SEEDS = [0]

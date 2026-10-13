@@ -24,6 +24,7 @@ WORKDIR /app
 # project source does not rebuild this image, editing results/ does.
 COPY --chown=vgp:vgp dashboard/template.html dashboard/template.html
 COPY --chown=vgp:vgp scripts/build_dashboard.py scripts/build_dashboard.py
+COPY --chown=vgp:vgp scripts/serve_dashboard.py scripts/serve_dashboard.py
 COPY --chown=vgp:vgp results/ results/
 
 USER vgp
@@ -34,7 +35,11 @@ RUN python scripts/build_dashboard.py && test -s dashboard/index.html
 
 EXPOSE 8000
 
-# http.server is a local viewer, not a production server: it is single-threaded
-# and has no TLS. That is the right tool here — the page is static, read-only,
-# and meant to be opened on the machine that ran the experiment.
-CMD ["python", "-m", "http.server", "8000", "--directory", "dashboard", "--bind", "0.0.0.0"]
+# serve_dashboard.py rather than http.server, so the page's /api/state call is
+# answered and the New Run panel can say WHY it is view-only here instead of
+# failing silently. Launching stays off: VGP_ALLOW_RUN is unset, and this image
+# has no vectorbt to run anything with.
+#
+# This is a local research viewer, not a production server: single-threaded, no
+# TLS, no auth. Serve it on a port you control.
+CMD ["python", "scripts/serve_dashboard.py"]

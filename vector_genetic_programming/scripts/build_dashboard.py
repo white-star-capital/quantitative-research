@@ -38,6 +38,16 @@ NULL_SERIES = {
 }
 
 
+def _int_after(text: str, pattern: str) -> int | None:
+    m = re.search(pattern, text)
+    return int(m.group(1)) if m else None
+
+
+def _line_after(text: str, pattern: str) -> str | None:
+    m = re.search(pattern, text)
+    return m.group(1).strip() if m else None
+
+
 class BuildError(RuntimeError):
     """Something in results/ is missing or unparseable — never guess past it."""
 
@@ -95,6 +105,13 @@ def collect() -> dict:
             "trades": int(r["oos_n_trades"]),
             "nodes": int(r["n_nodes_best"]),
             "front": int(r["n_pareto_front"]),
+            "dsr": round(float(r["dsr"]), 4),
+            "dsr_bests": round(float(r["dsr_bests_only"]), 4),
+            "min_trades": int(r["oos_min_trades"]),
+            "evals": int(r["n_evaluations"]),
+            "status": r["oos_status"],
+            "selection": r["selection"],
+            "train_end": r["train_end"],
         }
         for r in rows
         # A row whose OOS was never measured carries NaN plus a status; it is not
@@ -104,16 +121,56 @@ def collect() -> dict:
     if not runs:
         raise BuildError("no rows with oos_status == 'ok' — nothing measured to show")
 
+    # universe.json is written by the same run; absent only for very old results.
+    uni_path = RESULTS_DIR / "universe.json"
+    universe = json.loads(uni_path.read_text()) if uni_path.exists() else {}
+
+    # Everything in the null_control header that is not a per-run array.
+    header = {
+        "n_runs": _int_after(text, r"Null control: (\d+) signal-free"),
+        "block_size": _int_after(text, r"block_size=(\d+) bars"),
+        "fidelity_windows": _int_after(text, r"fidelity verified across (\d+) windows"),
+        "verdict": _line_after(text, r"VERDICT: (.+)"),
+    }
+    p95 = {}
+    for key, label in NULL_SERIES.items():
+        pat = (
+            rf"{re.escape(label)}\s+[+-][\d.]+\s+null median\s+[+-][\d.]+"
+            rf"\s+null p95\s+([+-][\d.]+)"
+        )
+        m = re.search(pat, text)
+        p95[key] = float(m.group(1)) if m else None
+
+    first = rows[0]
     return {
         "nulls": _null_runs(text),
         "runs": runs,
         "observed": observed,
         "nullmed": nullmed,
+        "nullp95": p95,
         "p": pvals,
+        "null_header": header,
+        "universe": universe,
         "n_evaluations": sum(int(r["n_evaluations"]) for r in rows),
-        "dsr_n_trials": int(rows[0]["dsr_n_trials"]),
-        "fingerprint": rows[0]["universe_fingerprint"],
-        "n_assets": int(rows[0]["n_assets"]),
+        "fingerprint": first["universe_fingerprint"],
+        "n_assets": int(first["n_assets"]),
+        # DSR is a run-level statistic filled in after every window and seed, so
+        # it is identical on every row; carry it once rather than per row.
+        "dsr": {
+            "n_trials": int(first["dsr_n_trials"]),
+            "n_evaluations": int(first["dsr_n_evaluations"]),
+            "trial_sr_std": float(first["dsr_trial_sr_std"]),
+            "source": first["dsr_trial_source"],
+            "n_trials_bests": int(first["dsr_n_trials_bests"]),
+            "trial_sr_std_bests": float(first["dsr_trial_sr_std_bests"]),
+            "max_all": max(float(r["dsr"]) for r in rows),
+            "max_bests": max(float(r["dsr_bests_only"]) for r in rows),
+        },
+        # Deliberately NOT a wall-clock timestamp: the page must be a pure
+        # function of results/, or every rebuild differs and --check can never
+        # pass. The run identifies itself by the span it covers.
+        "through": max(r["end"] for r in runs),
+        "from": min(r["start"] for r in runs),
     }
 
 

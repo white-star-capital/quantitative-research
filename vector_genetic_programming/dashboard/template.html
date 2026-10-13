@@ -3,334 +3,575 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VGP Terminal</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%230d1013%27/%3E%3Crect x=%271%27 y=%274%27 width=%273%27 height=%278%27 fill=%27%233987e5%27/%3E%3Crect x=%275.5%27 y=%272%27 width=%273%27 height=%2710%27 fill=%27%233987e5%27/%3E%3Crect x=%2710%27 y=%276%27 width=%273%27 height=%276%27 fill=%27%23d95926%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-  :root { color-scheme: light; }
-  body { margin: 0; font: 14px system-ui, sans-serif; background: #fbfbfa; }
-  img { max-width: 100%; }
-  [hidden] { display: none !important; }
-</style>
-<title>No Evidence of Skill</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%23fbfbfa%27/%3E%3Crect x=%271%27 y=%274%27 width=%273%27 height=%278%27 fill=%27%232a78d6%27/%3E%3Crect x=%275.5%27 y=%272%27 width=%273%27 height=%2710%27 fill=%27%232a78d6%27/%3E%3Crect x=%2710%27 y=%276%27 width=%273%27 height=%276%27 fill=%27%23eb6834%27/%3E%3C/svg%3E">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;600&display=swap">
-<style>
-/* Layout: verdict band -> null distributions (the evidence) -> the DSR conflict
-   -> every run -> the feature diagnostic. Summary before detail, one column. */
+/* Dark-first by intent: this is a terminal, read in a dim room beside other
+   terminals. Light is a full second palette, not an inversion.
+   Layout: status rail -> KPI grid -> null panels -> run matrix -> universe +
+   config -> control. Density over whitespace; every panel is a bordered cell. */
 :root {
-  --paper:        #fbfbfa;
-  --panel:        #ffffff;
-  --rule:         #e3e4e7;
-  --ink:          #16181d;
-  --ink-2:        #53575f;
-  --ink-3:        #80858e;
-  --null:         #2a78d6;   /* 99 signal-free runs */
-  --null-soft:    #cde2fb;
-  --observed:     #eb6834;   /* what the search actually produced */
-  --critical:     #d03b3b;
-  --good:         #0ca30c;
-  --display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
-  --body:    "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono:    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #15161a; --panel: #1c1e23; --rule: #2e3137;
-    --ink: #f2f2f0; --ink-2: #b9bcc3; --ink-3: #868a92;
-    --null: #3987e5; --null-soft: #1b3a63; --observed: #d95926;
-    --critical: #e26a6a; --good: #35b835;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --paper: #15161a; --panel: #1c1e23; --rule: #2e3137;
-  --ink: #f2f2f0; --ink-2: #b9bcc3; --ink-3: #868a92;
-  --null: #3987e5; --null-soft: #1b3a63; --observed: #d95926;
-  --critical: #e26a6a; --good: #35b835;
+  --bg:        #0d1013;
+  --panel:     #14181c;
+  --panel-2:   #191e23;
+  --rule:      #262d34;
+  --rule-2:    #323b44;
+  --fg:        #e6eaee;
+  --fg-2:      #9aa5b1;
+  --fg-3:      #6b7681;
+  --null:      #3987e5;
+  --null-soft: #1b3a63;
+  --observed:  #d95926;
+  --good:      #35b835;
+  --warn:      #c98500;
+  --bad:       #e26a6a;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
 }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f5f6; --panel: #ffffff; --panel-2: #fafbfb;
+    --rule: #dfe3e7; --rule-2: #c8cfd6;
+    --fg: #11161b; --fg-2: #4d5760; --fg-3: #7b858f;
+    --null: #2a78d6; --null-soft: #cde2fb; --observed: #eb6834;
+    --good: #0ca30c; --warn: #9a6600; --bad: #d03b3b;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f4f5f6; --panel: #ffffff; --panel-2: #fafbfb;
+  --rule: #dfe3e7; --rule-2: #c8cfd6;
+  --fg: #11161b; --fg-2: #4d5760; --fg-3: #7b858f;
+  --null: #2a78d6; --null-soft: #cde2fb; --observed: #eb6834;
+  --good: #0ca30c; --warn: #9a6600; --bad: #d03b3b;
+  color-scheme: light;
+}
 
-body { background: var(--paper); color: var(--ink); font-family: var(--body); line-height: 1.55; }
-.wrap { max-width: 1060px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 72px; }
-h1, h2, h3 { text-wrap: balance; margin: 0; }
-h1 { font-family: var(--display); font-size: clamp(30px, 5.4vw, 46px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.12; }
-h2 { font-family: var(--display); font-size: clamp(20px, 2.8vw, 25px); font-weight: 600; letter-spacing: -0.01em; }
-h3 { font-size: 13px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
-p  { margin: 0; max-width: 68ch; }
-.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 13px; line-height: 1.45; }
+.num, code, pre, input, select { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+h2 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-3); font-family: var(--mono); }
 
-.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-header { display: flex; flex-direction: column; gap: 14px; border-bottom: 1px solid var(--rule); padding-bottom: 28px; }
-header .lede { font-size: 17px; color: var(--ink-2); max-width: 64ch; }
-.meta { display: flex; flex-wrap: wrap; gap: 8px 22px; font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+/* --- status rail --------------------------------------------------------- */
+.rail { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--panel); border-bottom: 1px solid var(--rule-2); }
+.rail-in { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 9px 16px; }
+.brand { font-family: var(--mono); font-weight: 600; letter-spacing: .14em; font-size: 12px; }
+.rail .f { font-family: var(--mono); font-size: 11.5px; color: var(--fg-3); white-space: nowrap; }
+.rail .f b { color: var(--fg-2); font-weight: 500; }
+.spacer { flex: 1 1 auto; }
+.chip { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border: 1px solid currentColor; border-radius: 2px; white-space: nowrap; }
+.chip.bad { color: var(--bad); } .chip.good { color: var(--good); } .chip.warn { color: var(--warn); } .chip.mute { color: var(--fg-3); }
+button.ghost { font-family: var(--mono); font-size: 11px; background: none; border: 1px solid var(--rule-2); color: var(--fg-2); padding: 3px 9px; border-radius: 2px; cursor: pointer; }
+button.ghost:hover { color: var(--fg); border-color: var(--fg-3); }
 
-section { margin-top: 52px; display: flex; flex-direction: column; gap: 18px; }
-.sect-head { display: flex; flex-direction: column; gap: 6px; }
+.wrap { padding: 14px 16px 60px; display: flex; flex-direction: column; gap: 14px; max-width: 1560px; margin: 0 auto; }
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; min-width: 0; }
+.panel > .hd { display: flex; align-items: center; gap: 10px; padding: 7px 11px; border-bottom: 1px solid var(--rule); background: var(--panel-2); flex-wrap: wrap; }
+.panel > .bd { padding: 11px; }
+.hint { font-size: 11.5px; color: var(--fg-3); font-family: var(--mono); }
 
-/* Verdict: the one element that earns heavy styling. */
-.verdict { margin-top: 32px; border: 1px solid var(--rule); border-left: 4px solid var(--critical); border-radius: 4px; background: var(--panel); padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; }
-.verdict-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.verdict-top strong { font-family: var(--display); font-size: 21px; font-weight: 600; }
-.pill { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; }
-.pill.fail { color: var(--critical); }
-.pill.pass { color: var(--good); }
-.verdict p { font-size: 15px; color: var(--ink-2); }
+/* --- KPI grid ------------------------------------------------------------ */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.kpi { background: var(--panel); padding: 9px 11px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kpi .k { font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .v { font-family: var(--mono); font-size: 19px; font-weight: 500; letter-spacing: -.02em; }
+.kpi .s { font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); }
+.pos { color: var(--good); } .neg { color: var(--bad); } .flat { color: var(--fg); }
 
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
-.tile { background: var(--panel); padding: 16px 18px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-.tile .k { font-size: 12px; color: var(--ink-3); letter-spacing: .03em; }
-.tile .v { font-family: var(--mono); font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-.tile .s { font-size: 12px; color: var(--ink-3); font-family: var(--mono); }
-.neg { color: var(--critical); }
-
-.legend { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--ink-2); }
-.key { display: inline-flex; align-items: center; gap: 7px; }
-.swatch { width: 13px; height: 13px; border-radius: 2px; flex: none; }
-.swatch.line { width: 3px; height: 15px; border-radius: 1px; }
-
-.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-@media (max-width: 680px) { .charts { grid-template-columns: minmax(0, 1fr); } }
-.chart { background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 16px 16px 10px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.chart .ct { font-size: 14px; font-weight: 600; }
-.chart .cs { font-size: 12px; color: var(--ink-3); font-family: var(--mono); }
-.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+/* --- null panels --------------------------------------------------------- */
+.nulls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+@media (max-width: 1180px) { .nulls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px)  { .nulls { grid-template-columns: minmax(0, 1fr); } }
+.nd .bd { padding: 8px 9px 4px; }
+.nd svg { width: 100%; height: auto; display: block; overflow: visible; }
 .bar { fill: var(--null-soft); stroke: var(--null); stroke-width: 1; }
 .bar:hover { fill: var(--null); }
-.axis { stroke: var(--rule); stroke-width: 1; }
-.tick { font-family: var(--mono); font-size: 9px; fill: var(--ink-3); }
+.axis { stroke: var(--rule-2); }
+.tick { font-family: var(--mono); font-size: 8.5px; fill: var(--fg-3); }
+.ndrow { display: flex; justify-content: space-between; gap: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); padding: 0 1px 6px; }
 
-.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel); }
-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-th, td { padding: 9px 13px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
-th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; background: var(--paper); position: sticky; top: 0; }
+/* --- tables -------------------------------------------------------------- */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+th { font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--fg-3); font-weight: 600; background: var(--panel-2); position: sticky; top: 0; cursor: pointer; user-select: none; }
+th:hover { color: var(--fg-2); }
+th[aria-sort="ascending"]::after { content: " \2191"; } th[aria-sort="descending"]::after { content: " \2193"; }
 th:first-child, td:first-child { text-align: left; }
+tbody tr:hover { background: var(--panel-2); }
 tbody tr:last-child td { border-bottom: none; }
-td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-tr.sep td { border-top: 2px solid var(--rule); }
+td.w { color: var(--fg-3); }
 
-.note { font-size: 14px; color: var(--ink-2); }
-.note code, .ic code { font-family: var(--mono); font-size: 12.5px; background: var(--null-soft); color: var(--ink); padding: 1px 5px; border-radius: 3px; }
-:root[data-theme="dark"] .note code, :root[data-theme="dark"] .ic code { background: #26303d; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .note code, :root:not([data-theme="light"]) .ic code { background: #26303d; } }
+/* --- universe ------------------------------------------------------------ */
+.ticks { display: flex; flex-wrap: wrap; gap: 4px; }
+.tkr { font-family: var(--mono); font-size: 10.5px; padding: 1px 6px; border: 1px solid var(--rule-2); border-radius: 2px; color: var(--fg-2); }
+.tkr.out { color: var(--fg-3); border-style: dashed; text-decoration: line-through; }
+.tkr.fail { color: var(--bad); border-color: var(--bad); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); }
+.sw { display: inline-block; width: 9px; height: 9px; vertical-align: -1px; margin-right: 5px; border-radius: 1px; }
 
-.split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.box { background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 18px 20px; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
-.box .big { font-family: var(--mono); font-size: 32px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-.box p { font-size: 13.5px; color: var(--ink-2); }
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .cols2 { grid-template-columns: minmax(0, 1fr); } }
 
-footer { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--ink-3); display: flex; flex-direction: column; gap: 7px; }
+dl.kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-family: var(--mono); font-size: 11.5px; }
+dl.kv dt { color: var(--fg-3); white-space: nowrap; }
+dl.kv dd { margin: 0; text-align: right; }
 
-#tip { position: fixed; pointer-events: none; opacity: 0; transition: opacity .1s; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 11.5px; padding: 6px 9px; border-radius: 3px; z-index: 50; white-space: nowrap; }
+/* --- control ------------------------------------------------------------- */
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px; }
+.fld { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fld label { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); }
+.fld input { background: var(--bg); border: 1px solid var(--rule-2); color: var(--fg); padding: 5px 7px; border-radius: 2px; font-size: 12px; width: 100%; }
+.fld input:focus-visible { outline: 2px solid var(--null); outline-offset: 1px; }
+.fld .rng { font-family: var(--mono); font-size: 10px; color: var(--fg-3); }
+.actions { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; margin-top: 11px; }
+button.go { font-family: var(--mono); font-size: 12px; padding: 7px 16px; border-radius: 2px; border: 1px solid var(--good); background: none; color: var(--good); cursor: pointer; }
+button.go:disabled { color: var(--fg-3); border-color: var(--rule-2); cursor: not-allowed; }
+button.stop { border-color: var(--bad); color: var(--bad); }
+pre.cmd, pre.log { margin: 0; background: var(--bg); border: 1px solid var(--rule); border-radius: 2px; padding: 9px; font-size: 11px; color: var(--fg-2); overflow-x: auto; white-space: pre; }
+pre.log { max-height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+.msg { font-family: var(--mono); font-size: 11.5px; padding: 7px 9px; border-radius: 2px; border: 1px solid var(--rule-2); color: var(--fg-2); }
+.msg.err { border-color: var(--bad); color: var(--bad); }
+.note { font-size: 12px; color: var(--fg-2); max-width: 90ch; }
+.note b { color: var(--fg); font-weight: 600; }
+
+#tip { position: fixed; pointer-events: none; opacity: 0; transition: opacity .08s; background: var(--fg); color: var(--bg); font-family: var(--mono); font-size: 11px; padding: 5px 8px; border-radius: 2px; z-index: 60; white-space: nowrap; }
 #tip.on { opacity: 1; }
-
-@media (max-width: 620px) { .split { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
-
 </head>
 <body>
+
+<div class="rail">
+  <div class="rail-in">
+    <span class="brand">VGP</span>
+    <span class="f">OOS <b id="r-gen">—</b></span>
+    <span class="f">UNIV <b id="r-fp">—</b></span>
+    <span class="f">ASSETS <b id="r-assets">—</b></span>
+    <span class="f">FEE <b id="r-fee">10.0 bps</b></span>
+    <span class="f">NULLS <b id="r-nulls">—</b></span>
+    <span class="f">EVALS <b id="r-evals">—</b></span>
+    <span class="spacer"></span>
+    <span class="chip bad" id="r-verdict">NO EVIDENCE OF SKILL</span>
+    <button class="ghost" id="theme">THEME</button>
+  </div>
+</div>
+
 <div class="wrap">
 
-  <header>
-    <div class="eyebrow">Vector Genetic Programming &middot; walk-forward run 2026-09-15</div>
-    <h1>No evidence of skill</h1>
-    <p class="lede">A genetic program searched 50,455 trading strategies across 21 crypto assets. To find out whether it discovered anything, the identical pipeline was re-run on 99 surrogate datasets built to contain no signal at all. This is the comparison.</p>
-    <div class="meta">
-      <span>universe af8fe4ee067f</span>
-      <span>21 assets &middot; 701 days</span>
-      <span>3 windows &times; 3 seeds</span>
-      <span>4-month disjoint OOS</span>
-      <span>10 bps costs</span>
-    </div>
-  </header>
+  <div class="kpis" id="kpis"></div>
 
-  <div class="verdict">
-    <div class="verdict-top">
-      <strong>The search performs worse than signal-free data</strong>
-      <span class="pill fail">p = 0.700</span>
+  <section class="panel">
+    <div class="hd">
+      <h2>Null control &mdash; observed vs signal-free surrogates</h2>
+      <span class="hint" id="nullhint"></span>
+      <span class="spacer"></span>
+      <span class="legend">
+        <span><span class="sw" style="background:var(--null-soft);border:1px solid var(--null)"></span>null runs</span>
+        <span><span class="sw" style="background:var(--observed)"></span>observed</span>
+      </span>
     </div>
-    <p>On the statistic that matters for a deployable strategy &mdash; the typical window, not the luckiest one &mdash; the real data produced an out-of-sample Sharpe of <span class="num">&minus;0.533</span> against a null median of <span class="num">+0.255</span>. Seventy percent of datasets with no signal in them did better.</p>
-  </div>
-
-  <section>
-    <div class="sect-head">
-      <h2>Where the result falls in the null distribution</h2>
-      <p class="note">Each histogram is 99 runs of the same search on surrogate data that preserves volatility, fat tails and cross-asset correlation but destroys any predictable ordering. An edge would sit out in the right tail. None of these do.</p>
+    <div class="bd">
+      <div class="nulls" id="nulls"></div>
+      <p class="note" style="margin-top:11px">
+        <b>TYPICAL OOS is the one that matters.</b> MAX asks whether the best of many tries looks lucky, which flatters a search.
+        TYPICAL asks whether the median window beats chance, and only that corresponds to money.
+      </p>
     </div>
-    <div class="legend">
-      <span class="key"><span class="swatch" style="background:var(--null-soft);border:1px solid var(--null)"></span>99 signal-free runs</span>
-      <span class="key"><span class="swatch line" style="background:var(--observed)"></span>observed on real data</span>
-    </div>
-    <div class="charts" id="charts"></div>
-    <p class="note"><strong>Read the bottom-right panel.</strong> The other three ask whether the best of many tries looks lucky; that question flatters a search. The typical window asks whether an average period beats chance, and it is the only one that corresponds to money.</p>
   </section>
 
-  <section>
-    <div class="sect-head">
-      <h2>Two statistics disagree, and one of them is blind</h2>
+  <section class="panel">
+    <div class="hd">
+      <h2>Run matrix</h2>
+      <span class="hint">click a header to sort &middot; <span id="rowcount"></span></span>
     </div>
-    <div class="split">
-      <div class="box">
-        <h3>Deflated Sharpe Ratio</h3>
-        <div class="big" style="color:var(--good)">0.970</div>
-        <p>Clears the conventional 0.95 bar. Read alone, it certifies this result. DSR corrects for selection <em>across</em> trials: it asks whether the best of 38,774 tries beats what the spread of those tries predicts.</p>
-      </div>
-      <div class="box">
-        <h3>Null control</h3>
-        <div class="big" style="color:var(--critical)">p = 0.700</div>
-        <p>Rejects it. The null control re-runs the whole pipeline on data with no signal, so it catches bias that shifts <em>every</em> trial together &mdash; which leaves the cross-sectional spread untouched and DSR unmoved.</p>
-      </div>
-    </div>
-    <p class="note">Both numbers are arithmetically correct. Eleven measurement defects were found in this project, and seven of them lived in exactly that blind spot: a lookahead feature, a decorrelated surrogate, nested out-of-sample windows, a survivor-biased universe, a ranking sentinel reported as performance, unequal numbers of tries in the max statistic, and results that changed between processes because a crossover operator depended on memory addresses. DSR saw none of them. <strong>Where the two disagree, believe the null control.</strong></p>
-  </section>
-
-  <section>
-    <div class="sect-head">
-      <h2>Every run, not just the summary</h2>
-      <p class="note">Nine rows: three walk-forward windows &times; three seeds. Each strategy was chosen on a held-out validation slice, then measured once on out-of-sample data it had never seen.</p>
-    </div>
-    <div class="tablewrap">
-      <table>
-        <thead>
-          <tr><th>Window</th><th>Out-of-sample period</th><th>Seed</th><th>In-sample</th><th>Validation</th><th>Out-of-sample</th><th>Trades</th><th>Nodes</th><th>Front</th></tr>
-        </thead>
-        <tbody id="runs"></tbody>
+    <div class="scroll">
+      <table id="matrix">
+        <thead><tr id="mhead"></tr></thead>
+        <tbody id="mbody"></tbody>
       </table>
     </div>
-    <p class="note">Validation Sharpe is <em>anti</em>-correlated with out-of-sample here: window 0 validated at <span class="num">+0.82</span> and delivered <span class="num">+1.21</span>, while windows 1 and 2 validated near <span class="num">+2.9</span> and delivered about <span class="num">&minus;0.7</span>. Three windows is not evidence. It is recorded because it is cheap to test on the next dataset and expensive to discover later.</p>
   </section>
 
-  <section class="ic">
-    <div class="sect-head">
-      <h2>The features are not empty. The tradeable part is.</h2>
-      <p class="note">A separate diagnostic asks the data directly, in minutes rather than the eight hours an evolution takes. Of twelve features, eleven carry no timing information distinguishable from signal-free data. One does.</p>
+  <div class="cols2">
+    <section class="panel">
+      <div class="hd"><h2>Universe</h2><span class="hint" id="unihint"></span></div>
+      <div class="bd" style="display:flex;flex-direction:column;gap:10px">
+        <dl class="kv" id="unikv"></dl>
+        <div>
+          <div class="legend" style="margin-bottom:6px">
+            <span>retained</span>
+            <span><span class="sw" style="border:1px dashed var(--rule-2)"></span>dropped by features</span>
+            <span><span class="sw" style="border:1px solid var(--bad)"></span>fetch failed</span>
+          </div>
+          <div class="ticks" id="tickers"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="hd"><h2>Deflated Sharpe &amp; trial set</h2></div>
+      <div class="bd" style="display:flex;flex-direction:column;gap:10px">
+        <dl class="kv" id="dsrkv"></dl>
+        <p class="note">
+          <b>DSR clears 0.95 while the null control returns p = 0.700.</b> Both are correct and answer different questions.
+          DSR corrects for selection <i>across</i> trials and is blind by construction to bias shared by <i>every</i> trial.
+          Seven such defects were found in this project and it saw none of them. Where they disagree, believe the null control.
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="hd">
+      <h2>New run</h2>
+      <span class="chip mute" id="runstate">CHECKING</span>
+      <span class="spacer"></span>
+      <span class="hint" id="runreason"></span>
     </div>
-    <div class="tiles">
-      <div class="tile"><span class="k">ret_1d timing IC</span><span class="v">&minus;0.0290</span><span class="s">null +0.0058 &plusmn; 0.0104</span></div>
-      <div class="tile"><span class="k">significance</span><span class="v" style="color:var(--good)">p 0.0040</span><span class="s">clears Bonferroni 0.0042</span></div>
-      <div class="tile"><span class="k">Sharpe, no costs</span><span class="v">+0.285</span><span class="s">p 0.231 &mdash; inside the null</span></div>
-      <div class="tile"><span class="k">Sharpe, 10 bps</span><span class="v neg">&minus;2.18</span><span class="s">1.34&times; daily turnover</span></div>
+    <div class="bd" style="display:flex;flex-direction:column;gap:12px">
+      <div class="form" id="form"></div>
+      <div class="actions">
+        <button class="go" id="launch" disabled>START RUN</button>
+        <button class="go stop" id="cancel" hidden>CANCEL</button>
+        <span class="hint" id="eta"></span>
+      </div>
+      <div id="msg" hidden></div>
+      <div>
+        <div class="hint" style="margin-bottom:5px">Equivalent command &mdash; runs anywhere, no server needed</div>
+        <pre class="cmd" id="cmd"></pre>
+      </div>
+      <div id="logwrap" hidden>
+        <div class="hint" style="margin-bottom:5px">Live log &mdash; <span id="logmeta"></span></div>
+        <pre class="log" id="log"></pre>
+      </div>
+      <p class="note">
+        A run writes to its own directory under <code>runs/</code> and never touches the committed <code>results/</code>.
+        Defaults reproduce the published experiment. The null control is 99 full experiments, so it dominates the runtime.
+      </p>
     </div>
-    <p class="note">The information is real and it does not convert. One-day cross-sectional reversal genuinely predicts returns, but rebalancing daily costs <strong>49% a year</strong> at 10 bps, and the gross Sharpe was already inside one standard deviation of the null. Breaking even would need round-trip execution under about <span class="num">1.2 bps</span>. An information coefficient that beats the null is necessary, not sufficient.</p>
-    <p class="note">An earlier version of this diagnostic reported five features clearing a Bonferroni threshold with stable split-half signs. That was measured on <em>raw</em> cross-sectional IC tested against <em>zero</em>, and signal-free surrogates reproduce 92&ndash;124% of it &mdash; it described which assets are persistently volatile, not what happens next. Split-half stability could not have disagreed, because a static property is stable across halves by construction.</p>
   </section>
 
-  <footer>
-    <span>Reproduce with <code style="font-family:var(--mono)">make verify-data &amp;&amp; make vgp</code>. Market data ships in the repository; no network required.</span>
-    <span>50,455 strategies evaluated &middot; 38,774 counted in the DSR trial set &middot; 99 null runs &times; 1 seed &middot; surrogate fidelity verified in all 8 windows.</span>
-  </footer>
 </div>
 
 <div id="tip" role="status" aria-live="polite"></div>
 
 <script id="vgp-data" type="application/json">__VGP_DATA__</script>
-
 <script>
-const DATA = JSON.parse(document.getElementById("vgp-data").textContent);
+const D = JSON.parse(document.getElementById("vgp-data").textContent);
 
-const PANELS = [
-  { key: "max_is",      title: "Best in-sample Sharpe",      sub: "MAX — could the search stumble on this?" },
-  { key: "max_oos",     title: "Best out-of-sample Sharpe",  sub: "MAX — the luckiest window" },
-  { key: "typical_is",  title: "Typical in-sample Sharpe",   sub: "TYPICAL — the median window, fitted" },
-  { key: "typical_oos", title: "Typical out-of-sample Sharpe", sub: "TYPICAL — the number that means money" },
+/* ---------- helpers ---------- */
+const sg = (v, d = 3) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d);
+const cls = v => (v > 0 ? "pos" : v < 0 ? "neg" : "flat");
+const el = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const tip = el("tip");
+function showTip(e, t) {
+  tip.textContent = t; tip.classList.add("on");
+  const r = tip.getBoundingClientRect(), p = 13;
+  let x = e.clientX + p, y = e.clientY + p;
+  if (x + r.width > innerWidth - 6) x = e.clientX - r.width - p;
+  if (y + r.height > innerHeight - 6) y = e.clientY - r.height - p;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => tip.classList.remove("on");
+
+/* ---------- theme ---------- */
+el("theme").onclick = () => {
+  const now = document.documentElement.getAttribute("data-theme");
+  const next = now === "light" ? "dark" : now === "dark" ? "" : "light";
+  if (next) document.documentElement.setAttribute("data-theme", next);
+  else document.documentElement.removeAttribute("data-theme");
+  try { localStorage.setItem("vgp-theme", next); } catch (_) {}
+  drawNulls();
+};
+try { const t = localStorage.getItem("vgp-theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (_) {}
+
+/* ---------- status rail ---------- */
+const U = D.universe || {}, NH = D.null_header || {};
+el("r-gen").textContent = `${D.from} \u2192 ${D.through}`;
+el("r-fp").textContent = D.fingerprint;
+el("r-assets").textContent = `${U.n_retained ?? D.n_assets}/${U.n_fetched ?? "?"}/${U.n_requested ?? "?"}`;
+el("r-nulls").textContent = `${NH.n_runs ?? "?"} × blk ${NH.block_size ?? "?"}`;
+el("r-evals").textContent = D.n_evaluations.toLocaleString();
+
+/* ---------- KPI grid ---------- */
+const oosVals = D.runs.map(r => r.oos);
+const posWindows = oosVals.filter(v => v > 0).length;
+const KPI = [
+  ["typical OOS", sg(D.observed.typical_oos), `null ${sg(D.nullmed.typical_oos)}`, cls(D.observed.typical_oos)],
+  ["p (typ OOS)", D.p.typical_oos.toFixed(3), "0.05 to reject", D.p.typical_oos <= 0.05 ? "pos" : "neg"],
+  ["max OOS", sg(D.observed.max_oos), `p ${D.p.max_oos.toFixed(3)}`, cls(D.observed.max_oos)],
+  ["typical IS", sg(D.observed.typical_is), `p ${D.p.typical_is.toFixed(3)}`, cls(D.observed.typical_is)],
+  ["max IS", sg(D.observed.max_is), `p ${D.p.max_is.toFixed(3)}`, cls(D.observed.max_is)],
+  ["DSR (all evals)", D.dsr.max_all.toFixed(3), `${D.dsr.n_trials.toLocaleString()} trials`, D.dsr.max_all >= 0.95 ? "pos" : "flat"],
+  ["DSR (bests)", D.dsr.max_bests.toFixed(3), `${D.dsr.n_trials_bests} trials`, D.dsr.max_bests >= 0.95 ? "pos" : "flat"],
+  ["rows", String(D.runs.length), `${posWindows} OOS positive`, "flat"],
+  ["evaluations", D.n_evaluations.toLocaleString(), "across all windows", "flat"],
+  ["fidelity", String(NH.fidelity_windows ?? "—"), "windows verified", "pos"],
 ];
+el("kpis").innerHTML = KPI.map(([k, v, s, c]) =>
+  `<div class="kpi"><span class="k">${k}</span><span class="v ${c}">${v}</span><span class="s">${esc(s)}</span></div>`).join("");
 
-const tip = document.getElementById("tip");
-function showTip(e, text) {
-  tip.textContent = text;
-  tip.classList.add("on");
-  const pad = 14;
-  let x = e.clientX + pad, y = e.clientY + pad;
-  const r = tip.getBoundingClientRect();
-  if (x + r.width > window.innerWidth - 8) x = e.clientX - r.width - pad;
-  if (y + r.height > window.innerHeight - 8) y = e.clientY - r.height - pad;
-  tip.style.left = x + "px";
-  tip.style.top = y + "px";
+/* ---------- null distribution panels ---------- */
+const PANELS = [
+  ["max_is", "MAX best IS"], ["max_oos", "MAX best OOS"],
+  ["typical_is", "TYPICAL IS"], ["typical_oos", "TYPICAL OOS"],
+];
+el("nullhint").textContent =
+  `${NH.n_runs ?? "?"} surrogate runs · block ${NH.block_size ?? "?"} bars · empirical p floor ${(1 / (1 + (NH.n_runs || 1))).toFixed(3)}`;
+
+function drawNulls() {
+  el("nulls").innerHTML = PANELS.map(([key, title]) => {
+    const vals = D.nulls[key], obs = D.observed[key], pv = D.p[key];
+    const lo = Math.min(...vals, obs), hi = Math.max(...vals, obs);
+    const pad = (hi - lo) * 0.04 || 0.1, min = lo - pad, max = hi + pad;
+    const NB = 20, w = (max - min) / NB, bins = new Array(NB).fill(0);
+    for (const v of vals) bins[Math.min(NB - 1, Math.max(0, Math.floor((v - min) / w)))]++;
+    const peak = Math.max(...bins);
+
+    const W = 300, H = 132, L = 6, R = 6, T = 20, B = 18;
+    const pw = W - L - R, ph = H - T - B;
+    const x = v => L + ((v - min) / (max - min)) * pw;
+
+    let bars = "";
+    bins.forEach((c, i) => {
+      if (!c) return;
+      const x0 = x(min + i * w), x1 = x(min + (i + 1) * w), bh = (c / peak) * ph;
+      bars += `<rect class="bar" x="${(x0 + 0.8).toFixed(1)}" y="${(T + ph - bh).toFixed(1)}" `
+            + `width="${Math.max(1, x1 - x0 - 1.6).toFixed(1)}" height="${bh.toFixed(1)}" rx="1" `
+            + `data-t="${c} of ${vals.length} runs · ${(min + i * w).toFixed(2)} to ${(min + (i + 1) * w).toFixed(2)}"></rect>`;
+    });
+    const ox = x(obs), right = ox < W * 0.6;
+    return `<section class="panel nd">
+      <div class="hd" style="padding:6px 9px"><h2>${title}</h2></div>
+      <div class="bd">
+        <div class="ndrow">
+          <span style="color:var(--observed);font-weight:600">${sg(obs)}</span>
+          <span>null ${sg(D.nullmed[key], 2)} · p95 ${sg(D.nullp95[key] ?? 0, 2)}</span>
+          <span style="color:${pv <= 0.05 ? "var(--good)" : "var(--fg-2)"}">p ${pv.toFixed(3)}</span>
+        </div>
+        <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${title}: observed ${obs.toFixed(3)}, p ${pv.toFixed(3)}, against ${vals.length} signal-free runs">
+          ${bars}
+          <line class="axis" x1="${L}" y1="${T + ph}" x2="${W - R}" y2="${T + ph}"></line>
+          <text class="tick" x="${L}" y="${H - B + 12}" text-anchor="start">${sg(min, 1)}</text>
+          <text class="tick" x="${W - R}" y="${H - B + 12}" text-anchor="end">${sg(max, 1)}</text>
+          <line x1="${ox.toFixed(1)}" y1="${T - 9}" x2="${ox.toFixed(1)}" y2="${T + ph}" stroke="var(--observed)" stroke-width="2.5"></line>
+          <text x="${(right ? ox + 5 : ox - 5).toFixed(1)}" y="${T - 11}" text-anchor="${right ? "start" : "end"}"
+                fill="var(--observed)" style="font-family:var(--mono);font-size:10px;font-weight:600">${sg(obs, 2)}</text>
+        </svg>
+      </div></section>`;
+  }).join("");
+  document.querySelectorAll(".bar").forEach(b => {
+    b.addEventListener("mousemove", e => showTip(e, b.dataset.t));
+    b.addEventListener("mouseleave", hideTip);
+  });
 }
-function hideTip() { tip.classList.remove("on"); }
+drawNulls();
 
-function histogram(values, observed, pval) {
-  // Bin across the full range of BOTH the null runs and the observed value, so
-  // the marker is always inside the drawing rather than clipped at an edge.
-  const lo = Math.min(...values, observed), hi = Math.max(...values, observed);
-  const nBins = 18;
-  const pad = (hi - lo) * 0.04 || 0.1;
-  const min = lo - pad, max = hi + pad;
-  const w = (max - min) / nBins;
-  const bins = new Array(nBins).fill(0);
-  for (const v of values) {
-    const i = Math.min(nBins - 1, Math.max(0, Math.floor((v - min) / w)));
-    bins[i]++;
+/* ---------- run matrix ---------- */
+const COLS = [
+  ["w", "win", r => "W" + r.w, r => r.w],
+  ["period", "oos period", r => `<span class="w">${r.start} → ${r.end}</span>`, r => r.start],
+  ["seed", "seed", r => r.seed, r => r.seed],
+  ["is_", "IS", r => `<span class="${cls(r.is_)}">${sg(r.is_)}</span>`, r => r.is_],
+  ["val", "val", r => `<span class="${cls(r.val)}">${sg(r.val)}</span>`, r => r.val],
+  ["oos", "OOS", r => `<b class="${cls(r.oos)}">${sg(r.oos)}</b>`, r => r.oos],
+  ["dsr", "dsr", r => r.dsr.toFixed(3), r => r.dsr],
+  ["dsr_bests", "dsr(b)", r => r.dsr_bests.toFixed(3), r => r.dsr_bests],
+  ["trades", "trades", r => r.trades, r => r.trades],
+  ["min_trades", "min", r => `<span class="w">${r.min_trades}</span>`, r => r.min_trades],
+  ["nodes", "nodes", r => r.nodes, r => r.nodes],
+  ["front", "front", r => r.front, r => r.front],
+  ["evals", "evals", r => r.evals.toLocaleString(), r => r.evals],
+  ["status", "status", r => `<span class="w">${esc(r.status)}</span>`, r => r.status],
+  ["selection", "selected on", r => `<span class="w">${esc(r.selection)}</span>`, r => r.selection],
+];
+let sortKey = null, sortDir = 1;
+el("mhead").innerHTML = COLS.map(c => `<th data-k="${c[0]}" scope="col">${c[1]}</th>`).join("");
+el("rowcount").textContent = `${D.runs.length} rows`;
+
+function paint() {
+  let rows = D.runs.slice();
+  if (sortKey) {
+    const col = COLS.find(c => c[0] === sortKey);
+    rows.sort((a, b) => {
+      const x = col[3](a), y = col[3](b);
+      return (x > y ? 1 : x < y ? -1 : 0) * sortDir;
+    });
   }
-  return { bins, min, max, w, peak: Math.max(...bins) };
+  el("mbody").innerHTML = rows.map(r => `<tr>${COLS.map(c => `<td>${c[2](r)}</td>`).join("")}</tr>`).join("");
+  document.querySelectorAll("#mhead th").forEach(th =>
+    th.setAttribute("aria-sort", th.dataset.k === sortKey ? (sortDir === 1 ? "ascending" : "descending") : "none"));
+}
+el("mhead").onclick = e => {
+  const th = e.target.closest("th"); if (!th) return;
+  if (sortKey === th.dataset.k) sortDir = -sortDir; else { sortKey = th.dataset.k; sortDir = 1; }
+  paint();
+};
+paint();
+
+/* ---------- universe ---------- */
+el("unihint").textContent = U.is_complete === false ? "PARTIAL — declared" : "";
+el("unikv").innerHTML = [
+  ["fingerprint", D.fingerprint], ["requested", U.n_requested], ["fetched", U.n_fetched],
+  ["retained", U.n_retained], ["dates", U.n_dates], ["complete", String(U.is_complete)],
+].filter(([, v]) => v !== undefined).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+
+const failed = new Set(Object.keys(U.fetch_failed || {}).map(s => s.replace(/USDT$/, "")));
+const dropped = new Set((U.dropped_by_features || []).map(s => s.replace(/USDT$/, "")));
+el("tickers").innerHTML = (U.requested || []).map(t => {
+  const k = String(t).replace(/USDT$/, "");
+  const c = failed.has(k) ? "tkr fail" : dropped.has(k) ? "tkr out" : "tkr";
+  const why = failed.has(k) ? "fetch failed" : dropped.has(k) ? "dropped by min_obs_fraction" : "retained";
+  return `<span class="${c}" title="${why}">${esc(k)}</span>`;
+}).join("");
+
+/* ---------- DSR ---------- */
+el("dsrkv").innerHTML = [
+  ["dsr (all evaluations)", D.dsr.max_all.toFixed(4)],
+  ["dsr (bests only)", D.dsr.max_bests.toFixed(4)],
+  ["trials counted", D.dsr.n_trials.toLocaleString()],
+  ["evaluations", D.dsr.n_evaluations.toLocaleString()],
+  ["trial SR spread", D.dsr.trial_sr_std.toFixed(4)],
+  ["trial source", D.dsr.source],
+  ["null control p (typ OOS)", D.p.typical_oos.toFixed(3)],
+].map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+
+/* ---------- control ---------- */
+const FORM_ORDER = ["fee_bps", "n_null_runs", "n_seeds", "pop_size", "n_gen", "train_months", "oos_months"];
+const LABEL = {
+  fee_bps: "fee (bps)", n_null_runs: "null runs", n_seeds: "seeds", pop_size: "population",
+  n_gen: "generations", train_months: "train (mo)", oos_months: "OOS (mo)",
+};
+let SPEC = null, pollTimer = null;
+
+/* Runtime estimate, calibrated on the committed run rather than guessed: the
+   default configuration (3 windows x (3 seeds + 99 null runs x 1 seed) x 200
+   individuals x 30 generations) took 7.8 hours end to end. Everything scales
+   with the evaluation count, so one measured point fixes the constant.
+   The window count falls out of the 27-month panel, not the form, so it is
+   derived the way generate_windows does: one window per OOS step that fits. */
+const CAL_EVALS = 3 * (3 + 99) * 200 * 30;   // 1,836,000 evaluations
+const CAL_MINUTES = 468;                      // 7.8 hours, measured
+// Fixed cost paid once per run whatever the size: load, feature matrix, and the
+// ~11.5s numba warmup. Without it the estimator says 0 for the 48s smoke run.
+const CAL_FIXED_MIN = 0.8;
+function estimate(v) {
+  // 701 trading days of panel, not the calendar span of the request.
+  const panelMonths = 23;
+  const windows = Math.max(1, Math.floor((panelMonths - Number(v.train_months) - 2) / Number(v.oos_months)));
+  const evals = windows * (Number(v.n_seeds) + Number(v.n_null_runs)) * Number(v.pop_size) * Number(v.n_gen);
+  const mins = CAL_FIXED_MIN + evals / CAL_EVALS * CAL_MINUTES;
+  const span = mins < 1 ? "<1 min"
+    : mins < 90 ? `~${Math.round(mins)} min`
+    : `~${(mins / 60).toFixed(1)} hours`;
+  return `${windows} window${windows === 1 ? "" : "s"} \u00b7 ${evals.toLocaleString()} evaluations \u00b7 ${span}`;
 }
 
-function drawPanel(p) {
-  const vals = DATA.nulls[p.key];
-  const obs = DATA.observed[p.key];
-  const pv = DATA.p[p.key];
-  const h = histogram(vals, obs);
-
-  const W = 340, H = 168, L = 8, R = 8, T = 26, B = 26;
-  const pw = W - L - R, ph = H - T - B;
-  const x = v => L + ((v - h.min) / (h.max - h.min)) * pw;
-  const barH = c => (c / h.peak) * ph;
-
-  let bars = "";
-  for (let i = 0; i < h.bins.length; i++) {
-    const c = h.bins[i];
-    const x0 = x(h.min + i * h.w), x1 = x(h.min + (i + 1) * h.w);
-    const bh = barH(c);
-    if (c === 0) continue;
-    const lo = (h.min + i * h.w).toFixed(2), hi = (h.min + (i + 1) * h.w).toFixed(2);
-    bars += `<rect class="bar" x="${(x0 + 1).toFixed(1)}" y="${(T + ph - bh).toFixed(1)}" width="${Math.max(1, x1 - x0 - 2).toFixed(1)}" height="${bh.toFixed(1)}" rx="1.5" data-t="${c} of 99 runs · ${lo} to ${hi}"></rect>`;
+function values() {
+  const o = {};
+  for (const k of FORM_ORDER) {
+    const i = el("f-" + k);
+    if (i) o[k] = i.value === "" ? SPEC[k].default : Number(i.value);
   }
-
-  // Observed marker, drawn above the bars with a label that stays in the viewBox.
-  const ox = x(obs);
-  const labelRight = ox < W * 0.62;
-  const lx = labelRight ? ox + 6 : ox - 6;
-  const anchor = labelRight ? "start" : "end";
-
-  // Only the two end ticks: a centre tick sat under the observed marker.
-  const ticks =
-    `<text class="tick" x="${L}" y="${H - B + 14}" text-anchor="start">${h.min >= 0 ? "+" : ""}${h.min.toFixed(1)}</text>` +
-    `<text class="tick" x="${W - R}" y="${H - B + 14}" text-anchor="end">${h.max >= 0 ? "+" : ""}${h.max.toFixed(1)}</text>`;
-
-  return `
-  <div class="chart">
-    <span class="ct">${p.title}</span>
-    <span class="cs">${p.sub}</span>
-    <span class="cs" style="color:var(--observed);font-weight:600">observed ${obs >= 0 ? "+" : "\u2212"}${Math.abs(obs).toFixed(3)} &middot; p ${pv.toFixed(3)}</span>
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${p.title}: observed ${obs.toFixed(3)}, p equals ${pv.toFixed(3)}, against 99 signal-free runs.">
-      ${bars}
-      <line class="axis" x1="${L}" y1="${T + ph}" x2="${W - R}" y2="${T + ph}"></line>
-      ${ticks}
-      <line x1="${ox.toFixed(1)}" y1="${T - 12}" x2="${ox.toFixed(1)}" y2="${T + ph}" stroke="var(--observed)" stroke-width="3"></line>
-      <text x="${lx.toFixed(1)}" y="${T - 14}" text-anchor="${anchor}" fill="var(--observed)" style="font-family:var(--mono);font-size:11px;font-weight:600">${obs >= 0 ? "+" : "−"}${Math.abs(obs).toFixed(3)}</text>
-    </svg>
-  </div>`;
+  return o;
+}
+function renderCmd() {
+  if (!SPEC) return;
+  const v = values();
+  const envs = FORM_ORDER.filter(k => Number(v[k]) !== Number(SPEC[k].default))
+    .map(k => `${SPEC[k].env}=${v[k]}`);
+  envs.push("VGP_RESULTS_DIR=runs/my-run");
+  el("cmd").textContent = envs.join(" \\\n  ") + " \\\n  .venv/bin/python scripts/run.py";
+  el("eta").textContent = estimate(v);
+}
+function setMsg(text, isErr) {
+  const m = el("msg");
+  m.hidden = !text; m.className = "msg" + (isErr ? " err" : ""); m.textContent = text || "";
 }
 
-document.getElementById("charts").innerHTML = PANELS.map(drawPanel).join("");
+async function refresh() {
+  let s;
+  try {
+    s = await (await fetch("api/state", { cache: "no-store" })).json();
+  } catch (_) {
+    // Opened as a file, or served by a plain static server: the page still works,
+    // it just cannot launch anything. Say so instead of failing silently.
+    el("runstate").textContent = "STATIC";
+    el("runstate").className = "chip mute";
+    el("runreason").textContent = "no run server — copy the command below";
+    if (!SPEC) buildForm(DEFAULT_SPEC);
+    return;
+  }
+  if (!SPEC) buildForm(s.params);
+  const run = s.run || {};
+  const canStart = s.can_run && !run.running;
+  el("launch").disabled = !canStart;
+  el("cancel").hidden = !run.running;
+  el("runstate").textContent = run.running ? "RUNNING" : s.can_run ? "READY" : "VIEW ONLY";
+  el("runstate").className = "chip " + (run.running ? "warn" : s.can_run ? "good" : "mute");
+  el("runreason").textContent = s.reason || "";
+  if (run.running || run.log) {
+    el("logwrap").hidden = false;
+    el("log").textContent = run.log || "";
+    el("logmeta").textContent = `${run.out_dir || ""}${run.elapsed != null ? " · " + run.elapsed + "s" : ""}`
+      + (run.running ? "" : run.returncode != null ? ` · exit ${run.returncode}` : "");
+  }
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(refresh, run.running ? 3000 : 15000);
+}
 
-document.querySelectorAll(".bar").forEach(b => {
-  b.addEventListener("mousemove", e => showTip(e, b.dataset.t));
-  b.addEventListener("mouseleave", hideTip);
-});
+const DEFAULT_SPEC = {
+  fee_bps: { min: 0, max: 100, default: 10, int: false, env: "VGP_FEE_BPS" },
+  n_null_runs: { min: 0, max: 999, default: 99, int: true, env: "VGP_N_NULL_RUNS" },
+  n_seeds: { min: 1, max: 10, default: 3, int: true, env: "VGP_N_SEEDS" },
+  pop_size: { min: 10, max: 1000, default: 200, int: true, env: "VGP_POP_SIZE" },
+  n_gen: { min: 1, max: 200, default: 30, int: true, env: "VGP_N_GEN" },
+  train_months: { min: 3, max: 36, default: 9, int: true, env: "VGP_TRAIN_MONTHS" },
+  oos_months: { min: 1, max: 12, default: 4, int: true, env: "VGP_OOS_MONTHS" },
+};
 
-const fmt = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3);
-document.getElementById("runs").innerHTML = DATA.runs.map((r, i) => `
-  <tr class="${i > 0 && r.w !== DATA.runs[i - 1].w ? "sep" : ""}">
-    <td>W${r.w}</td>
-    <td class="n" style="color:var(--ink-3)">${r.start} &rarr; ${r.end}</td>
-    <td class="n">${r.seed}</td>
-    <td class="n">${fmt(r.is_)}</td>
-    <td class="n">${fmt(r.val)}</td>
-    <td class="n ${r.oos < 0 ? "neg" : ""}" style="font-weight:600">${fmt(r.oos)}</td>
-    <td class="n">${r.trades}</td>
-    <td class="n">${r.nodes}</td>
-    <td class="n">${r.front}</td>
-  </tr>`).join("");
+function buildForm(spec) {
+  SPEC = spec;
+  el("form").innerHTML = FORM_ORDER.filter(k => spec[k]).map(k => {
+    const s = spec[k];
+    return `<div class="fld">
+      <label for="f-${k}">${LABEL[k] || k}</label>
+      <input id="f-${k}" type="number" value="${s.default}" min="${s.min}" max="${s.max}"
+             step="${s.int ? 1 : 0.5}" inputmode="decimal">
+      <span class="rng">${s.min}–${s.max} · default ${s.default}</span>
+    </div>`;
+  }).join("");
+  el("form").addEventListener("input", renderCmd);
+  renderCmd();
+}
+
+el("launch").onclick = async () => {
+  setMsg("");
+  el("launch").disabled = true;
+  try {
+    const res = await fetch("api/run", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values()),
+    });
+    const j = await res.json();
+    if (!res.ok) setMsg(j.error || "run refused", true);
+    else setMsg(`started — pid ${j.pid}, writing to runs/${j.out_dir}`);
+  } catch (e) {
+    setMsg("could not reach the run server", true);
+  }
+  refresh();
+};
+el("cancel").onclick = async () => {
+  try { await fetch("api/cancel", { method: "POST" }); } catch (_) {}
+  refresh();
+};
+
+refresh();
 </script>
-
 </body>
 </html>

@@ -36,8 +36,34 @@ It takes seconds: the page is generated from `results/` by a pure
 standard-library script, so the image carries no vectorbt, no numba and no
 compiler. Override the port with `make start PORT=9000`.
 
+The page is a terminal, not a report: a status rail, a ten-cell KPI grid, the
+four null distributions with the observed value marked, a sortable run matrix
+carrying every column of `results.csv`, the realised universe ticker by ticker,
+and the DSR trial set beside the null-control p-value.
+
 No Docker? `make dashboard` writes the identical page to
 `dashboard/index.html`, which opens directly in a browser.
+
+### Launching a run from the dashboard
+
+```bash
+make serve          # localhost:8000, with the New Run panel live
+```
+
+The New Run panel sets fee, null runs, seeds, population, generations and window
+lengths, shows the evaluation count and a runtime estimate calibrated on the
+committed run, and starts the experiment. Output goes to its own directory under
+`runs/`; the committed `results/` is never touched.
+
+**`make start` cannot launch runs, deliberately.** The Docker image has no
+vectorbt — that is what makes it build in seconds — so it reports itself view
+only rather than offering a button that fails. Launching also requires
+`VGP_ALLOW_RUN=1`, which `make serve` sets and nothing else does.
+
+The run endpoint starts processes, so treat it as a local research tool: there
+is no authentication, every parameter is range-checked before use, values reach
+the child as environment variables rather than arguments, and `subprocess` is
+called with a fixed argv and `shell=False`. Serve it on a port you control.
 
 **To run the experiment yourself**, you need the Python environment:
 

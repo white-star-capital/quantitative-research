@@ -2,7 +2,7 @@ PYTHON := .venv/bin/python
 IMAGE  := vgp-dashboard
 PORT   ?= 8000
 
-.PHONY: help start stop vgp dashboard check-dashboard test smoke lint verify-data approve
+.PHONY: help start stop serve vgp dashboard check-dashboard test smoke lint verify-data approve
 
 # `make` on its own lists the targets rather than silently running the first one.
 help:
@@ -10,6 +10,8 @@ help:
 	@echo "  make start         build the dashboard image and serve the committed results"
 	@echo "                     (Docker required; takes seconds — no vectorbt, no compiler)"
 	@echo "  make stop          stop the dashboard container"
+	@echo "  make serve         serve the dashboard locally WITH run launching enabled"
+	@echo "                     (needs .venv; the New Run panel can start experiments)"
 	@echo "  make vgp           run the full experiment — 3 windows x 3 seeds + 99 null runs"
 	@echo "                     (needs .venv; TAKES SEVERAL HOURS)"
 	@echo "  make dashboard     rebuild dashboard/index.html from results/ without Docker"
@@ -47,6 +49,13 @@ dashboard:
 
 check-dashboard:
 	python3 scripts/build_dashboard.py --check
+
+# Serves from the project venv with launching enabled, so the New Run panel can
+# actually start an experiment. The Docker image deliberately cannot: it has no
+# vectorbt, and a container that can spend eight hours of CPU should be an
+# explicit choice rather than the default.
+serve: dashboard
+	VGP_ALLOW_RUN=1 $(PYTHON) scripts/serve_dashboard.py
 
 # --- Producing the results --------------------------------------------------
 # The experiment itself. Was `make start` until the dashboard took that name.
