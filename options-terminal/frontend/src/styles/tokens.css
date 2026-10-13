@@ -1,0 +1,25 @@
+/* front_end_design.md §2. Exact values; never derive a second palette. */
+:root {
+  --bg: #000000;
+  --bg-raise: #0c0c0c;
+  --rule: #3a3a3a;
+  --rule-strong: #6b5a32;
+  --bar-track: #1a1a1a;
+  --paper: #f2efe6;
+  --dim: #8d887c;
+  --amber: #fb8b1e;
+  --amber-dim: #a8722a;
+  --amber-bright: #ffb01e;
+  --up: #00d964;
+  --down: #ff3b30;
+  --yellow: #ffe14a;
+  --cyan: #37d0e6;
+  --header-bar: #7a1020;
+  --green-key: #009e49;
+  --red-key: #e10600;
+  --yellow-key: #f5c400;
+  --blue-key: #2f6fed;
+
+  --row: 22px;
+  --font: "IBM Plex Mono", Consolas, "Roboto Mono", ui-monospace, monospace;
+}

@@ -1,0 +1,3 @@
+# Production switchboard (MODELS.md §4). Exactly one production implementation per slot.
+# Empty until the first implementation lands in library/ (M1).
+slots: {}

@@ -1,0 +1,16 @@
+slot_id: vol_surface
+title: Implied volatility surface
+description: >
+  Fitted implied vol by log-moneyness and tenor.
+payload_kind: surface
+payload_version: "1"
+scope:
+  dimensions: [underlying]
+  allowed:
+    underlying: [BTC, ETH]
+max_age_seconds: 900
+conventions: >
+  x = log-moneyness ln(K/F), y = tenor in calendar days, z = implied vol (decimal).
+display:
+  default_view: heatmap
+  order: 10

@@ -11,7 +11,15 @@ Two documents in the repo are **binding** for the frontend and take precedence o
 
 This file defines the **functional** requirements and the integration with the API. It does not redefine design or security rules. Where this file states a security minimum (§6), it is a floor: if `building_secure_front_ends.md` is stricter, it wins. If the two documents conflict with this one, raise it before building rather than picking one silently.
 
-> These requirements were written without reading the two governing documents. Before M3 starts, the frontend lead MUST reconcile §2 (stack), §4 (views) and §6 (security) against them and note any conflicts in this file.
+Conflicts found while scaffolding. In each case the governing document wins:
+
+| Topic | This file said | Governing doc says | Resolution |
+|---|---|---|---|
+| Routing | `/slots/{slot_id}?…` paths | Hash routing, no router library (design §9.5) | `#/slots/{slot_id}?underlying=BTC` |
+| Polling | `min(30 s, max_age_seconds / 4)` (F-3) | Every 60 s and on tab focus, `cache: "no-store"` (design §9.4) | 60 s plus focus/visibility refetch; still uses ETag/304 and pauses when hidden |
+| Type generation | `json-schema-to-typescript` (§2) | Not in the approved dependency set (secure doc §2) | Hand-written types in `src/api/types.ts` plus an in-house validator, contract-tested against `contracts/fixtures` (CONTRACTS C-1) |
+| Tests | MSW, Playwright, visual snapshots (F-31–F-33) | Not in the approved dependency set | `node --test` for pure logic now; DOM, mock-API and E2E tooling is an exception request (secure doc §6) at M3 |
+| Password gate | — | `gm_auth` cookie gate (design §9.2) | Not applied. It is specific to the DAF III dashboard, and v1 has no auth (README §8 Q1) |
 
 ## 1. Principles
 

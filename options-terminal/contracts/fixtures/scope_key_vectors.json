@@ -1,0 +1,7 @@
+[
+  { "scope": {}, "key": "" },
+  { "scope": { "underlying": "BTC" }, "key": "underlying=BTC" },
+  { "scope": { "underlying": "ETH", "expiry": "2026-12-25" }, "key": "expiry=2026-12-25&underlying=ETH" },
+  { "scope": { "b": "x y", "a": "1&2=3" }, "key": "a=1%262%3D3&b=x%20y" },
+  { "scope": { "underlying": "BTC/USD" }, "key": "underlying=BTC%2FUSD" }
+]

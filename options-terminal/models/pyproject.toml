@@ -1,0 +1,58 @@
+[project]
+name = "terminal-models"
+version = "0.1.0"
+description = "Options terminal model framework, adapters, runner and model library (see ../MODELS.md)."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "jsonschema>=4.26.0",
+    "numpy>=2.5.4",
+    "psycopg[binary]>=3.3.6",
+    "pydantic>=2.14.1",
+    "pyyaml>=6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.15",
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.32,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "terminal_models/library"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+# M-2: implementations may use core/ and the scientific stack only.
+[tool.importlinter]
+root_package = "terminal_models"
+
+[[tool.importlinter.contracts]]
+name = "library implementations do not import adapters or runner"
+type = "forbidden"
+source_modules = ["terminal_models.library"]
+forbidden_modules = ["terminal_models.adapters", "terminal_models.runner"]
+
+[[tool.importlinter.contracts]]
+name = "library implementations are independent"
+type = "independence"
+modules = ["terminal_models.library.*"]
+
+[[tool.importlinter.contracts]]
+name = "core does not depend on adapters, runner or library"
+type = "forbidden"
+source_modules = ["terminal_models.core"]
+forbidden_modules = ["terminal_models.adapters", "terminal_models.runner", "terminal_models.library"]
