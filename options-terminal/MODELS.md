@@ -81,7 +81,18 @@ class DataAdapter(ABC):
 - **M-8** Every fetched input records `snapshot_at` (the source timestamp, not fetch time). The runner rejects an input whose `snapshot_at` is older than the implementation's `max_input_age_seconds` (manifest) relative to `as_of`, with `error.code = "stale_input"`.
 - **M-9** Adapters MAY cache raw snapshots to object storage keyed by input hash, so runs can be replayed. SHOULD be implemented by M4.
 
-The market data source is an open question (README §8 Q2). Build M1 against a file-based adapter reading recorded snapshots; real sources plug in behind the same interface.
+- **M-9a** If an input cannot be fetched or is stale, the run fails. Adapters and implementations MUST NOT substitute hardcoded, default or placeholder prices (e.g. `1.00`, `0.00`). No prices, no output.
+
+Sources (README §8 Q2, decided). Both are public and keyless:
+
+| Adapter | Source | Provides |
+|---|---|---|
+| `adapters/hyperliquid/` | Hyperliquid public `POST /info` | Underlying spot/perp prices (mids, candles) |
+| `adapters/deribit/` | Deribit public `/api/v2/public/*` | Option chains: instruments, mark price, mark IV, greeks, underlying/index price |
+
+- **M-9b** An implementation that combines both sources MUST check that their `snapshot_at` values are within the manifest's `max_input_skew_seconds` and fail with `error.code = "input_skew"` otherwise.
+
+Build M1 against a file-based adapter reading recorded snapshots first; the two live adapters plug in behind the same interface. The file adapter stays for tests and replay.
 
 ### 3.3 Manifest
 
@@ -96,6 +107,7 @@ description: Raw SVI per expiry, interpolated in total variance across tenors.
 schedule: "*/15 * * * *"       # cron, UTC
 timeout_seconds: 120
 max_input_age_seconds: 120
+max_input_skew_seconds: 30        # only for implementations that combine sources (M-9b)
 params:
   min_strikes_per_expiry: 7
   seed: 42

@@ -134,15 +134,15 @@ display:
 
 Illustrative, to size the framework. Not a commitment.
 
-| Slot | Kind | Scope |
-|---|---|---|
-| `vol_surface` | `surface` | underlying |
-| `smile` | `curve` | underlying, expiry |
-| `term_structure` | `curve` | underlying |
-| `skew_metrics` | `scalar_set` | underlying |
-| `realized_vs_implied` | `timeseries` | underlying |
-| `greeks_chain` | `table` | underlying, expiry |
-| `vol_dashboard` | `composite` | underlying |
+| Slot | Kind | Scope | Source |
+|---|---|---|---|
+| `vol_surface` | `surface` | underlying | Deribit |
+| `smile` | `curve` | underlying, expiry | Deribit |
+| `term_structure` | `curve` | underlying | Deribit |
+| `skew_metrics` | `scalar_set` | underlying | Deribit |
+| `realized_vs_implied` | `timeseries` | underlying | Hyperliquid (realized), Deribit (implied) |
+| `greeks_chain` | `table` | underlying, expiry | Deribit |
+| `vol_dashboard` | `composite` | underlying | Both |
 
 ## 6. Database schema
 

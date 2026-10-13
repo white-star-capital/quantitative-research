@@ -21,7 +21,7 @@ A read-only options analytics terminal. Python models compute options analytics 
 
 ## 2. Fidelity classification
 
-**F3 (Big Uncertain) overall.** New system, three languages, and "done" isn't fully defined yet (first model set, user base and deployment target are open — see §8).
+**F3 (Big Uncertain) overall.** New system, three languages, and "done" isn't fully defined yet (first model set and deployment target are open — see §8).
 
 It breaks into five **F2** pieces, which is how it should be built:
 
@@ -133,37 +133,42 @@ Parallel lanes, per quant-dev:
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| **No API key: outputs are public to anyone with the URL.** Vol surfaces and skew signals from the desk's own models are information about desk views. | High | Decide who "end users" are before M4 (§8). Ship v1 behind network restriction (VPN / IP allowlist) if users are internal. The API reserves an auth middleware slot so adding keys later is a config change (`API.md` §7). |
-| **Distribution to external users** may raise compliance questions about publishing analytics or signals. | Medium, if external | Compliance/legal review before any external user gets access. Not a blocker for building. |
+| No API key: outputs are public to anyone with the URL | Accepted | Research tool (§8 Q1). The API keeps an auth middleware seam so adding keys later is a config change (`API.md` §7). |
 | Python/Rust contract drift | High | Single schema source in `contracts/`; contract tests on both sides in CI (`CONTRACTS.md` §7). |
 | Stale data presented as fresh | High | Staleness computed by the API from manifest `max_age`, shown on every view. |
 | Bad model output (NaN, arbitrageable surface, unit error) reaching users | High | Validation gate in the runner: schema, bounds, and slot-specific sanity checks before write (`MODELS.md` §6). |
 | Silent regression on model swap | Medium | Mandatory shadow period and a diff report before promotion (`MODELS.md` §5). |
 | Unit and convention ambiguity (vol points vs decimal, vega per 1 vol point vs per 1.00, strike vs moneyness) | Medium | Units and conventions are mandatory fields in the payload; conventions are documented per slot. |
-| Market data source not yet chosen | Medium | Adapters behind an interface (`MODELS.md` §3); the source is an open question. |
+| Two-venue timestamp skew: underlying from Hyperliquid, options from Deribit | Medium | Snapshots must be within `max_input_skew_seconds` or the run fails (`MODELS.md` M-9b). |
+| Source unavailable | Medium | Run fails and the API serves the last good output flagged stale. Never a placeholder price (`MODELS.md` M-9a). |
 
-## 8. Open questions (need answers before M4; M0–M3 can proceed)
+## 8. Questions
 
-1. **Who are the end users?** Internal desk only, LPs, or external clients? This drives auth, rate limits and compliance review.
-2. **Market data source(s)** for options chains and underlying prices (venue, vendor, snapshot vs streaming).
+Decided:
+
+- **Q1 End users:** research use. No API key in v1; no-auth exposure is accepted.
+- **Q2 Market data:** Hyperliquid public feed for underlying prices; Deribit public API for option chains, IV and greeks, since Hyperliquid lists no options. Both keyless. See `MODELS.md` §3.2.
+- **Q7 Frontend:** `front_end_design.md` takes precedence over all frontend design choices (React, hand-drawn SVG charts, no chart library). See `FRONTEND.md` §2.
+
+Open (need answers before M4; M0–M3 can proceed):
+
 3. **First production slots.** Candidate list in `CONTRACTS.md` §5; confirm which ship in v1.
 4. **Refresh cadence** per slot (every minute? every 15 minutes? end of day?).
 5. **Deployment target** (cloud provider, container platform, scheduler).
 6. **History retention** — how long run history must be queryable.
-7. Whether `front_end_design.md` already fixes the frontend framework and charting library. If not, `FRONTEND.md` §2 has a recommendation.
 
 ## 9. Assessment of this plan (quant-dev)
 
 | Lens | Result | Note |
 |---|---|---|
 | Functional | PASS | Covers all three components and the requested GET-only, no-key API. |
-| Security | FLAG | No-auth exposure (§7). Read-only DB role, rate limiting, CORS allowlist, CSP and an auth seam are all specified. |
+| Security | PASS | No-auth exposure accepted for research use (§7). Read-only DB role, rate limiting, CORS allowlist, CSP and an auth seam are all specified. |
 | Performance | PASS | API serves cached reads; targets in `API.md` §6. |
 | Complexity | CLEAN | One extra folder (`contracts/`) and one extra concept (slots). Both are what make swapping cheap; nothing else is speculative. |
 | Edge cases | COVERED | Nulls, stale data, failed runs, unknown payload kinds, missing scopes and empty history are each specified. |
-| Compliance | NEEDS_REVIEW if external users | Read-only analytics; no trading and no derivatives exposure. External distribution is the only open question. |
+| Compliance | PASS | Read-only research analytics; no trading and no derivatives exposure. Revisit if distribution goes external. |
 
-**Verdict: SHIP to developers for M0**, with §8 questions 1–2 answered before M4.
+**Verdict: SHIP to developers for M0**, with §8 questions 3–6 answered before M4.
 
 ## 10. Compound notes
 

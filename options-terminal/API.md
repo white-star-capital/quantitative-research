@@ -98,11 +98,14 @@ Query parameter rules:
 
 ## 7. Security (no API key in v1)
 
+No authentication is an accepted decision: this is a research tool (README §8 Q1). The controls below still apply.
+
+
 - **A-15** CORS: explicit origin allowlist from config (the frontend's origin(s)). No `*` in production. Methods: GET, HEAD, OPTIONS.
 - **A-16** Response headers on all responses: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` (API serves JSON only).
 - **A-17** **Auth seam.** Routes are mounted under a router with an auth middleware layer that is a no-op in v1 (`AUTH_MODE=none`). Adding API keys or OAuth later MUST be a middleware implementation plus config, not a route change.
 - **A-18** Deploy behind a reverse proxy or load balancer that terminates TLS. The API trusts `X-Forwarded-For` only from configured proxy CIDRs; otherwise the rate limiter keys on the socket address.
-- **A-19** Until README §8 Q1 is answered, production deployment SHOULD be network-restricted (VPN or IP allowlist at the proxy).
+- **A-19** Network restriction (VPN or IP allowlist) is not required for v1. Revisit it if the user base moves beyond research.
 - **A-20** Inputs are only path/query strings. Validate `slot_id` against the slot regex and existence before any query. All SQL through `sqlx` parameter binding; no string-built SQL.
 
 ## 8. Code structure

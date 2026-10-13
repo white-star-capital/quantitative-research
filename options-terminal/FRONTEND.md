@@ -22,11 +22,13 @@ This file defines the **functional** requirements and the integration with the A
 
 ## 2. Stack
 
-If `front_end_design.md` specifies the framework, component library or charting library, use those. If it does not, the recommendation is:
+`front_end_design.md` takes precedence over every frontend design and stack choice, including anything in this document. Where they conflict, `front_end_design.md` wins. That means React, hand-drawn SVG charts with no chart library, hand-rolled routing, and exact-pinned dependencies with no new runtime deps without review.
+
+On top of that:
 
 - TypeScript in strict mode.
 - API types generated from `/openapi.json` and payload types generated from `contracts/schemas/` (e.g. `json-schema-to-typescript`). No hand-written duplicates of contract types.
-- A charting library that supports heatmaps, 3D surfaces, multi-series line charts and time axes, and that can be themed to `front_end_design.md`. Plotly.js, ECharts and Observable Plot all qualify; choose one for consistency.
+- Renderers for heatmaps, surfaces, multi-series lines and time axes are built as SVG per `front_end_design.md` §5.
 - Lockfile committed.
 
 ## 3. API integration
