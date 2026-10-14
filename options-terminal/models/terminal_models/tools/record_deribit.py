@@ -3,10 +3,15 @@
     uv run python -m terminal_models.tools.record_deribit --out <new dir> \\
         [--assets BTC,ETH,SOL,HYPE] [--allow-partial]
 
-Run it anywhere www.deribit.com is reachable. It fetches exactly what a bs_pricer_black76 run
-fetches (the model's own required_inputs, through the production DeribitAdapter), plus BTC/ETH
-DVOL history, and saves every response body byte-for-byte with its request and local receive
-time. Nothing is parsed into new numbers here; tools/build_fixtures.py replays the recording.
+Run it anywhere www.deribit.com is reachable. It fetches exactly what bs_pricer_black76 and
+parity_deribit runs fetch (each model's required_inputs and follow-up inputs, through the
+production DeribitAdapter and runner fetch path), plus BTC/ETH DVOL history, and saves every
+response body byte-for-byte with its request and local receive time. Nothing is parsed into new
+numbers here; tools/build_fixtures.py replays the recording.
+
+parity_deribit chooses which order books to confirm from net edges after fees, so its follow-up
+order books are recorded only when its manifest's fee table is filled; otherwise the manifest
+notes it and replay leaves those rows unconfirmed.
 
 A required call that fails after retries fails the recording: no manifest.json is written and
 FAILED.txt says why, so a partial recording can't pass for a complete one. --allow-partial keeps
@@ -31,10 +36,13 @@ from terminal_models.adapters.deribit.chains import BOOKS
 from terminal_models.adapters.deribit.client import BASE_URL, DeribitClient
 from terminal_models.core.manifest import load_manifest
 from terminal_models.core.paths import library_dir
-from terminal_models.runner.execute import git_sha, load_model
+from terminal_models.core.registry import null_fees
+from terminal_models.core.slots import load_slots
+from terminal_models.runner.execute import RunFailed, RunSpec, fetch_inputs, git_sha
 
-IMPLEMENTATION = "bs_pricer_black76"
+IMPLEMENTATIONS = ("bs_pricer_black76", "parity_deribit")
 DVOL_HISTORY = {"BTC": "BTC", "ETH": "ETH"}
+CANDLE_MANIFEST = "bs_pricer_black76"  # DVOL history uses its candle lookback
 
 
 def utc(t: datetime) -> str:
@@ -80,22 +88,30 @@ def record(out: Path, assets: list[str], allow_partial: bool, client_factory=Der
         return 2
     rec = Recorder(out)
     client = client_factory(capture=rec.capture)
-    adapter = DeribitAdapter(client)
-    manifest = load_manifest(library_dir() / IMPLEMENTATION / "manifest.yaml")
-    model = load_model(manifest)
+    adapters = {"deribit": DeribitAdapter(client)}
+    slots = load_slots()
+    manifests = {i: load_manifest(library_dir() / i / "manifest.yaml") for i in IMPLEMENTATIONS}
+    notes = [
+        f"{i}: follow-up inputs not recorded (params.fees null: {', '.join(null_fees(m))})"
+        for i, m in manifests.items()
+        if null_fees(m)
+    ]
     started = datetime.now(UTC)
     results: dict[str, dict[str, Any]] = {}
 
     for asset in assets:
         status: dict[str, Any] = {"ok": True, "inputs": {}, "optional_errors": []}
         try:
-            for spec in model.required_inputs({"underlying": asset}):
-                data = adapter.fetch(spec, started)
-                status["inputs"][spec.name] = {"snapshot_at": utc(data.snapshot_at)}
-        except AdapterError as exc:
+            for impl, manifest in manifests.items():
+                spec = RunSpec(
+                    slots[manifest.fills_slot], manifest, "shadow", {"underlying": asset}, started
+                )
+                for name, data in fetch_inputs(spec, adapters).items():
+                    status["inputs"][f"{impl}.{name}"] = {"snapshot_at": utc(data.snapshot_at)}
+        except RunFailed as exc:
             status = {"ok": False, "error": {"code": exc.code, "message": exc.message}}
         if status["ok"] and asset in DVOL_HISTORY:
-            lookback = timedelta(days=manifest.params["candle_lookback_days"])
+            lookback = timedelta(days=manifests[CANDLE_MANIFEST].params["candle_lookback_days"])
             try:
                 client.volatility_index(DVOL_HISTORY[asset], started - lookback, started)
             except AdapterError as exc:  # display/validation data only: not fatal
@@ -126,7 +142,8 @@ def record(out: Path, assets: list[str], allow_partial: bool, client_factory=Der
         "base_url": BASE_URL,
         "started_at": utc(started),
         "finished_at": utc(datetime.now(UTC)),
-        "implementation": IMPLEMENTATION,
+        "implementations": list(IMPLEMENTATIONS),
+        "notes": notes,
         "complete": not failed,
         "assets": results,
         "calls": rec.entries,

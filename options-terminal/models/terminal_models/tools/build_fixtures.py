@@ -2,12 +2,15 @@
 
     uv run python -m terminal_models.tools.build_fixtures --recording <dir> [--check]
 
-For each recorded asset: replay the raw bodies through the production DeribitAdapter, run
-bs_pricer_black76 via the runner pipeline (full validation, sanity checks), freeze the parts that
-vary per execution (run_id, started/finished, git SHA), and write
-contracts/fixtures/valid/composite/bs_pricer_<asset>.json. A run that fails on real data is
+For each recorded asset and each implementation (bs_pricer_black76, parity_deribit): replay the
+raw bodies through the production DeribitAdapter and the runner's fetch path (declared and
+follow-up inputs), run the model via the runner pipeline (full validation, sanity checks), freeze
+the parts that vary per execution (run_id, started/finished, git SHA), and write
+contracts/fixtures/valid/composite/<prefix>_<asset>.json. A run that fails on real data is
 written as the failed envelope and reported: real-data failures are findings, not things to tune
 away. Invalid fixtures are derived from the BTC fixture, one broken rule each.
+
+parity_deribit is skipped while its manifest's fee table is null (it can't run without fees).
 """
 
 from __future__ import annotations
@@ -27,10 +30,12 @@ from terminal_models.core.base import InputData
 from terminal_models.core.manifest import load_manifest
 from terminal_models.core.paths import contracts_dir, library_dir
 from terminal_models.core.payloads import get_section, records
+from terminal_models.core.registry import null_fees
 from terminal_models.core.slots import load_slots
-from terminal_models.runner.execute import RunSpec, execute, load_model
+from terminal_models.runner.execute import RunSpec, execute, fetch_inputs
 
 IMPLEMENTATION = "bs_pricer_black76"
+PREFIX = {"bs_pricer_black76": "bs_pricer", "parity_deribit": "parity"}  # fixture file prefix
 FIXTURE_SHA = "0" * 40  # fixtures are code-version independent; the producer is in the report
 
 
@@ -44,26 +49,27 @@ def frozen_run_id(as_of: datetime, asset: str) -> str:
     return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
 
 
-def replay_inputs(recording: Path, asset: str) -> tuple[dict[str, InputData], datetime]:
-    """Inputs for one asset from the recording, and the run's as_of: the latest server time
-    (usOut) among them, floored to the second, so staleness checks are real."""
+def replay_inputs(
+    recording: Path, asset: str, implementation: str = IMPLEMENTATION
+) -> tuple[dict[str, InputData], datetime]:
+    """Inputs for one asset from the recording (declared and follow-up), and the run's as_of:
+    the latest server time among them, floored to the second, so staleness checks are real."""
     client = RecordedClient(recording)
-    adapter = DeribitAdapter(client)
-    manifest = load_manifest(library_dir() / IMPLEMENTATION / "manifest.yaml")
-    model = load_model(manifest)
+    manifest = load_manifest(library_dir() / implementation / "manifest.yaml")
     started = datetime.fromisoformat(client.manifest["started_at"])
-    inputs = {
-        spec.name: adapter.fetch(spec, started)
-        for spec in model.required_inputs({"underlying": asset})
-    }
+    spec = RunSpec(
+        load_slots()[manifest.fills_slot], manifest, "shadow", {"underlying": asset}, started
+    )
+    inputs = fetch_inputs(spec, {"deribit": DeribitAdapter(client)})
     latest = max(d.snapshot_at for d in inputs.values())
     return inputs, latest.replace(microsecond=0)
 
 
-def run_asset(recording: Path, asset: str) -> dict[str, Any]:
-    inputs, as_of = replay_inputs(recording, asset)
-    manifest = load_manifest(library_dir() / IMPLEMENTATION / "manifest.yaml")
-    spec = RunSpec(load_slots()["bs_pricer"], manifest, "shadow", {"underlying": asset}, as_of)
+def run_asset(recording: Path, asset: str, implementation: str = IMPLEMENTATION) -> dict[str, Any]:
+    inputs, as_of = replay_inputs(recording, asset, implementation)
+    manifest = load_manifest(library_dir() / implementation / "manifest.yaml")
+    slot = load_slots()[manifest.fills_slot]
+    spec = RunSpec(slot, manifest, "shadow", {"underlying": asset}, as_of)
     env = execute(spec, {}, None, FIXTURE_SHA, inputs, isolate=False)
     env |= {
         "run_id": frozen_run_id(as_of, asset),
@@ -73,8 +79,10 @@ def run_asset(recording: Path, asset: str) -> dict[str, Any]:
     return env
 
 
-def invalid_variants(env: dict[str, Any]) -> dict[str, str]:
+def invalid_variants(env: dict[str, Any], implementation: str = IMPLEMENTATION) -> dict[str, str]:
     """One broken rule each (CONTRACTS §1: the filename says which)."""
+    if implementation == "parity_deribit":
+        return parity_invalid_variants(env)
     out: dict[str, str] = {}
 
     nan = copy.deepcopy(env)
@@ -93,6 +101,44 @@ def invalid_variants(env: dict[str, Any]) -> dict[str, str]:
     get_section(smile["payload"], "smile")["series"][0]["values"].pop()
     out["smile_series_wrong_length"] = json.dumps(smile, indent=1) + "\n"
     return out
+
+
+def parity_invalid_variants(env: dict[str, Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    nan = copy.deepcopy(env)
+    bands = get_section(nan["payload"], "bands")
+    col = [c["key"] for c in bands["columns"]].index("f_impl_bid")
+    bands["rows"][0][col] = float("nan")
+    out["nan_band"] = json.dumps(nan, indent=1, allow_nan=True) + "\n"
+
+    short = copy.deepcopy(env)
+    expiries = get_section(short["payload"], "expiries")
+    col = [c["key"] for c in expiries["columns"]].index("f_impl")
+    del expiries["rows"][0][col]
+    out["expiry_row_missing_f_impl"] = json.dumps(short, indent=1) + "\n"
+
+    curve = copy.deepcopy(env)
+    get_section(curve["payload"], "carry_curve")["series"][0]["values"].append(0.0)
+    out["carry_series_wrong_length"] = json.dumps(curve, indent=1) + "\n"
+    return out
+
+
+def parity_report(asset: str, env: dict[str, Any]) -> list[str]:
+    lines = [f"{asset}: {env['status']} as_of {env['as_of']}"]
+    if env["status"] == "failed":
+        return lines + [f"  FAILED {env['error']['code']}: {env['error']['message']}"]
+    lines += [f"  warning {w['code']}: {w['message']}" for w in env["warnings"]]
+    expiries = records(get_section(env["payload"], "expiries"))
+    opps = records(get_section(env["payload"], "opportunities"))
+    hedges: dict[str, int] = {}
+    for r in expiries:
+        hedges[str(r["hedge_type"])] = hedges.get(str(r["hedge_type"]), 0) + 1
+    lines.append(f"  expiries {len(expiries)} by hedge: {hedges}")
+    lines.append(
+        f"  opportunities {len(opps)}, confirmed {sum(1 for o in opps if o['confirmed'])}, "
+        f"skew-flagged {sum(1 for o in opps if 'snapshot_skew' in o['flags'])}"
+    )
+    return lines
 
 
 def report(asset: str, env: dict[str, Any]) -> list[str]:
@@ -122,20 +168,26 @@ def build(recording: Path) -> tuple[dict[Path, str], list[str]]:
         f"recording {recording.name} (started {manifest['started_at']}, "
         f"recorder {manifest['git_sha'][:12]})"
     ]
-    envs = {}
-    for asset in assets:
-        env = run_asset(recording, asset)
-        envs[asset] = env
-        files[root / "valid" / "composite" / f"bs_pricer_{asset.lower()}.json"] = (
-            json.dumps(env, indent=1, allow_nan=False) + "\n"
-        )
-        notes += report(asset, env)
-    btc = envs.get("BTC")
-    if btc and btc["status"] == "success":
-        for name, text in invalid_variants(btc).items():
-            files[root / "invalid" / "composite" / f"bs_pricer_btc__{name}.json"] = text
-    else:
-        notes.append("no successful BTC run: invalid fixtures not regenerated")
+    for implementation, prefix in PREFIX.items():
+        impl_manifest = load_manifest(library_dir() / implementation / "manifest.yaml")
+        if null_fees(impl_manifest):
+            notes.append(f"{implementation}: skipped, params.fees is null")
+            continue
+        notes.append(f"{implementation}:")
+        envs = {}
+        for asset in assets:
+            env = run_asset(recording, asset, implementation)
+            envs[asset] = env
+            files[root / "valid" / "composite" / f"{prefix}_{asset.lower()}.json"] = (
+                json.dumps(env, indent=1, allow_nan=False) + "\n"
+            )
+            notes += (parity_report if prefix == "parity" else report)(asset, env)
+        btc = envs.get("BTC")
+        if btc and btc["status"] == "success":
+            for name, text in invalid_variants(btc, implementation).items():
+                files[root / "invalid" / "composite" / f"{prefix}_btc__{name}.json"] = text
+        else:
+            notes.append(f"no successful BTC {implementation} run: invalid fixtures not rebuilt")
     return files, notes
 
 

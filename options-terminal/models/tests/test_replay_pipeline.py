@@ -7,6 +7,7 @@ written to contracts/fixtures (D-10).
 """
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -78,12 +79,46 @@ def options(asset: str) -> tuple[list[dict], list[dict]]:
     return meta, summary
 
 
+DATED = syn.expiry_at(31)
+DATED_F = syn.SPOT * math.exp(syn.BASIS * (DATED - syn.AS_OF).total_seconds() / (365 * 86400))
+PERP_MS = 32_503_708_800_000
 FUTURES = {
     "BTC": [{"instrument_name": "BTC-PERPETUAL", "base_currency": "BTC",
-             "settlement_currency": "BTC", "settlement_period": "perpetual", "is_active": True}],
+             "settlement_currency": "BTC", "settlement_period": "perpetual", "is_active": True,
+             "contract_size": 10.0, "expiration_timestamp": PERP_MS, "instrument_type": "reversed"},
+            {"instrument_name": f"BTC-{DATED:%d%b%y}".upper(), "base_currency": "BTC",
+             "settlement_currency": "BTC", "settlement_period": "month", "is_active": True,
+             "contract_size": 10.0, "expiration_timestamp": int(DATED.timestamp() * 1000),
+             "instrument_type": "reversed"}],
     "USDC": [{"instrument_name": "HYPE_USDC-PERPETUAL", "base_currency": "HYPE",
-              "settlement_currency": "USDC", "settlement_period": "perpetual", "is_active": True}],
+              "settlement_currency": "USDC", "settlement_period": "perpetual", "is_active": True,
+              "contract_size": 1.0, "expiration_timestamp": PERP_MS, "instrument_type": "linear"}],
 }  # fmt: skip
+FUTURE_PRICES = {"BTC-PERPETUAL": syn.SPOT, "HYPE_USDC-PERPETUAL": syn.SPOT,
+                 f"BTC-{DATED:%d%b%y}".upper(): DATED_F}  # fmt: skip
+
+
+def futures_summary(currency: str) -> list[dict]:
+    out = []
+    for f in FUTURES[currency]:
+        px = FUTURE_PRICES[f["instrument_name"]]
+        out.append({"instrument_name": f["instrument_name"], "bid_price": px * 0.9999,
+                    "ask_price": px * 1.0001, "mark_price": px})  # fmt: skip
+    return out
+
+
+def order_book(name: str) -> dict:
+    """Top of book = the summary's bid/ask; options 5 contracts deep, futures deep."""
+    rows = [s for a in BOOK for s in options(a)[1]] + [
+        r for c in FUTURES for r in futures_summary(c)
+    ]
+    row = next(r for r in rows if r["instrument_name"] == name)
+    depth = 1e9 if name in FUTURE_PRICES else 5.0
+    bids = [[row["bid_price"], depth]] if row["bid_price"] else []
+    return {"instrument_name": name, "timestamp": US_OUT // 1000 - 500, "bids": bids,
+            "asks": [[row["ask_price"], depth]]}  # fmt: skip
+
+
 INDEX = {"btc_usd": syn.SPOT, "hype_usdc": syn.SPOT, "btcdvol_usdc": 62.0}
 PERPS = {"BTC-PERPETUAL", "HYPE_USDC-PERPETUAL"}
 
@@ -94,6 +129,13 @@ def result_for(method: str, p: httpx.QueryParams):
             return FUTURES[p["currency"]]
         assets = [a for a, (c, _) in BOOK.items() if c == p["currency"]]
         return [m for a in assets for m in options(a)[0]]
+    if method == "get_book_summary_by_currency" and p["kind"] == "future":
+        return futures_summary(p["currency"])
+    if method == "ticker":
+        return {"instrument_name": p["instrument_name"], "current_funding": 0.0,
+                "funding_8h": 0.0001, "timestamp": US_OUT // 1000}  # fmt: skip
+    if method == "get_order_book":
+        return order_book(p["instrument_name"])
     if method == "get_book_summary_by_currency":
         assets = [a for a, (c, _) in BOOK.items() if c == p["currency"]]
         return [s for a in assets for s in options(a)[1]]
@@ -262,3 +304,86 @@ def test_runner_replay_reproduces_built_fixture(recording, built, tmp_path, monk
     inputs, _ = build_fixtures.replay_inputs(recording, "BTC")
     assert SnapshotStore().save(inputs) == json.loads(fixture.read_text())["inputs"]["hash"]
     assert runner(["replay", "--envelope", str(fixture)]) == 0
+
+
+# ---- parity_deribit leg: recorded follow-up order books → parity fixtures ------------------
+
+TEST_FEES = {  # TEST-ONLY arithmetic, never a schedule; the shipped manifest's fees stay null
+    "schedule_version": "TEST-ONLY",
+    "option_taker": 0.0003, "option_maker": 0.0002, "option_cap_pct_of_price": 0.125,
+    "future_taker": 0.0005, "future_maker": 0.0001, "perp_taker": 0.0005, "perp_maker": 0.0001,
+    "option_delivery": 0.00015, "future_delivery": 0.00025,
+}  # fmt: skip
+
+
+def with_test_fees(path):
+    from terminal_models.core.manifest import load_manifest
+
+    manifest = load_manifest(path)
+    if manifest.implementation_id != "parity_deribit":
+        return manifest
+    return manifest.model_copy(update={"params": manifest.params | {"fees": TEST_FEES}})
+
+
+@pytest.fixture(scope="module")
+def parity_built(tmp_path_factory):
+    from terminal_models.tools import record_deribit
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TERMINAL_GIT_SHA", "a1b2c3d")
+        mp.setattr(record_deribit, "load_manifest", with_test_fees)
+        mp.setattr(build_fixtures, "load_manifest", with_test_fees)
+        out = tmp_path_factory.mktemp("parity") / "deribit_20261013T165955Z"
+        assert record(out, ["BTC", "HYPE"], False, client_factory=client_factory) == 0
+        files, notes = build_fixtures.build(out)
+        again, _ = build_fixtures.build(out)
+    manifest = json.loads((out / "manifest.json").read_text())
+    return manifest, {p.name: (p, t) for p, t in files.items()}, notes, again
+
+
+def test_recorder_records_parity_followup_order_books(parity_built):
+    manifest, *_ = parity_built
+    assert manifest["notes"] == []
+    methods = [c["method"] for c in manifest["calls"]]
+    assert {"ticker", "get_order_book"} <= set(methods)
+    inputs = manifest["assets"]["BTC"]["inputs"]
+    assert any(k.startswith("parity_deribit.order_book:") for k in inputs)
+
+
+def test_null_fees_skip_parity_and_say_so(recording, built):
+    manifest = json.loads((recording / "manifest.json").read_text())
+    assert manifest["notes"] == [
+        "parity_deribit: follow-up inputs not recorded (params.fees null: future_delivery, "
+        "future_maker, future_taker, option_cap_pct_of_price, option_delivery, option_maker, "
+        "option_taker, perp_maker, perp_taker)"
+    ]
+    files, notes = built
+    assert not any(n.startswith("parity_") for n in files)
+    assert "parity_deribit: skipped, params.fees is null" in notes
+
+
+def test_parity_fixtures_from_a_recording(parity_built):
+    _, files, notes, again = parity_built
+    for asset in ("btc", "hype"):
+        path, text = files[f"parity_{asset}.json"]
+        assert path.parent == contracts_dir() / "fixtures" / "valid" / "composite"
+        env = json.loads(text)
+        assert env["status"] == "success", (env.get("error"), notes)
+        check_fixture(text)
+    btc = json.loads(files["parity_btc.json"][1])
+    from terminal_models.core.payloads import get_section, records
+
+    opps = records(get_section(btc["payload"], "opportunities"))
+    assert any(o["confirmed"] for o in opps), notes  # replayed order books confirmed rows
+    hedges = {r["hedge_type"] for r in records(get_section(btc["payload"], "expiries"))}
+    assert hedges == {"locked_future", "perp_funding"}
+    invalid = {n: t for n, (_, t) in files.items() if n.startswith("parity_btc__")}
+    assert set(invalid) == {
+        "parity_btc__nan_band.json",
+        "parity_btc__expiry_row_missing_f_impl.json",
+        "parity_btc__carry_series_wrong_length.json",
+    }
+    for text in invalid.values():
+        with pytest.raises(ValidationFailure):
+            check_fixture(text)
+    assert {p.name: t for p, t in again.items()} == {n: t for n, (_, t) in files.items()}

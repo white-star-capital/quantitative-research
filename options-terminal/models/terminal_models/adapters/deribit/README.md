@@ -21,11 +21,20 @@ Public, keyless JSON-RPC over HTTPS (`https://www.deribit.com/api/v2/public/*`).
 - The USDC book summary is cached for 60 s, so SOL and HYPE share one fetch per tick. Instrument metadata is cached for 1 h.
 - Any failure after retries → `venue_unavailable` (D-8). There is no fallback data (D-10).
 
+## parity_monitor inputs (PARITY_MONITOR_IMPLEMENTATION_GUIDE.md §2)
+
+- `futures_book`: `get_book_summary_by_currency kind=future`, joined to `get_instruments kind=future` metadata on `instrument_name` (D-15). `contract_size` comes from metadata: USD per contract for inverse, coin for linear.
+- `funding`: `ticker` on the discovered perpetual. Annualized downstream as `funding_8h × 3 × 365`; the field semantics are confirmed in M1.
+- `order_book`: `get_order_book depth=5`. `snapshot_at` is the book's own `timestamp`, so leg time spread is measurable (D-13). Requested as optional follow-up inputs (MODELS M-5a) and never cached.
+- Option rows also carry native `bid_native`/`ask_native` (coin or USDC), `expiration_ms` and `underlying_index`, because parity runs on native prices.
+- Tick cache (`snapshot_cache.py`, D-11): one cache per `run-due` pass. Books and tickers are reused for at most 20 s; metadata for 1 h.
+
 ## To confirm on first live access (guide §2, M1)
 
 - [x] `btc_usd` / `eth_usd` / `sol_usdc` / `hype_usdc` spot index names (confirmed live 2026-10-13).
 - [x] `btcdvol_usdc` / `ethdvol_usdc` index names (confirmed live 2026-10-13).
 - [ ] Whether Deribit lists a SOL/HYPE perpetual. Until one is listed, SOL/HYPE runs fail with `no_perpetual`; the first recording will show it.
+- [ ] parity: `funding_8h` semantics; order-book `amount` units (inverse futures USD, options in contracts, linear futures coin); same-expiry option and future delivery prices match (else `locked_future` → `basis_risk`).
 - [ ] Depth of the inverse BTC/ETH books vs linear `BTC_USDC`/`ETH_USDC`; record the choice here (both books' summaries are in the first recording).
 
 ## Recording snapshots (fixtures, golden tests, parity vectors)
@@ -39,7 +48,7 @@ uv run python -m terminal_models.tools.record_deribit \
   --out terminal_models/library/bs_pricer_black76/tests/fixtures/deribit_$STAMP
 ```
 
-The recorder fetches exactly what a `bs_pricer_black76` run fetches, through this adapter, plus BTC/ETH DVOL history. It saves each response body byte-for-byte (gzip, `calls/NNN_<method>.body.gz`), with the request URL/params and the local receive time (`.meta.json`). `manifest.json` lists every call with its sha256. If a required call fails, no manifest is written and `FAILED.txt` explains why. `--allow-partial` keeps the assets that succeeded. Replay refuses a recording whose bodies don't match the manifest.
+The recorder fetches exactly what `bs_pricer_black76` and `parity_deribit` runs fetch, through this adapter and the runner's fetch path, plus BTC/ETH DVOL history. parity's follow-up order books are recorded only once its fee table is filled, because it screens on net edge; the manifest's `notes` say when they were skipped. It saves each response body byte-for-byte (gzip, `calls/NNN_<method>.body.gz`), with the request URL/params and the local receive time (`.meta.json`). `manifest.json` lists every call with its sha256. If a required call fails, no manifest is written and `FAILED.txt` explains why. `--allow-partial` keeps the assets that succeeded. Replay refuses a recording whose bodies don't match the manifest.
 
 Then, from `options-terminal/models`:
 

@@ -29,6 +29,8 @@ def future(name, base, settle, period="perpetual", active=True):
         "settlement_period": period,
         "is_active": active,
         "kind": "future",
+        "contract_size": 1.0,
+        "expiration_timestamp": 32_503_708_800_000 if period == "perpetual" else 1_793_088_000_000,
     }
 
 
@@ -87,7 +89,26 @@ def handler(request: httpx.Request, fail: set[str]):
         table = FUTURES if p["kind"] == "future" else OPTIONS
         return httpx.Response(200, text=envelope(table[p["currency"]]))
     if method == "get_book_summary_by_currency":
+        if p["kind"] == "future":
+            rows = [
+                {
+                    "instrument_name": f["instrument_name"],
+                    "bid_price": 2000.0,
+                    "ask_price": 2000.5,
+                    "mark_price": 2000.2,
+                }
+                for f in FUTURES[p["currency"]]
+            ]
+            return httpx.Response(200, text=envelope(rows))
         return httpx.Response(200, text=envelope(SUMMARIES[p["currency"]]))
+    if method == "ticker":
+        result = {
+            "instrument_name": p["instrument_name"],
+            "current_funding": 0.0,
+            "funding_8h": 0.0001,
+            "timestamp": US_OUT // 1000,
+        }
+        return httpx.Response(200, text=envelope(result))
     if method == "get_index_price":
         return httpx.Response(
             200, text=envelope({"index_price": 2001.5, "estimated_delivery_price": 2001.5})
