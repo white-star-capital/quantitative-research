@@ -13,8 +13,12 @@ pub enum AuthMode {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub bind: SocketAddr,
-    /// Must connect as `api_ro` (A-2, CONTRACTS C-12).
+    /// Must connect as `api_ro` (A-2, CONTRACTS C-12): either a login with that role, or any
+    /// login plus `db_role = api_ro`.
     pub database_url: String,
+    /// `DB_ROLE`: when set, every pooled connection runs `SET ROLE <db_role>` first, so a single
+    /// shared connection string (e.g. Supabase's) still reads as `api_ro`.
+    pub db_role: Option<String>,
     pub db_max_connections: u32,
     pub db_acquire_timeout: Duration,
     pub cors_origins: Vec<HeaderValue>,
@@ -56,6 +60,15 @@ impl Config {
             .map_err(|_| ConfigError("API_BIND must be host:port".into()))?;
         let database_url =
             lookup("DATABASE_URL").ok_or_else(|| ConfigError("DATABASE_URL is required".into()))?;
+        let db_role = match lookup("DB_ROLE").filter(|r| !r.is_empty()) {
+            Some(r) if valid_role(&r) => Some(r),
+            Some(r) => {
+                return Err(ConfigError(format!(
+                    "DB_ROLE '{r}' is not a plain role name"
+                )));
+            }
+            None => None,
+        };
 
         let cors_origins = get("API_CORS_ORIGINS", "")
             .split(',')
@@ -84,6 +97,7 @@ impl Config {
         Ok(Self {
             bind,
             database_url,
+            db_role,
             db_max_connections: parse_u32("DB_MAX_CONNECTIONS", "10")?,
             db_acquire_timeout: Duration::from_secs(2),
             cors_origins,
@@ -103,6 +117,14 @@ impl Config {
     }
 }
 
+/// Lowercase identifier only: the name is interpolated into `SET ROLE`.
+fn valid_role(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase() || c == '_')
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && name.len() <= 63
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +136,20 @@ mod tests {
             .map(|(k, v)| ((*k).into(), (*v).into()))
             .collect();
         Config::from_lookup(|k| map.get(k).cloned())
+    }
+
+    #[test]
+    fn db_role_is_optional_and_validated() {
+        let base = [("DATABASE_URL", "postgres://x")];
+        assert_eq!(cfg(&base).unwrap().db_role, None);
+        let ok = cfg(&[("DATABASE_URL", "postgres://x"), ("DB_ROLE", "api_ro")]).unwrap();
+        assert_eq!(ok.db_role.as_deref(), Some("api_ro"));
+        for bad in ["api_ro; DROP TABLE slots", "Api", "1role", "a-b"] {
+            assert!(
+                cfg(&[("DATABASE_URL", "postgres://x"), ("DB_ROLE", bad)]).is_err(),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

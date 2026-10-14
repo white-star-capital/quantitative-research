@@ -94,9 +94,19 @@ async fn run() -> Result<(), String> {
 }
 
 async fn connect(config: &Config) -> Result<sqlx::PgPool, String> {
-    let options = PgPoolOptions::new()
+    let mut options = PgPoolOptions::new()
         .max_connections(config.db_max_connections)
         .acquire_timeout(config.db_acquire_timeout);
+    if let Some(role) = config.db_role.clone() {
+        // Validated in config (plain lowercase identifier), so safe to interpolate.
+        options = options.after_connect(move |conn, _meta| {
+            let sql = format!("SET ROLE {role}");
+            Box::pin(async move {
+                sqlx::query(sqlx::AssertSqlSafe(sql)).execute(conn).await?;
+                Ok(())
+            })
+        });
+    }
     let mut wait = Duration::from_secs(1);
     for attempt in 1..=DB_CONNECT_ATTEMPTS {
         match options.clone().connect(&config.database_url).await {

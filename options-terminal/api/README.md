@@ -23,7 +23,8 @@ DATABASE_URL=… cargo sqlx prepare -- --all-targets
 
 | Env var | Default | Notes |
 |---|---|---|
-| `DATABASE_URL` | required | A login that has only the `api_ro` role (A-2) |
+| `DATABASE_URL` | required | A login that has only the `api_ro` role (A-2), or any login together with `DB_ROLE=api_ro` |
+| `DB_ROLE` | none | If set, every pooled connection runs `SET ROLE <DB_ROLE>` first. Lets a single shared connection string, such as Supabase's, read as `api_ro`. |
 | `API_BIND` | `0.0.0.0:8080` | |
 | `API_CORS_ORIGINS` | none | Comma-separated frontend origins; `*` is rejected (A-15) |
 | `AUTH_MODE` | `none` | The only v1 value (A-17) |

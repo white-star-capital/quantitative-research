@@ -1,6 +1,8 @@
 """The only module that touches Postgres (M-3).
 
-- Connects with DATABASE_URL: a login holding `runner_rw` (CONTRACTS C-12, X-6).
+- Connects with DATABASE_URL: a login holding `runner_rw` (CONTRACTS C-12, X-6), or any login
+  plus DB_ROLE=runner_rw, which runs `SET ROLE runner_rw` first (one shared connection string,
+  e.g. Supabase's).
 - Advisory lock per (slot_id, scope_key, role), so runs never overlap (M-19).
 - One model_runs row per run in a single transaction, `NOTIFY model_runs '<slot_id>'` on
   success (C-13). Failed runs are written too (M-17).
@@ -13,11 +15,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
 import psycopg
+from psycopg import sql
 from psycopg.types.json import Jsonb
 
 from terminal_models.core.registry import Registry
@@ -30,6 +34,11 @@ class Writer:
         if not dsn:
             raise RuntimeError("DATABASE_URL is required (a login with the runner_rw role)")
         self.conn = psycopg.connect(dsn, autocommit=True)
+        role = os.environ.get("DB_ROLE")
+        if role:
+            if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", role):
+                raise RuntimeError(f"DB_ROLE {role!r} is not a plain role name")
+            self.conn.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(role)))
 
     def close(self) -> None:
         self.conn.close()

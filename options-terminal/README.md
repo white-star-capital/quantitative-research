@@ -21,37 +21,42 @@ Needs Docker (Desktop or daemon) and `make`. From `options-terminal/`:
 
 | Command | Does |
 |---|---|
-| `make start` | Creates `.env` with random DB passwords on first run, builds the images, starts Postgres, API, runner and frontend, and waits until they are healthy. Open http://localhost:3000. |
+| `make start` | Creates `.env` on first run, builds the images, starts Postgres, API, runner and frontend, and waits until they are healthy. Open http://localhost:3000. |
 | `make stop` | Stops everything and removes this project's containers, network, the images it built and their dangling layers. Keeps the database and snapshot volumes. Nothing outside this compose project is touched. |
 | `make clean` | `stop`, then also deletes the database and snapshot volumes. |
 | `make logs` / `make ps` / `make restart` | Follow logs / status / rebuild and restart. |
 
 What runs:
-- **`db`** (Postgres 17, local mode only): on its first start with an empty volume, it applies `contracts/db/migrations/*` and creates the `runner` (runner_rw) and `api` (api_ro) logins.
-- **`api`**: connects as `api`, read-only.
-- **`runner`**: syncs `models/registry.yaml`, then runs due models every minute as `runner`.
+- **`db`** (Postgres 17, local mode only), plus the one-shot **`db-init`**, which applies the migrations if needed and the setup in `docker/db/setup.sql`.
+- **`api`**: `SET ROLE api_ro` on connect, so it's read-only.
+- **`runner`**: `SET ROLE runner_rw` on connect. It syncs `models/registry.yaml`, then runs due models every minute.
 - **`frontend`**: nginx serving the build and proxying `/v1` to the API, so the browser sees one origin. Strict CSP, and no query strings in the access log (A-34).
 
 Only port 3000 is published (set `FRONTEND_PORT` in `.env` to change it).
 
 ### Using Supabase as the database
 
-1. In `.env`, keep the generated `RUNNER_DB_PASSWORD` / `API_DB_PASSWORD` and add three values from the Supabase dashboard (see `.env.example`):
-   - `SUPABASE_PROJECT_REF`: Project Settings → General → Project ID.
-   - `SUPABASE_POOLER_HOST`: Connect → **Session pooler** → host, e.g. `aws-0-eu-central-1.pooler.supabase.com`.
-   - `SUPABASE_DB_PASSWORD`: the database (`postgres`) password. Only `make supabase-init` uses it; the services never do.
-2. Run `make supabase-init` once. It:
-   - applies `contracts/db/migrations` (skipped if the schema already exists);
-   - creates the `runner` and `api` logins with those passwords;
-   - revokes the tables from Supabase's `anon`/`authenticated` roles;
-   - enables row-level security, with policies only for `runner_rw` and `api_ro`.
+Add one line to `.env` and run `make start`:
 
-   It is safe to re-run, for example after changing a password.
-3. `make start`. With `SUPABASE_PROJECT_REF` set, no local Postgres container starts. The runner and API connect as `runner.<ref>` / `api.<ref>` through the session pooler on port 5432 with TLS.
+```
+SUPABASE_DB_URL=postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+```
 
-Why the session pooler: the API holds a `LISTEN` connection and the runner takes advisory locks, so both need session connections. The transaction pooler (6543) breaks both. The direct host is IPv6-only without Supabase's IPv4 add-on.
+Copy it from Supabase → **Connect** → **Session pooler** → URI, and replace `[YOUR-PASSWORD]` with your database password. Special characters in the password must be URL-encoded; if the password contains `$`, wrap the whole value in single quotes. With `SUPABASE_DB_URL` set, no local Postgres container starts.
 
-Why the lockdown: Supabase serves the `public` schema through its REST API to anyone with the project's anon key. Without step 2, model runs would be readable that way.
+On every start, the one-shot `db-init` service (`docker/db/setup.sh`):
+- applies `contracts/db/migrations` if the schema isn't there yet;
+- runs `docker/db/setup.sql`, which is idempotent and:
+  - removes the tables from Supabase's public REST API (the `anon`/`authenticated` roles), which would otherwise let anyone with the project's anon key read the model runs;
+  - enables row-level security for our two roles.
+
+**No extra logins.** The runner and API both connect with this one URL and switch roles on connect (`DB_ROLE`, i.e. `SET ROLE`):
+- the runner to `runner_rw`, which can write runs;
+- the API to `api_ro`, which is read-only.
+
+A bug in the API therefore can't write. This is a guard against mistakes, not a hard boundary: whoever controls a container also holds the database password. A shared deployment should give each service its own login instead (CONTRACTS C-12).
+
+Use the **Session** pooler (port 5432). The API holds a `LISTEN` connection and the runner takes advisory locks; the transaction pooler (6543) breaks both, and `make start` refuses it. The direct host is IPv6-only without Supabase's IPv4 add-on.
 
 `make clean` deletes only local volumes; it never touches Supabase.
 

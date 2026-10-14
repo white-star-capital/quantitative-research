@@ -174,3 +174,27 @@ def test_failed_run_is_written_and_lock_blocks_overlap(dsn):
         assert conn.execute(
             "SELECT status FROM model_runs WHERE scope_key='underlying=ETH'"
         ).fetchone() == ("failed",)
+
+
+def test_db_role_sets_role_on_a_shared_login(dsn, monkeypatch):
+    """One connection string for both services (e.g. Supabase): DB_ROLE runs SET ROLE first,
+    so the runner writes as runner_rw and an api_ro session cannot write."""
+    _, owner = dsn
+    monkeypatch.setenv("DB_ROLE", "runner_rw")
+    w = Writer(owner)
+    try:
+        assert w.conn.execute("SELECT current_user").fetchone()[0] == "runner_rw"
+        assert w.sync_registry(registry(), load_slots()) in (True, False)
+    finally:
+        w.close()
+    monkeypatch.setenv("DB_ROLE", "api_ro")
+    w = Writer(owner)
+    try:
+        assert w.conn.execute("SELECT current_user").fetchone()[0] == "api_ro"
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            w.conn.execute("UPDATE slots SET status = status")
+    finally:
+        w.close()
+    monkeypatch.setenv("DB_ROLE", "api_ro; DROP TABLE slots")
+    with pytest.raises(RuntimeError, match="not a plain role name"):
+        Writer(owner)
