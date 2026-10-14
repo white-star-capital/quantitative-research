@@ -15,6 +15,33 @@
 
 Requirement keywords: **MUST** = required for acceptance, **SHOULD** = expected unless there's a documented reason not to, **MAY** = optional.
 
+## Run it locally (Docker)
+
+Needs Docker (Desktop or daemon) and `make`. From `options-terminal/`:
+
+| Command | Does |
+|---|---|
+| `make start` | Creates `.env` with random DB passwords on first run, builds the images, starts Postgres, API, runner and frontend, and waits until they are healthy. Open http://localhost:3000. |
+| `make stop` | Stops everything and removes this project's containers, network, the images it built and their dangling layers. Keeps the database and snapshot volumes. Nothing outside this compose project is touched. |
+| `make clean` | `stop`, then also deletes the database and snapshot volumes. |
+| `make logs` / `make ps` / `make restart` | Follow logs / status / rebuild and restart. |
+
+What runs:
+- **`db`** (Postgres 17): on its first start with an empty volume, it applies `contracts/db/migrations/*` and creates the `runner` (runner_rw) and `api` (api_ro) logins.
+- **`api`**: connects as `api`, read-only.
+- **`runner`**: syncs `models/registry.yaml`, then runs due models every minute as `runner`.
+- **`frontend`**: nginx serving the build and proxying `/v1` to the API, so the browser sees one origin. Strict CSP, and no query strings in the access log (A-34).
+
+Only port 3000 is published (set `FRONTEND_PORT` in `.env` to change it).
+
+Notes:
+- **The runner needs outbound access to `www.deribit.com`.** Without it, runs are recorded as failed (`source_unavailable`) and the UI shows "no output yet". Nothing is filled in.
+- The pricer runs every 5 minutes, so the first runs land within about 5 minutes of `make start`.
+- `parity_monitor` stays empty until `parity_deribit` is registered, which happens once its fee table is filled (see its guide).
+- Migrations only run on a fresh volume. After a schema change, run `make clean` before `make start`.
+- `make stop` leaves Docker's global build cache alone, because it can't be filtered by project. To reclaim that space too, run `docker builder prune`; that affects every project on the machine.
+- Behind nginx the API's rate limiter sees one client address. That's fine locally; a shared deployment needs the trusted-proxy setup in API.md A-18.
+
 ---
 
 ## 1. What we're building

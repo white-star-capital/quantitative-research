@@ -1,0 +1,13 @@
+# Build context is options-terminal/; keep it to sources.
+**/node_modules
+**/dist
+**/target
+**/.venv
+**/.snapshots
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.import_linter_cache
+**/.DS_Store
+.env
+.git
