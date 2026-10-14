@@ -49,6 +49,7 @@ forbidden_modules = ["terminal_models.adapters", "terminal_models.runner"]
 ignore_imports = [
     "terminal_models.library.*.tests.** -> terminal_models.runner.**",
     "terminal_models.library.*.tests.** -> terminal_models.adapters.**",
+    "terminal_models.library.*.tests.** -> terminal_models.tools.**",
 ]
 
 [[tool.importlinter.contracts]]

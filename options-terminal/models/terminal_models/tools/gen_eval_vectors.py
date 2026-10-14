@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from terminal_models.core.manifest import load_manifest
@@ -78,7 +80,6 @@ def interpolation_cases(env: dict[str, Any]) -> list[dict]:
 
 
 def evaluate_cases(env: dict[str, Any]) -> list[dict]:
-    run = surface_from_payload(env["run_id"], env["as_of"], env["scope"], env["payload"])
     as_of = parse_utc(env["as_of"], "as_of")
     exp31 = syn.expiry_at(31)
     later = utc(syn.expiry_at(20).replace(hour=23, minute=59))
@@ -207,6 +208,180 @@ def evaluate_cases(env: dict[str, Any]) -> list[dict]:
         ({"option_type": "straddle", "expiry": utc(exp31), "strike": 100.0}, False),
         ({"option_type": "call", "expiry": utc(exp31), "strike": 100.0, "size": 0.0}, False),
     ]
+    return expected_cases(env, requests)
+
+
+def relative_requests(env: dict[str, Any]) -> list[tuple[dict[str, Any], bool]]:
+    """Cases for a recorded run, placed relative to its own expiries, forwards and nodes so every
+    flag and error path is exercised at any price level. Premiums are derived from the run's own
+    fair values (no market numbers are entered here)."""
+    run = surface_from_payload(env["run_id"], env["as_of"], env["scope"], env["payload"])
+    surf, as_of, spot = run.surface, run.as_of, run.spot
+    exps = surf.expiries
+    mid = exps[len(exps) // 2]
+    nxt = exps[min(len(exps) - 1, len(exps) // 2 + 1)]
+    f_mid = mid.forward
+    node_call = min((n.strike for n in mid.nodes if n.strike >= f_mid), default=f_mid)
+    between = as_of + (mid.expiry - as_of + nxt.expiry - as_of) / 2
+    between = between.replace(second=0, microsecond=0)
+    config = load_slots()["bs_pricer"].evaluation.model_dump()
+
+    def fair(option_type: str, expiry, strike: float) -> float:
+        req = Request(option_type=option_type, expiry=expiry, strike=strike)
+        return evaluate(run, req, config, False)["fair"]["per_unit_usd"]
+
+    def r6(x: float) -> float:
+        return float(f"{x:.6g}")
+
+    k_sell, k_put, k_coin = (
+        r6(1.1 * f_mid),
+        r6(0.92 * surf.forward((between - as_of).total_seconds() / (365 * 86400))[0]),
+        r6(f_mid),
+    )
+    weak = next((n for e in exps for n in e.nodes if n.quality != "good"), None)
+    weak_exp = next((e for e in exps if weak in e.nodes), None)
+    reqs: list[tuple[dict[str, Any], bool]] = [
+        (
+            {"option_type": "call", "expiry": utc(mid.expiry), "strike": node_call, "size": 2.0},
+            False,
+        ),
+        ({"option_type": "put", "expiry": utc(between), "strike": k_put}, False),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(mid.expiry),
+                "strike": k_sell,
+                "size": 10.0,
+                "premium": r6(fair("call", mid.expiry, k_sell) * 10 * 1.05),
+                "premium_unit": "usd_total",
+                "side": "sell",
+                "spot_ref": r6(spot * 1.015),
+                "quoted_at": utc(as_of - timedelta(days=5)),
+            },
+            True,
+        ),
+        (
+            {
+                "option_type": "put",
+                "expiry": utc(between),
+                "strike": k_put,
+                "premium": r6(fair("put", between, k_put) / (spot * 0.999) * 100 * 0.97),
+                "premium_unit": "pct_spot",
+                "side": "buy",
+                "spot_ref": r6(spot * 0.999),
+            },
+            False,
+        ),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(mid.expiry),
+                "strike": k_coin,
+                "premium": r6(fair("call", mid.expiry, k_coin) / spot * 1.02),
+                "premium_unit": "coin_per_unit",
+                "side": "sell",
+            },
+            False,
+        ),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(mid.expiry),
+                "strike": r6(0.8 * f_mid),
+                "premium": r6(0.1 * f_mid),
+                "premium_unit": "usd_per_unit",
+                "side": "buy",
+            },
+            False,
+        ),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(mid.expiry),
+                "strike": r6(min(4.5, math.exp(mid.k_max + 0.3)) * f_mid),
+            },
+            False,
+        ),
+        (
+            {
+                "option_type": "put",
+                "expiry": utc(as_of + (exps[0].expiry - as_of) / 2),
+                "strike": r6(spot),
+            },
+            False,
+        ),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(as_of + (exps[-1].expiry - as_of) * 1.5),
+                "strike": r6(1.05 * exps[-1].forward),
+            },
+            False,
+        ),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(
+                    mid.expiry.replace(hour=23 if mid.expiry.hour != 23 else 0, minute=59)
+                ),
+                "strike": node_call,
+            },
+            False,
+        ),
+    ]
+    if weak is not None and weak_exp is not None:
+        reqs.append(
+            ({"option_type": "call", "expiry": utc(weak_exp.expiry), "strike": weak.strike}, False)
+        )
+    reqs += [
+        ({"option_type": "call", "expiry": utc(as_of), "strike": r6(f_mid)}, False),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(as_of + (exps[-1].expiry - as_of) * 3),
+                "strike": r6(f_mid),
+            },
+            False,
+        ),
+        ({"option_type": "call", "expiry": utc(mid.expiry), "strike": r6(0.1 * f_mid)}, False),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(mid.expiry),
+                "strike": r6(f_mid),
+                "premium": 1.0,
+                "premium_unit": "usd_per_unit",
+            },
+            False,
+        ),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(mid.expiry),
+                "strike": r6(f_mid),
+                "premium": 1.0,
+                "side": "sell",
+                "premium_unit": "pct_spot",
+            },
+            False,
+        ),
+        (
+            {
+                "option_type": "call",
+                "expiry": utc(mid.expiry),
+                "strike": r6(f_mid),
+                "premium": -1.0,
+                "side": "sell",
+                "premium_unit": "usd_per_unit",
+            },
+            False,
+        ),
+    ]
+    return reqs
+
+
+def expected_cases(env: dict[str, Any], requests: list[tuple[dict[str, Any], bool]]):
+    run = surface_from_payload(env["run_id"], env["as_of"], env["scope"], env["payload"])
     config = load_slots()["bs_pricer"].evaluation.model_dump()
     cases = []
     for params, run_stale in requests:
@@ -237,6 +412,34 @@ def render(doc: dict[str, Any]) -> str:
     return json.dumps(doc, indent=1, allow_nan=False) + "\n"
 
 
+def build_for_run(path: Path, name: str) -> dict[str, str]:
+    """Vectors from a recorded-run fixture (guide §4.4): interpolation_<name>.json and
+    evaluate_<name>.json. The run must be a successful bs_pricer envelope."""
+    env = json.loads(path.read_text())
+    if env.get("status") != "success":
+        raise SystemExit(f"{path}: run status {env.get('status')}; vectors need a successful run")
+    cases, codes, flags, config = expected_cases(env, relative_requests(env))
+    header = {
+        "generated_by": "python -m terminal_models.tools.gen_eval_vectors --run",
+        "data": f"frozen recorded run {path.name}",
+    }
+    return {
+        f"interpolation_{name}.json": render(
+            header | {"run": env, "cases": interpolation_cases(env)}
+        ),
+        f"evaluate_{name}.json": render(
+            header
+            | {
+                "run": env,
+                "config": config,
+                "error_codes": sorted(codes),
+                "flags": sorted(flags),
+                "cases": cases,
+            }
+        ),
+    }
+
+
 def build() -> dict[str, str]:
     env = frozen_run()
     cases, codes, flags, config = evaluate_cases(env)
@@ -264,10 +467,20 @@ def build() -> dict[str, str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="fail if committed files differ")
+    parser.add_argument(
+        "--run",
+        type=Path,
+        action="append",
+        default=[],
+        help="recorded-run fixture (repeatable); writes *_<asset>.json vectors",
+    )
     args = parser.parse_args(argv)
     out = contracts_dir() / "fixtures" / "pricing"
     stale = []
-    for name, content in build().items():
+    files = build() if not args.run else {}
+    for run in args.run:
+        files |= build_for_run(run, run.stem.removeprefix("bs_pricer_"))
+    for name, content in files.items():
         path = out / name
         if args.check:
             if not path.exists() or path.read_text() != content:

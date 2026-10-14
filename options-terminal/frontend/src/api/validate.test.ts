@@ -100,8 +100,15 @@ describe("contract fixtures", () => {
       : [];
     for (const file of files) {
       it(`${kind}/${file}`, () => {
-        const parsed: unknown = JSON.parse(readFileSync(new URL(file, root), "utf8"));
-        assert.equal(checkEnvelope(parsed).ok, kind === "valid");
+        // An invalid fixture may break JSON itself (NaN): the client rejects it at parse.
+        let ok: boolean;
+        try {
+          ok = checkEnvelope(JSON.parse(readFileSync(new URL(file, root), "utf8"))).ok;
+        } catch (exc) {
+          if (!(exc instanceof SyntaxError)) throw exc;
+          ok = false;
+        }
+        assert.equal(ok, kind === "valid");
       });
     }
   }

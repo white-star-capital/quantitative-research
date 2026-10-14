@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from terminal_models.adapters.base import AdapterError, DataAdapter
-from terminal_models.adapters.deribit.chains import BOOKS, iso_ms, normalize
+from terminal_models.adapters.deribit.chains import BOOKS, find_perpetual, iso_ms, normalize
 from terminal_models.adapters.deribit.client import DeribitClient
 from terminal_models.core.base import InputData, InputSpec
 
@@ -36,7 +36,12 @@ class DeribitAdapter(DataAdapter):
                     raise AdapterError("bad_input_spec", f"no DVOL index for {underlying}")
                 return self._index(spec, book.dvol, "dvol", scale=0.01)  # DVOL is in vol points
             if kind == "candles_1h":
-                return self._candles(spec, book.perp, as_of, int(spec.params["lookback_days"]))
+                perp = find_perpetual(book, self.client.futures(book.currency).result)
+                if perp is None:
+                    raise AdapterError(
+                        "no_perpetual", f"{spec.name}: Deribit lists no {underlying} perpetual"
+                    )
+                return self._candles(spec, perp, as_of, int(spec.params["lookback_days"]))
         except AdapterError:
             raise
         except (KeyError, TypeError, ValueError) as exc:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import random
 import time
 from typing import Any
@@ -31,6 +32,14 @@ class HttpSource:
         self.client = client or httpx.Client(base_url=base_url, timeout=timeout_seconds)
 
     def request_json(self, method: str, path: str, **kwargs: Any) -> Any:
+        text = self.request_text(method, path, **kwargs)
+        try:
+            return json.loads(text)
+        except ValueError as exc:
+            raise AdapterError("source_bad_json", f"{method} {path}: {exc}") from exc
+
+    def request_text(self, method: str, path: str, **kwargs: Any) -> str:
+        """The response body exactly as received (recording needs the original bytes)."""
         last_error = ""
         for attempt in range(1, self.max_attempts + 1):
             try:
@@ -43,10 +52,7 @@ class HttpSource:
                         raise AdapterError(
                             "source_http_error", f"{method} {path} -> {response.status_code}"
                         )
-                    try:
-                        return response.json()
-                    except ValueError as exc:
-                        raise AdapterError("source_bad_json", f"{method} {path}: {exc}") from exc
+                    return response.text
                 last_error = f"HTTP {response.status_code}"
                 retry_after = response.headers.get("Retry-After")
                 if retry_after and retry_after.isdigit() and attempt < self.max_attempts:

@@ -16,17 +16,42 @@ from typing import Any
 class Book:
     currency: str  # book summary / instruments currency
     base: str  # base_currency filter
-    index: str  # spot index name
-    perp: str  # perpetual for hourly candles
-    dvol: str | None  # display-only DVOL index
+    index: str  # spot index name (confirmed live 2026-10-13)
+    dvol: str | None  # display-only DVOL index (confirmed live 2026-10-13)
 
 
 BOOKS: dict[str, Book] = {
-    "BTC": Book("BTC", "BTC", "btc_usd", "BTC-PERPETUAL", "btcdvol_usdc"),
-    "ETH": Book("ETH", "ETH", "eth_usd", "ETH-PERPETUAL", "ethdvol_usdc"),
-    "SOL": Book("USDC", "SOL", "sol_usdc", "SOL_USDC-PERPETUAL", None),
-    "HYPE": Book("USDC", "HYPE", "hype_usdc", "HYPE_USDC-PERPETUAL", None),
+    "BTC": Book("BTC", "BTC", "btc_usd", "btcdvol_usdc"),
+    "ETH": Book("ETH", "ETH", "eth_usd", "ethdvol_usdc"),
+    "SOL": Book("USDC", "SOL", "sol_usdc", None),
+    "HYPE": Book("USDC", "HYPE", "hype_usdc", None),
 }
+
+
+def find_perpetual(book: Book, futures: list[dict]) -> str | None:
+    """The asset's perpetual, from futures metadata (D-2: never a constructed name).
+
+    Candidates: `base_currency` = asset and `settlement_period` = perpetual, still active. Prefer
+    one settling in the book's currency (BTC-PERPETUAL for the inverse BTC book,
+    SOL_USDC-PERPETUAL for the USDC book); ties break on name for determinism.
+    """
+    perps = [
+        f
+        for f in futures
+        if f.get("base_currency") == book.base
+        and f.get("settlement_period") == "perpetual"
+        and f.get("is_active", True)
+    ]
+    perps.sort(key=lambda f: (f.get("settlement_currency") != book.currency, f["instrument_name"]))
+    return perps[0]["instrument_name"] if perps else None
+
+
+def is_inverse(meta: dict, book: Book) -> bool:
+    """`instrument_type` reversed/linear when present; else coin-settled means inverse."""
+    kind = meta.get("instrument_type")
+    if kind in ("reversed", "linear"):
+        return kind == "reversed"
+    return meta.get("settlement_currency") == book.base
 
 
 def _positive(value: Any) -> float | None:
@@ -58,7 +83,7 @@ def normalize(underlying: str, instruments: list[dict], summaries: list[dict]) -
         forward = _positive(s.get("underlying_price"))
         if forward is None:
             continue
-        inverse = m.get("settlement_currency") == book.base
+        inverse = is_inverse(m, book)
         to_usd = forward if inverse else 1.0
 
         def usd(field: str, to_usd: float = to_usd, s: dict = s) -> float | None:
