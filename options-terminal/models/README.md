@@ -10,6 +10,9 @@ uv run ruff check .
 uv run python -m terminal_models.runner validate-registry
 uv run python -m terminal_models.tools.gen_pricing_vectors --check   # parity vectors up to date
 
+# Deribit recordings → fixtures → evaluate vectors → golden tests: adapters/deribit/README.md
+uv run python -m terminal_models.tools.build_fixtures --check --recording <dir>
+
 # Postgres-backed tests (writer, registry sync, run → replay)
 TEST_DATABASE_URL=postgresql://postgres@localhost:5432/postgres uv run pytest tests/test_writer_postgres.py
 ```

@@ -51,3 +51,5 @@ uv run python -m terminal_models.tools.gen_eval_vectors \
 ```
 
 Commit the recording, the fixtures and the vectors together. `build_fixtures` reports each asset's status, its node-quality mix and the guide §4.4 HYPE coverage. A run that fails on real data is a finding to report, not something to tune away.
+
+The whole path (record → replay → fixtures → vectors → `runner replay` → Rust parity) runs offline in `models/tests/test_replay_pipeline.py`. It uses Deribit-shaped bodies built from the test-only synthetic chain, so a plumbing bug shows up there and not as a data finding on the first real recording. CI (`.github/workflows/options-terminal.yml`) runs it along with the golden tests.

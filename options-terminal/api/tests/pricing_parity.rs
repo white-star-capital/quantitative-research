@@ -15,8 +15,12 @@ use options_terminal_api::pricing::{
 };
 use serde_json::Value;
 
+/// PRICING_FIXTURES_DIR points the suite at another vector set (models/tests/test_replay_pipeline.py).
 fn pricing_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/pricing")
+    match std::env::var_os("PRICING_FIXTURES_DIR") {
+        Some(dir) => PathBuf::from(dir),
+        None => Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/fixtures/pricing"),
+    }
 }
 
 fn load(name: &str) -> Value {

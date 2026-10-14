@@ -1,0 +1,98 @@
+name: options-terminal
+
+on:
+  push:
+    paths: ["options-terminal/**", ".github/workflows/options-terminal.yml"]
+  pull_request:
+    paths: ["options-terminal/**", ".github/workflows/options-terminal.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: options-terminal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  models:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: options-terminal/models
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/postgres
+      SQLX_OFFLINE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      # The recorded-run parity test (tests/test_replay_pipeline.py) runs the Rust suite.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: options-terminal/api
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run lint-imports
+      - run: uv run python -m terminal_models.runner validate-registry
+      # Contract fixtures, parity vectors (--check), recorder/replay pipeline, golden tests on the
+      # committed Deribit recording, Postgres writer.
+      - run: uv run pytest -rs
+
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: options-terminal/api
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SQLX_OFFLINE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: options-terminal/api
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test # includes pricing_parity over contracts/fixtures/pricing
+      - run: cargo test --test postgres -- --ignored
+        env:
+          DATABASE_URL: postgres://postgres@localhost:5432/postgres
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: options-terminal/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+          cache: npm
+          cache-dependency-path: options-terminal/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run check:deps
+      - run: npm run typecheck
+      - run: npm test # includes every contract fixture (valid pass, invalid fail)
+      - run: npm run build
