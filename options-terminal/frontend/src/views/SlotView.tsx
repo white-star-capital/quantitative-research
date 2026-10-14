@@ -73,7 +73,7 @@ export function SlotView({ slotId, scope, slots, onAsOf }: Props) {
         </div>
         {selection.role === "shadow" && <ShadowBanner implementation={selection.implementation ?? ""} />}
         <PanelBoundary>
-          <Bespoke slot={slot} detail={detail.data} scope={scope} selection={selection} latest={latest} />
+          <Bespoke slot={slot} detail={detail.data} scope={scope} selection={selection} latest={latest} slots={slots.data ?? []} />
         </PanelBoundary>
       </section>
     );

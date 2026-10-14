@@ -197,18 +197,18 @@ export function payoff(
 
 // ---- per-viewer preferences (conveniences only: wrapped in try/catch) ---------------------
 
-export function loadPref<T>(key: string, fallback: T, storage: Pick<Storage, "getItem"> | null): T {
+export function loadPref<T>(key: string, fallback: T, storage: Pick<Storage, "getItem"> | null, prefix = "bs_pricer"): T {
   try {
-    const raw = storage?.getItem(`bs_pricer.${key}`);
+    const raw = storage?.getItem(`${prefix}.${key}`);
     return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
     return fallback;
   }
 }
 
-export function savePref(key: string, value: unknown, storage: Pick<Storage, "setItem"> | null): void {
+export function savePref(key: string, value: unknown, storage: Pick<Storage, "setItem"> | null, prefix = "bs_pricer"): void {
   try {
-    storage?.setItem(`bs_pricer.${key}`, JSON.stringify(value));
+    storage?.setItem(`${prefix}.${key}`, JSON.stringify(value));
   } catch {
     // Private mode or blocked storage: the preference simply isn't remembered.
   }

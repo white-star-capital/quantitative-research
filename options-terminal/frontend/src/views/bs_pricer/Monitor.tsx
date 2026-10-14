@@ -8,8 +8,23 @@ import { formatAge, formatNumber } from "../../format/units.ts";
 import type { BespokeProps } from "../registry.ts";
 import { loadPref, savePref } from "./logic.ts";
 import { assetHref, contextOf, latestPath, num, payloadOf, storage } from "./shared.ts";
+import type { SlotSummary } from "../../api/types.ts";
+import { findParitySlot } from "../parity_monitor/logic.ts";
+import { PARITY_COLUMNS, ParityCells, useParityLatest, useParitySelection, whyMissing } from "../parity_monitor/parts.tsx";
 
-function Row({ slotId, underlying, selection, gate }: { slotId: string; underlying: string; selection: Record<string, string>; gate: number }) {
+interface ParityRef {
+  slot: SlotSummary;
+  selection: Record<string, string> | null;
+}
+
+/** Parity columns (parity guide §7.1) from the parity slot's own /latest, so either slot can
+ *  fail without blanking the other. */
+function ParityPart({ parity, underlying }: { parity: ParityRef; underlying: string }) {
+  const latest = useParityLatest(parity.slot, underlying, parity.selection);
+  return <ParityCells payload={payloadOf(latest.data)} why={whyMissing(latest)} />;
+}
+
+function Row({ slotId, underlying, selection, gate, parity }: { slotId: string; underlying: string; selection: Record<string, string>; gate: number; parity: ParityRef | null }) {
   const latest = usePolled(latestPath(slotId, underlying, selection), checkLatest);
   const href = assetHref(slotId, underlying);
   const payload = payloadOf(latest.data);
@@ -23,6 +38,7 @@ function Row({ slotId, underlying, selection, gate }: { slotId: string; underlyi
       <tr className="clickable" onClick={() => (window.location.hash = href)}>
         <td data-label="Asset" className="row-code"><a href={href}>{underlying}</a></td>
         <td colSpan={11} className="dim">{why}</td>
+        {parity && <ParityPart parity={parity} underlying={underlying} />}
       </tr>
     );
   }
@@ -57,13 +73,17 @@ function Row({ slotId, underlying, selection, gate }: { slotId: string; underlyi
       <td data-label="Updated" className="num">
         {formatAge(meta.age_seconds)} <span className={`status ${meta.stale ? "bad" : "ok"}`}>{meta.stale ? "STALE" : "FRESH"}</span>
       </td>
+      {parity && <ParityPart parity={parity} underlying={underlying} />}
     </tr>
   );
 }
 
-export function Monitor({ slot, selection }: BespokeProps) {
+export function Monitor({ slot, selection, slots }: BespokeProps) {
   const [gate, setGate] = useState(() => loadPref("vrp_gate_vp", 5, storage()));
   const assets = slot.scope.allowed?.underlying ?? [];
+  const paritySlot = findParitySlot(slots);
+  const paritySelection = useParitySelection(paritySlot);
+  const parity = paritySlot ? { slot: paritySlot, selection: paritySelection } : null;
   return (
     <div className="panel">
       <div className="panel-title">
@@ -89,19 +109,20 @@ export function Monitor({ slot, selection }: BespokeProps) {
         <table className="grid">
           <thead>
             <tr>
-              {["Asset", "Spot · 24h", "ATM 7d", "ATM 30d", "ATM 90d", "RV 30d", "VRP 30d", "RR25 30d", "BF25 30d", "Term ratio", "Data", "Updated"].map((h) => (
+              {["Asset", "Spot · 24h", "ATM 7d", "ATM 30d", "ATM 90d", "RV 30d", "VRP 30d", "RR25 30d", "BF25 30d", "Term ratio", "Data", "Updated", ...(parity ? PARITY_COLUMNS : [])].map((h) => (
                 <th key={h} className={h === "Asset" ? undefined : "num"}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {assets.map((u) => <Row key={u} slotId={slot.slot_id} underlying={u} selection={selection} gate={gate} />)}
+            {assets.map((u) => <Row key={u} slotId={slot.slot_id} underlying={u} selection={selection} gate={gate} parity={parity} />)}
           </tbody>
         </table>
       </div>
       <div className="chart-footer dim">
         ATM IVs are constant-maturity from the Deribit surface; VRP = ATM 30d − RV 30d (hourly perp returns). The VRP gate is
         your display threshold, kept in this browser only. Event = 1d/30d term ratio at or above the model's threshold.
+        {parity && " Parity columns come from the parity monitor: 30d values interpolate between listed expiries; \"perp only\" means no dated future."}
       </div>
     </div>
   );

@@ -13,6 +13,8 @@ export interface BespokeProps {
   /** run selection params: {} for production, or role/implementation in a shadow period. */
   selection: Record<string, string>;
   latest: Polled<LatestResponse>;
+  /** The catalog, so a view can find related slots by view id (never a hard-coded slot id). */
+  slots: SlotSummary[];
 }
 
 const VIEWS = new Map<string, ComponentType<BespokeProps>>();

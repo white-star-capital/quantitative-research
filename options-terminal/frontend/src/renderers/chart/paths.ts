@@ -29,3 +29,25 @@ export function nearestIndex(xs: number[], px: number, sx: LinearScale): number 
   });
   return best;
 }
+
+/** Closed SVG path(s) filling between lo and hi; a null on either side ends a segment. */
+export function bandPath(xs: number[], lo: (number | null)[], hi: (number | null)[], sx: LinearScale, sy: LinearScale): string {
+  let d = "";
+  let seg: number[] = [];
+  const flush = () => {
+    if (seg.length >= 2) {
+      const top = seg.map((i, j) => `${j ? "L" : "M"}${sx(xs[i] as number).toFixed(1)},${sy(hi[i] as number).toFixed(1)}`).join("");
+      const bottom = [...seg].reverse().map((i) => `L${sx(xs[i] as number).toFixed(1)},${sy(lo[i] as number).toFixed(1)}`).join("");
+      d += `${top}${bottom}Z`;
+    }
+    seg = [];
+  };
+  xs.forEach((_, i) => {
+    const a = lo[i];
+    const b = hi[i];
+    if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b)) flush();
+    else seg.push(i);
+  });
+  flush();
+  return d;
+}

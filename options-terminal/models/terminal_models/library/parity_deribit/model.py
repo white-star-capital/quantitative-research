@@ -472,7 +472,7 @@ class ParityDeribit(Model):
                 book.T, fees, p["min_tte_hours"],
             )  # fmt: skip
             if r is not None:
-                locks.append((r, pair.strike))
+                locks.append((r, pair.strike, fees))
         f_impl, why = P.implied_forward(strikes, p["min_strikes_for_forward"])
         weights = [1 / (hi - lo) for _, lo, hi in strikes if hi > lo]
         usable = [(lo, hi) for _, lo, hi in strikes if hi > lo]
@@ -512,6 +512,7 @@ class ParityDeribit(Model):
             "n_strikes_used": len(usable),
             "r_lock_best": best_lock[0] if best_lock else None,
             "r_lock_best_strike": best_lock[1] if best_lock else None,
+            "r_lock_best_fees": best_lock[2] if best_lock else None,
         }
 
 
@@ -538,6 +539,7 @@ EXPIRY_COLUMNS = [
     ("n_strikes_used", "Strikes used", "number", COUNT),
     ("r_lock_best", "Best r_lock", "number", RATE_CONT),
     ("r_lock_best_strike", "r_lock strike", "number", USD),
+    ("r_lock_best_fees", "r_lock option fees (native, per unit)", "number", unit("other")),
 ]
 
 

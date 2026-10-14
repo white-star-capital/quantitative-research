@@ -11,13 +11,18 @@ import { chainOf } from "./logic.ts";
 import { PricerTab, type Prefill } from "./PricerTab.tsx";
 import { assetHref, contextOf, num, payloadOf } from "./shared.ts";
 import { VolTab } from "./VolTab.tsx";
+import { findParitySlot } from "../parity_monitor/logic.ts";
+import { ParityTab } from "../parity_monitor/parts.tsx";
 
-type Tab = "chain" | "vol" | "pricer" | "data";
+type Tab = "chain" | "vol" | "pricer" | "data" | "parity";
 const TABS: [Tab, string][] = [["chain", "Chain"], ["vol", "Vol"], ["pricer", "Pricer & OTC"], ["data", "Data"]];
 
 export function AssetView(props: BespokeProps & { underlying: string }) {
   const { slot, latest, underlying, selection } = props;
   const [tab, setTab] = useState<Tab>("chain");
+  // Parity tab only when the catalog serves a parity slot (found by view id, never hard-coded).
+  const paritySlot = findParitySlot(props.slots);
+  const tabs: [Tab, string][] = paritySlot ? [...TABS, ["parity", "Parity"]] : TABS;
   const [prefill, setPrefill] = useState<Prefill | null>(null);
   const assets = slot.scope.allowed?.underlying ?? [];
 
@@ -100,7 +105,7 @@ export function AssetView(props: BespokeProps & { underlying: string }) {
       {payload && (
         <>
           <div className="tabs" role="tablist">
-            {TABS.map(([id, label]) => (
+            {tabs.map(([id, label]) => (
               <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
                 {label}
               </button>
@@ -121,6 +126,7 @@ export function AssetView(props: BespokeProps & { underlying: string }) {
             <PricerTab slotId={slot.slot_id} underlying={underlying} selection={selection} runId={env.run_id} spot={num(ctx.spot)} prefill={prefill} />
           )}
           {tab === "data" && <DataTab envelope={env} payload={payload} nodeRows={chainOf(payload).filter((r) => r.is_node === true)} />}
+          {tab === "parity" && paritySlot && <ParityTab slot={paritySlot} underlying={underlying} />}
         </>
       )}
     </>

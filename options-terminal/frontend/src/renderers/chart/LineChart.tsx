@@ -5,7 +5,7 @@ import { useState, type KeyboardEvent, type PointerEvent } from "react";
 import { SrTable } from "./SrTable.tsx";
 import { YAxis } from "./YAxis.tsx";
 import { SERIES_STYLES, type SeriesStyle } from "./palette.ts";
-import { linePath, nearestIndex } from "./paths.ts";
+import { bandPath, linePath, nearestIndex } from "./paths.ts";
 import { extent, linearScale, niceTicks } from "./scale.ts";
 import { useWidth } from "./useWidth.ts";
 
@@ -33,6 +33,8 @@ export interface Props {
   silhouette?: { values: number[]; label: string };
   /** Shade the area between the first series and zero: green above, red below (P&L). */
   pnlFill?: boolean;
+  /** Neutral shaded range between two value arrays (e.g. a bid–ask band); nulls break it. */
+  band?: { lo: (number | null)[]; hi: (number | null)[]; label: string };
   /** Data points (≥ 8px, 2px black ring) with optional vertical error bars, e.g. smile nodes. */
   points?: { x: number; y: number; lo?: number | null; hi?: number | null; color: string; dim?: boolean }[];
 }
@@ -48,7 +50,8 @@ export function LineChart(p: Props) {
   const all = series
     .flatMap((s) => s.values)
     .concat((p.refLines ?? []).map((r) => r.y))
-    .concat(pts.flatMap((q) => [q.y, q.lo ?? null, q.hi ?? null]));
+    .concat(pts.flatMap((q) => [q.y, q.lo ?? null, q.hi ?? null]))
+    .concat(p.band ? [...p.band.lo, ...p.band.hi] : []);
   const yExt = extent(all) ?? [0, 1];
   const xExt = extent(p.x) ?? [0, 1];
   const pad = (yExt[1] - yExt[0]) * 0.08 || Math.abs(yExt[0]) * 0.1 || 1;
@@ -105,6 +108,7 @@ export function LineChart(p: Props) {
         >
           <YAxis scale={sy} ticks={yTicks} width={width} format={p.formatY} />
           {silPath && <path d={silPath} fill="#8d887c" opacity={0.18} />}
+          {p.band && <path d={bandPath(p.x, p.band.lo, p.band.hi, sx, sy)} fill="#8d887c" opacity={0.22} />}
           {p.pnlFill && first && (
             <>
               <clipPath id={`above-${p.title}`}><rect x={0} y={0} width={width} height={Math.max(0, zeroY)} /></clipPath>
@@ -176,8 +180,12 @@ export function LineChart(p: Props) {
       )}
       <SrTable
         caption={p.title}
-        columns={[p.xLabel, ...series.map((s) => s.label)]}
-        rows={p.x.map((x, i) => [p.formatX(x), ...series.map((s) => (s.values[i] == null ? "—" : p.formatY(s.values[i] as number)))])}
+        columns={[p.xLabel, ...series.map((s) => s.label), ...(p.band ? [`${p.band.label} low`, `${p.band.label} high`] : [])]}
+        rows={p.x.map((x, i) => [
+          p.formatX(x),
+          ...series.map((s) => (s.values[i] == null ? "—" : p.formatY(s.values[i] as number))),
+          ...(p.band ? [p.band.lo, p.band.hi].map((v) => (v[i] == null ? "—" : p.formatY(v[i] as number))) : []),
+        ])}
       />
       <div className="chart-footer dim">{p.footer}</div>
     </div>
