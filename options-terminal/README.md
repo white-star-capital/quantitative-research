@@ -27,12 +27,33 @@ Needs Docker (Desktop or daemon) and `make`. From `options-terminal/`:
 | `make logs` / `make ps` / `make restart` | Follow logs / status / rebuild and restart. |
 
 What runs:
-- **`db`** (Postgres 17): on its first start with an empty volume, it applies `contracts/db/migrations/*` and creates the `runner` (runner_rw) and `api` (api_ro) logins.
+- **`db`** (Postgres 17, local mode only): on its first start with an empty volume, it applies `contracts/db/migrations/*` and creates the `runner` (runner_rw) and `api` (api_ro) logins.
 - **`api`**: connects as `api`, read-only.
 - **`runner`**: syncs `models/registry.yaml`, then runs due models every minute as `runner`.
 - **`frontend`**: nginx serving the build and proxying `/v1` to the API, so the browser sees one origin. Strict CSP, and no query strings in the access log (A-34).
 
 Only port 3000 is published (set `FRONTEND_PORT` in `.env` to change it).
+
+### Using Supabase as the database
+
+1. In `.env`, keep the generated `RUNNER_DB_PASSWORD` / `API_DB_PASSWORD` and add three values from the Supabase dashboard (see `.env.example`):
+   - `SUPABASE_PROJECT_REF`: Project Settings → General → Project ID.
+   - `SUPABASE_POOLER_HOST`: Connect → **Session pooler** → host, e.g. `aws-0-eu-central-1.pooler.supabase.com`.
+   - `SUPABASE_DB_PASSWORD`: the database (`postgres`) password. Only `make supabase-init` uses it; the services never do.
+2. Run `make supabase-init` once. It:
+   - applies `contracts/db/migrations` (skipped if the schema already exists);
+   - creates the `runner` and `api` logins with those passwords;
+   - revokes the tables from Supabase's `anon`/`authenticated` roles;
+   - enables row-level security, with policies only for `runner_rw` and `api_ro`.
+
+   It is safe to re-run, for example after changing a password.
+3. `make start`. With `SUPABASE_PROJECT_REF` set, no local Postgres container starts. The runner and API connect as `runner.<ref>` / `api.<ref>` through the session pooler on port 5432 with TLS.
+
+Why the session pooler: the API holds a `LISTEN` connection and the runner takes advisory locks, so both need session connections. The transaction pooler (6543) breaks both. The direct host is IPv6-only without Supabase's IPv4 add-on.
+
+Why the lockdown: Supabase serves the `public` schema through its REST API to anyone with the project's anon key. Without step 2, model runs would be readable that way.
+
+`make clean` deletes only local volumes; it never touches Supabase.
 
 Notes:
 - **The runner needs outbound access to `www.deribit.com`.** Without it, runs are recorded as failed (`source_unavailable`) and the UI shows "no output yet". Nothing is filled in.
