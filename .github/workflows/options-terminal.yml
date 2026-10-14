@@ -75,6 +75,11 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test # includes pricing_parity over contracts/fixtures/pricing
+      # Roles are cluster-wide; created once here (as ops do, X-6) so the parallel per-test
+      # databases don't race on the migration's CREATE ROLE.
+      - run: >-
+          psql postgres://postgres@localhost:5432/postgres -v ON_ERROR_STOP=1
+          -c "CREATE ROLE runner_rw NOLOGIN" -c "CREATE ROLE api_ro NOLOGIN"
       - run: cargo test --test postgres -- --ignored
         env:
           DATABASE_URL: postgres://postgres@localhost:5432/postgres

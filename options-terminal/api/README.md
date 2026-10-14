@@ -10,7 +10,9 @@ SQLX_OFFLINE=true cargo test           # unit + handler tests on in-memory repos
 SQLX_OFFLINE=true cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 
-# Integration tests: fresh DB per test, contracts/db/migrations applied
+# Integration tests: fresh DB per test, contracts/db/migrations applied. Create the cluster-wide
+# roles once first, or the parallel test databases race on the migration's CREATE ROLE.
+psql postgres://postgres@localhost:5432/postgres -c "CREATE ROLE runner_rw NOLOGIN" -c "CREATE ROLE api_ro NOLOGIN"
 DATABASE_URL=postgres://postgres@localhost:5432/postgres cargo test --test postgres -- --ignored
 
 # After changing any sqlx::query! (needs a migrated DB)
