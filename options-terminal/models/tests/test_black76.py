@@ -1,6 +1,7 @@
 """Guide §3.4–3.5 reference: parity, greeks vs finite differences, limits, IV solver."""
 
 import math
+import random
 
 import pytest
 
@@ -99,3 +100,24 @@ def test_implied_vol_round_trip(K, sigma, is_call):
 )
 def test_implied_vol_reasons_never_clamp(K, is_call, price, reason):
     assert implied_vol(F, K, 30 / 365, price, 0.0, is_call, S) == (None, reason)
+
+
+def test_greek_parity_identities():
+    """PARITY_MONITOR_IMPLEMENTATION_GUIDE.md §3.6, on random inputs (Black-76 forward form)."""
+    rng = random.Random(5)
+    for _ in range(2000):
+        Fr = rng.uniform(1, 150_000)  # noqa: N806
+        Sr = Fr * math.exp(rng.uniform(-0.05, 0.05))  # noqa: N806
+        Kr = Fr * math.exp(rng.uniform(-1, 1))  # noqa: N806
+        T, sigma, r = rng.uniform(1 / 365, 3), rng.uniform(0.05, 3), rng.uniform(0, 0.1)  # noqa: N806
+        c = black76(Fr, Kr, T, sigma, r, True, Sr)
+        p = black76(Fr, Kr, T, sigma, r, False, Sr)
+        DF = math.exp(-r * T)  # noqa: N806
+        assert c["delta"] - p["delta"] == pytest.approx(DF, abs=1e-12)
+        assert c["delta_spot"] - p["delta_spot"] == pytest.approx(DF * Fr / Sr, abs=1e-12)
+        assert c["gamma_1pct"] == pytest.approx(p["gamma_1pct"], rel=1e-12, abs=1e-300)
+        assert c["vega_1pt"] == pytest.approx(p["vega_1pt"], rel=1e-12, abs=1e-300)
+        assert c["theta_1d"] - p["theta_1d"] == pytest.approx(
+            r * DF * (Fr - Kr) / 365, abs=1e-9 * Fr / 365
+        )
+        assert c["price"] - p["price"] == pytest.approx(DF * (Fr - Kr), abs=1e-9 * Fr)

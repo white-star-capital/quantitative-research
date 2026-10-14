@@ -11,6 +11,7 @@
 | `API.md` | `api/` — Rust/Axum read-only JSON API |
 | `FRONTEND.md` | `frontend/` — terminal UI, rendering, staleness, security |
 | `BS_PRICER_IMPLEMENTATION_GUIDE.md` | First model: `bs_pricer` (Black-76 on Deribit for BTC/ETH/SOL/HYPE) across all four components |
+| `PARITY_MONITOR_IMPLEMENTATION_GUIDE.md` | Second model: `parity_monitor` (put-call parity, implied carry, executable conversion/reversal edges, inventory lock rate) |
 
 Requirement keywords: **MUST** = required for acceptance, **SHOULD** = expected unless there's a documented reason not to, **MAY** = optional.
 

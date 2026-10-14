@@ -1,0 +1,2352 @@
+{
+ "generated_by": "python -m terminal_models.tools.gen_parity_vectors",
+ "data": "Seeded math grid, not market data. fee_table is TEST-ONLY.",
+ "fee_table": {
+  "schedule_version": "TEST-ONLY",
+  "option_taker": 0.0003,
+  "option_maker": 0.0002,
+  "option_cap_pct_of_price": 0.125,
+  "future_taker": 0.0005,
+  "future_maker": 0.0001,
+  "perp_taker": 0.0005,
+  "perp_maker": 0.0001,
+  "option_delivery": 0.00015,
+  "future_delivery": 0.00025
+ },
+ "fee_rates": {
+  "taker": {
+   "option": 0.0003,
+   "option_cap": 0.125,
+   "future": 0.0005,
+   "perp": 0.0005,
+   "option_delivery": 0.00015,
+   "future_delivery": 0.00025
+  },
+  "maker": {
+   "option": 0.0002,
+   "option_cap": 0.125,
+   "future": 0.0001,
+   "perp": 0.0001,
+   "option_delivery": 0.00015,
+   "future_delivery": 0.00025
+  }
+ },
+ "cases": [
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 88621.4,
+    "S": 97397.4,
+    "c_bid": 0.0933413,
+    "c_ask": 0.0961415,
+    "p_bid": 0.0949099,
+    "p_ask": 0.0978453,
+    "F_bid": 98151.5,
+    "F_ask": 98249.7,
+    "T": 0.334411,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     88224.03892866528,
+     88730.68070635795,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.10250226360792969,
+     "reason": null,
+     "fees": 0.0014265013022940528,
+     "net_edge": -0.10392876491022374,
+     "net_edge_usd": -10122.391487467024,
+     "net_edge_bps_notional": -1142.2062264269155,
+     "net_edge_ann": -0.3415576121679357
+    },
+    "reversal": {
+     "gross_edge": 0.09586421616175,
+     "reason": null,
+     "fees": 0.0014271781378786875,
+     "net_edge": 0.09443703802387132,
+     "net_edge_usd": 9197.921967226204,
+     "net_edge_bps_notional": 1037.8894902615175,
+     "net_edge_ann": 0.31036344207024213
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": -0.29803564688110523,
+     "r_lock_gross": -0.2958037868303193
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 69174.5,
+    "S": 67860.1,
+    "c_bid": 0.09662,
+    "c_ask": 0.0995186,
+    "p_bid": 0.109055,
+    "p_ask": 0.112428,
+    "F_bid": 68599.8,
+    "F_ask": 68668.4,
+    "T": 0.314309,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     68098.00670992944,
+     68521.05580343612,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.008437797694426985,
+     "reason": null,
+     "fees": 0.0015055276517291795,
+     "net_edge": -0.009943325346156164,
+     "net_edge_usd": -674.755052322692,
+     "net_edge_bps_notional": -97.54390018326002,
+     "net_edge_ann": -0.0310343961462319
+    },
+    "reversal": {
+     "gross_edge": 0.0011588245551736875,
+     "reason": null,
+     "fees": 0.0015062831815836199,
+     "net_edge": -0.0003474586264099323,
+     "net_edge_usd": -23.57857713404065,
+     "net_edge_bps_notional": -3.4085648807061344,
+     "net_edge_ann": -0.0010844630222825737
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": 0.00878642874438117,
+     "r_lock_gross": 0.011134614996196904
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 70234.4,
+    "S": 74986.8,
+    "c_bid": 0.0118933,
+    "c_ask": 0.0122501,
+    "p_bid": 0.0986141,
+    "p_ask": 0.101664,
+    "F_bid": 75394.0,
+    "F_ask": 75469.4,
+    "T": 0.975334,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     64448.78725405261,
+     64650.890493425766,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.15913656219050376,
+     "reason": null,
+     "fees": 0.0014479756033571223,
+     "net_edge": -0.1605845377938609,
+     "net_edge_usd": -12041.72061864069,
+     "net_edge_bps_notional": -1714.5046613398406,
+     "net_edge_ann": -0.1757864138171991
+    },
+    "reversal": {
+     "gross_edge": 0.15479915399103383,
+     "reason": null,
+     "fees": 0.0014486736345067244,
+     "net_edge": 0.1533504803565271,
+     "net_edge_usd": 11499.261800398826,
+     "net_edge_bps_notional": 1637.2691729976802,
+     "net_edge_ann": 0.16786753799187562
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": -0.15597648307875459,
+     "r_lock_gross": -0.15527110270716593
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 83272.4,
+    "S": 79077.3,
+    "c_bid": 0.0770435,
+    "c_ask": 0.0793548,
+    "p_bid": 0.0399338,
+    "p_ask": 0.0411689,
+    "F_bid": 80219.2,
+    "F_ask": 80299.4,
+    "T": 0.425149,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     86370.92228873962,
+     86689.79854858371,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.07289853791236289,
+     "reason": null,
+     "fees": 0.001527767953434272,
+     "net_edge": 0.07137076995892862,
+     "net_edge_usd": 5643.8077872731865,
+     "net_edge_bps_notional": 677.7525071059782,
+     "net_edge_ann": 0.1594152890177275
+    },
+    "reversal": {
+     "gross_edge": -0.07748171364461384,
+     "reason": null,
+     "fees": 0.00152854553523346,
+     "net_edge": -0.0790102591798473,
+     "net_edge_usd": -6247.917968242539,
+     "net_edge_bps_notional": -750.2987746531312,
+     "net_edge_ann": -0.1764790166866513
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": 0.20568697517479023,
+     "r_lock_gross": 0.2075159920450272
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 48905.4,
+    "S": 55051.9,
+    "c_bid": 0.0435994,
+    "c_ask": 0.0449074,
+    "p_bid": 0.0172241,
+    "p_ask": 0.0177568,
+    "F_bid": 56035.6,
+    "F_ask": 56091.6,
+    "T": 0.854368,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     50202.77010676099,
+     50297.80934545298,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.10227283974498846,
+     "reason": null,
+     "fees": 0.0014039134201912584,
+     "net_edge": -0.10367675316517973,
+     "net_edge_usd": -5707.602247574158,
+     "net_edge_bps_notional": -1167.0699447451934,
+     "net_edge_ann": -0.13660038118763734
+    },
+    "reversal": {
+     "gross_edge": 0.09956080910207074,
+     "reason": null,
+     "fees": 0.0014045669181734469,
+     "net_edge": 0.09815624218389729,
+     "net_edge_usd": 5403.687629083695,
+     "net_edge_bps_notional": 1104.9265784726624,
+     "net_edge_ann": 0.12932677470044085
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": -0.10882403129072246,
+     "r_lock_gross": -0.1079232486075974
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 40910.4,
+    "S": 43818.6,
+    "c_bid": 0.111845,
+    "c_ask": 0.1152,
+    "p_bid": 0.104928,
+    "p_ask": 0.108173,
+    "F_bid": 43822.4,
+    "F_ask": 43866.2,
+    "T": 0.0948853,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     41061.17664062438,
+     41334.99304859517,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.06371017579822269,
+     "reason": null,
+     "fees": 0.0014494633681513328,
+     "net_edge": -0.06515963916637402,
+     "net_edge_usd": -2855.2041647756764,
+     "net_edge_bps_notional": -697.916462507254,
+     "net_edge_ann": -0.7355369720149
+    },
+    "reversal": {
+     "gross_edge": 0.05617803468545762,
+     "reason": null,
+     "fees": 0.0014501624739859066,
+     "net_edge": 0.05472787221147172,
+     "net_edge_usd": 2398.0987412855948,
+     "net_edge_bps_notional": 586.183156675465,
+     "net_edge_ann": 0.61778079078157
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": -0.6929186917761533,
+     "r_lock_gross": -0.6849882645642321
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 103828.0,
+    "S": 115652.0,
+    "c_bid": 0.0978348,
+    "c_ask": 0.10077,
+    "p_bid": 0.114767,
+    "p_ask": 0.118317,
+    "F_bid": 116225.0,
+    "F_ask": 116341.0,
+    "T": 0.819864,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     101744.05785813804,
+     102394.7802606911,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.12803671646453096,
+     "reason": null,
+     "fees": 0.0011962227417677343,
+     "net_edge": -0.1292329392062987,
+     "net_edge_usd": -14946.047885086857,
+     "net_edge_bps_notional": -1439.5007016495413,
+     "net_edge_ann": -0.17557798630620947,
+     "breakeven_funding_ann": -0.17557798630620947
+    },
+    "reversal": {
+     "gross_edge": 0.12066079866637987,
+     "reason": null,
+     "fees": 0.00119666810066681,
+     "net_edge": 0.11946413056571306,
+     "net_edge_usd": 13816.265628185847,
+     "net_edge_bps_notional": 1330.6878325871487,
+     "net_edge_ann": 0.1623059230051751,
+     "breakeven_funding_ann": -0.16230592300517507
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": -0.15717233057122657,
+     "r_lock_gross": -0.15627623471367613
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 66403.9,
+    "S": 67898.9,
+    "c_bid": 0.0844887,
+    "c_ask": 0.0870234,
+    "p_bid": 0.0197839,
+    "p_ask": 0.0203958,
+    "F_bid": 68963.0,
+    "F_ask": 69032.0,
+    "T": 0.948095,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     70951.37968287664,
+     71190.72902422433,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.026022150202804406,
+     "reason": null,
+     "fees": 0.001230964625101402,
+     "net_edge": 0.024791185577703004,
+     "net_edge_usd": 1683.2942304218984,
+     "net_edge_bps_notional": 253.4932783197822,
+     "net_edge_ann": 0.026737117938580225,
+     "breakeven_funding_ann": 0.02673711793858023
+    },
+    "reversal": {
+     "gross_edge": -0.030131195546887368,
+     "reason": null,
+     "fees": 0.0012314458477734435,
+     "net_edge": -0.031362641394660815,
+     "net_edge_usd": -2129.488851791935,
+     "net_edge_bps_notional": -320.68731682806805,
+     "net_edge_ann": -0.03382438646212332,
+     "breakeven_funding_ann": 0.03382438646212332
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": 0.045537603780412224,
+     "r_lock_gross": 0.04638249872171156
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 69412.8,
+    "S": 80033.0,
+    "c_bid": 0.119247,
+    "c_ask": 0.122824,
+    "p_bid": 0.0348382,
+    "p_ask": 0.0359157,
+    "F_bid": 81479.5,
+    "F_ask": 81561.1,
+    "T": 0.542086,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     75722.88657832432,
+     76109.34127999323,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.06561593097162743,
+     "reason": null,
+     "fees": 0.0011755263845141862,
+     "net_edge": -0.06679145735614161,
+     "net_edge_usd": -5345.520706584082,
+     "net_edge_bps_notional": -770.1059036062632,
+     "net_edge_ann": -0.14206341864690533,
+     "breakeven_funding_ann": -0.14206341864690533
+    },
+    "reversal": {
+     "gross_edge": 0.06010911958099885,
+     "reason": null,
+     "fees": 0.0011759525402095005,
+     "net_edge": 0.058933167040789346,
+     "net_edge_usd": 4716.598157775494,
+     "net_edge_bps_notional": 679.4997691744885,
+     "net_edge_ann": 0.12534907176619364,
+     "breakeven_funding_ann": -0.12534907176619367
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": -0.10363013938541285,
+     "r_lock_gross": -0.10212143877977622
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 101645.0,
+    "S": 100426.0,
+    "c_bid": 0.0162582,
+    "c_ask": 0.0167459,
+    "p_bid": 0.0448535,
+    "p_ask": 0.0462407,
+    "F_bid": 101878.0,
+    "F_ask": 101980.0,
+    "T": 0.117691,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     98686.14272572592,
+     98866.11090123252,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.03326745783486962,
+     "reason": null,
+     "fees": 0.001248357521082565,
+     "net_edge": -0.03451581535595218,
+     "net_edge_usd": -3466.2852729368537,
+     "net_edge_bps_notional": -341.0187685510211,
+     "net_edge_ann": -0.2897577287566773,
+     "breakeven_funding_ann": -0.2897577287566773
+    },
+    "reversal": {
+     "gross_edge": 0.03039464921572864,
+     "reason": null,
+     "fees": 0.0012488564753921356,
+     "net_edge": 0.029145792740336504,
+     "net_edge_usd": 2926.9953817410337,
+     "net_edge_bps_notional": 287.962554158201,
+     "net_edge_ann": 0.24467678425555137,
+     "breakeven_funding_ann": -0.24467678425555137
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": -0.154680493280325,
+     "r_lock_gross": -0.14849563015478934
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 97774.6,
+    "S": 85640.4,
+    "c_bid": 0.00700204,
+    "c_ask": 0.0072121,
+    "p_bid": 0.0059574,
+    "p_ask": 0.00614165,
+    "F_bid": 86037.7,
+    "F_ask": 86123.7,
+    "T": 0.218723,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     97858.79673011864,
+     97897.43190781475,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.13614138698457012,
+     "reason": null,
+     "fees": 0.001317640498492285,
+     "net_edge": 0.13482374648607784,
+     "net_edge_usd": 11546.3595785663,
+     "net_edge_bps_notional": 1180.9160639436316,
+     "net_edge_ann": 0.5399139843288687,
+     "breakeven_funding_ann": 0.5399139843288687
+    },
+    "reversal": {
+     "gross_edge": -0.1376704805241193,
+     "reason": null,
+     "fees": 0.0013182078902620594,
+     "net_edge": -0.13898868841438133,
+     "net_edge_usd": -11903.046871282982,
+     "net_edge_bps_notional": -1217.3966317717466,
+     "net_edge_ann": -0.5565928739875307,
+     "breakeven_funding_ann": 0.5565928739875307
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": 0.6063289698665768,
+     "r_lock_gross": 0.6097596299000254
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 59923.1,
+    "S": 64246.8,
+    "c_bid": 0.11905,
+    "c_ask": 0.122622,
+    "p_bid": 0.0364262,
+    "p_ask": 0.0375528,
+    "F_bid": 65240.6,
+    "F_ask": 65305.8,
+    "T": 0.100944,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     65239.97531635179,
+     65575.42633312475,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.0009258007135660717,
+     "reason": null,
+     "fees": 0.001208788499643217,
+     "net_edge": -0.002134589213209289,
+     "net_edge_usd": -137.14052626321455,
+     "net_edge_bps_notional": -22.88608671167122,
+     "net_edge_ann": -0.022672062442216694,
+     "breakeven_funding_ann": -0.022672062442216694
+    },
+    "reversal": {
+     "gross_edge": -0.0046898052666591306,
+     "reason": null,
+     "fees": 0.0012092470026333294,
+     "net_edge": -0.00589905226929246,
+     "net_edge_usd": -378.99523133477885,
+     "net_edge_bps_notional": -63.24693337540595,
+     "net_edge_ann": -0.06265546577845732,
+     "breakeven_funding_ann": 0.06265546577845732
+    },
+    "inventory": {
+     "fees": 0.0007499999999999999,
+     "r_lock": 0.14388442378683922,
+     "r_lock_gross": 0.1519702242210675
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 100742.0,
+    "S": 96953.3,
+    "c_bid": 0.0326821,
+    "c_ask": 0.0336626,
+    "p_bid": 0.0844815,
+    "p_ask": 0.0870943,
+    "F_bid": 98153.1,
+    "F_ask": 98251.3,
+    "T": 0.533896,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     95543.27994308108,
+     95869.9924411333,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.029061899291510596,
+     "reason": null,
+     "fees": 0.0009088726052479712,
+     "net_edge": -0.029970771896758567,
+     "net_edge_usd": -2905.7652389380023,
+     "net_edge_bps_notional": -288.4363263522664,
+     "net_edge_ann": -0.054024815011213125
+    },
+    "reversal": {
+     "gross_edge": 0.024442759052846985,
+     "reason": null,
+     "fees": 0.0009092316493315035,
+     "net_edge": 0.02353352740351548,
+     "net_edge_usd": 2281.6531424112572,
+     "net_edge_bps_notional": 226.4847970470367,
+     "net_edge_ann": 0.04242114513819858
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": -0.0284167009455849,
+     "r_lock_gross": -0.027439953336253133
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 54418.8,
+    "S": 59612.2,
+    "c_bid": 0.0951158,
+    "c_ask": 0.0979693,
+    "p_bid": 0.0291908,
+    "p_ask": 0.0300936,
+    "F_bid": 60769.8,
+    "F_ask": 60830.6,
+    "T": 0.4577,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     58203.307073173295,
+     58438.08374269709,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.04038198802379056,
+     "reason": null,
+     "fees": 0.0008631085341916733,
+     "net_edge": -0.04124509655798223,
+     "net_edge_usd": -2458.7109450337484,
+     "net_edge_bps_notional": -451.81278253723866,
+     "net_edge_ann": -0.09871373881084525
+    },
+    "reversal": {
+     "gross_edge": 0.03573064763583231,
+     "reason": null,
+     "fees": 0.0008634217983274587,
+     "net_edge": 0.03486722583750485,
+     "net_edge_usd": 2078.512040070507,
+     "net_edge_bps_notional": 381.9474225948582,
+     "net_edge_ann": 0.08344929486450911
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": -0.05354195266390999,
+     "r_lock_gross": -0.05225710164723704
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 86306.7,
+    "S": 86517.9,
+    "c_bid": 0.0754038,
+    "c_ask": 0.0776659,
+    "p_bid": 0.0790916,
+    "p_ask": 0.0815377,
+    "F_bid": 86994.7,
+    "F_ask": 87081.7,
+    "T": 0.0134336,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     85780.53080211292,
+     86183.82771682412,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.01503358845348679,
+     "reason": null,
+     "fees": 0.0008968851090412796,
+     "net_edge": -0.01593047356252807,
+     "net_edge_usd": -1378.2711186354472,
+     "net_edge_bps_notional": -159.69456816625444,
+     "net_edge_ann": -1.1887697130051098
+    },
+    "reversal": {
+     "gross_edge": 0.009334227760886576,
+     "reason": null,
+     "fees": 0.0008972320152836897,
+     "net_edge": 0.008436995745602888,
+     "net_edge_usd": 729.9511542184961,
+     "net_edge_bps_notional": 84.57641807860757,
+     "net_edge_ann": 0.6295886290987344
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": -0.6778346455350477,
+     "r_lock_gross": -0.6371532522047815
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 126267.0,
+    "S": 109582.0,
+    "c_bid": 0.0960186,
+    "c_ask": 0.0988992,
+    "p_bid": 0.0343721,
+    "p_ask": 0.0354352,
+    "F_bid": 109883.0,
+    "F_ask": 109993.0,
+    "T": 0.804432,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     134410.01574807172,
+     134976.6519158385,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.20853826985535429,
+     "reason": null,
+     "fees": 0.0009517842044493741,
+     "net_edge": 0.2075864856509049,
+     "net_edge_usd": 22747.74227059746,
+     "net_edge_bps_notional": 1801.5587818351162,
+     "net_edge_ann": 0.22395414178390666
+    },
+    "reversal": {
+     "gross_edge": -0.213631147031843,
+     "reason": null,
+     "fees": 0.000952186416461145,
+     "net_edge": -0.21458333344830413,
+     "net_edge_usd": -23514.470845932065,
+     "net_edge_bps_notional": -1862.2815815638342,
+     "net_edge_ann": -0.2315026728876815
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": 0.25314323817382184,
+     "r_lock_gross": 0.2538708303474041
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 50062.2,
+    "S": 45731.4,
+    "c_bid": 0.0615977,
+    "c_ask": 0.0634456,
+    "p_bid": 0.0461426,
+    "p_ask": 0.0475697,
+    "F_bid": 46087.4,
+    "F_ask": 46133.6,
+    "T": 0.988403,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     50774.46418356708,
+     50943.67846854116,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.09918502221374437,
+     "reason": null,
+     "fees": 0.0009298049577748105,
+     "net_edge": 0.09825521725596956,
+     "net_edge_usd": 4493.348642419646,
+     "net_edge_bps_notional": 897.5531723375415,
+     "net_edge_ann": 0.09080842250959795
+    },
+    "reversal": {
+     "gross_edge": -0.10354783047427268,
+     "reason": null,
+     "fees": 0.0009301856906659955,
+     "net_edge": -0.10447801616493868,
+     "net_edge_usd": -4777.925948445277,
+     "net_edge_bps_notional": -954.3979186782198,
+     "net_edge_ann": -0.0965595934733322
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": 0.10527156769799208,
+     "r_lock_gross": 0.10583578051895676
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 68625.3,
+    "S": 72220.8,
+    "c_bid": 0.0612294,
+    "c_ask": 0.0630663,
+    "p_bid": 0.0491239,
+    "p_ask": 0.0506432,
+    "F_bid": 73307.3,
+    "F_ask": 73380.7,
+    "T": 0.967021,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     69359.55411173769,
+     69595.63011329155,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.05421830581692455,
+     "reason": null,
+     "fees": 0.0008773184229640765,
+     "net_edge": -0.055095624239888626,
+     "net_edge_usd": -3979.0500591041487,
+     "net_edge_bps_notional": -579.8226104809959,
+     "net_edge_ann": -0.05995967103930482
+    },
+    "reversal": {
+     "gross_edge": 0.049925727730798966,
+     "reason": null,
+     "fees": 0.0008776461552942203,
+     "net_edge": 0.04904808157550475,
+     "net_edge_usd": 3542.2916898482135,
+     "net_edge_bps_notional": 516.1786818925692,
+     "net_edge_ann": 0.053378228796744774
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": -0.04237748659897698,
+     "r_lock_gross": -0.04180280387749303
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 62710.1,
+    "S": 64282.9,
+    "c_bid": 0.0172021,
+    "c_ask": 0.0177182,
+    "p_bid": 0.02983,
+    "p_ask": 0.0307526,
+    "F_bid": 64791.9,
+    "F_ask": 64856.7,
+    "T": 0.830934,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     61871.70742849024,
+     61959.6570260321,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.046648082824904735,
+     "reason": null,
+     "fees": 0.0006466902417175095,
+     "net_edge": -0.04729477306662225,
+     "net_edge_usd": -3040.2451675643715,
+     "net_edge_bps_notional": -484.80949122459884,
+     "net_edge_ann": -0.058345126234405964,
+     "breakeven_funding_ann": -0.05834512623440597
+    },
+    "reversal": {
+     "gross_edge": 0.0442423595298178,
+     "reason": null,
+     "fees": 0.0006467869440470182,
+     "net_edge": 0.043595572585770785,
+     "net_edge_usd": 2802.449832973845,
+     "net_edge_bps_notional": 446.88970883061023,
+     "net_edge_ann": 0.05378161308005332,
+     "breakeven_funding_ann": -0.053781613080053324
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": -0.04666212775148642,
+     "r_lock_gross": -0.04600924836021538
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 58171.7,
+    "S": 53641.5,
+    "c_bid": 0.0495284,
+    "c_ask": 0.0510143,
+    "p_bid": 0.116027,
+    "p_ask": 0.119615,
+    "F_bid": 53775.5,
+    "F_ask": 53829.3,
+    "T": 0.325581,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     54361.67502704921,
+     54620.663208992715,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.01058322108257026,
+     "reason": null,
+     "fees": 0.000658066982108257,
+     "net_edge": 0.009925154100462004,
+     "net_edge_usd": 532.4001536799326,
+     "net_edge_bps_notional": 91.52219269506179,
+     "net_edge_ann": 0.02811042189042413,
+     "breakeven_funding_ann": 0.02811042189042413
+    },
+    "reversal": {
+     "gross_edge": -0.01673828325445606,
+     "reason": null,
+     "fees": 0.0006581750983254455,
+     "net_edge": -0.017396458352781505,
+     "net_edge_usd": -933.1721207307291,
+     "net_edge_bps_notional": -160.41685574441337,
+     "net_edge_ann": -0.049270951236224894,
+     "breakeven_funding_ann": 0.049270951236224894
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": 0.03938354855868709,
+     "r_lock_gross": 0.04096178884938263
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 57229.3,
+    "S": 61602.6,
+    "c_bid": 0.0549672,
+    "c_ask": 0.0566162,
+    "p_bid": 0.013019,
+    "p_ask": 0.0134216,
+    "F_bid": 62128.1,
+    "F_ask": 62190.3,
+    "T": 0.389754,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     59709.98724613294,
+     59838.07241049483,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -0.03822568265983606,
+     "reason": null,
+     "fees": 0.0006420228717340164,
+     "net_edge": -0.038867705531570075,
+     "net_edge_usd": -2394.3517167790988,
+     "net_edge_bps_notional": -418.37864813637395,
+     "net_edge_ann": -0.10734428591787999,
+     "breakeven_funding_ann": -0.10734428591787999
+    },
+    "reversal": {
+     "gross_edge": 0.03525278897439321,
+     "reason": null,
+     "fees": 0.0006421150011025607,
+     "net_edge": 0.03461067397329065,
+     "net_edge_usd": 2132.1075045070347,
+     "net_edge_bps_notional": 372.5552303639979,
+     "net_edge_ann": 0.09558727565695231,
+     "breakeven_funding_ann": -0.09558727565695231
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": -0.08153465120393731,
+     "r_lock_gross": -0.08006275876300326
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 47871.9,
+    "S": 44026.0,
+    "c_bid": 0.024757,
+    "c_ask": 0.0254997,
+    "p_bid": 0.0517277,
+    "p_ask": 0.0533275,
+    "F_bid": 44094.7,
+    "F_ask": 44138.9,
+    "T": 0.305331,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     46542.16701723411,
+     46648.40561746513,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.05600342458806162,
+     "reason": null,
+     "fees": 0.0006584573924588062,
+     "net_edge": 0.05534496719560282,
+     "net_edge_usd": 2436.6175257536097,
+     "net_edge_bps_notional": 508.98701028235973,
+     "net_edge_ann": 0.16670007640310341,
+     "breakeven_funding_ann": 0.16670007640310341
+    },
+    "reversal": {
+     "gross_edge": -0.05943308852084264,
+     "reason": null,
+     "fees": 0.0006585661088520842,
+     "net_edge": -0.06009165462969473,
+     "net_edge_usd": -2645.59518672694,
+     "net_edge_bps_notional": -552.6405232979973,
+     "net_edge_ann": -0.18099718773986176,
+     "breakeven_funding_ann": 0.18099718773986176
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": 0.18027573674052155,
+     "r_lock_gross": 0.18202655729826414
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 54666.8,
+    "S": 56870.2,
+    "c_bid": 0.102556,
+    "c_ask": 0.105633,
+    "p_bid": 0.016157,
+    "p_ask": 0.0166567,
+    "F_bid": 57715.6,
+    "F_ask": 57773.4,
+    "T": 0.464793,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     59803.91438273705,
+     60038.834780851466,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.03212714880239009,
+     "reason": null,
+     "fees": 0.000644622784880239,
+     "net_edge": 0.03148252601750985,
+     "net_edge_usd": 1790.4175511209887,
+     "net_edge_bps_notional": 327.5146068767494,
+     "net_edge_ann": 0.07046461691048475,
+     "breakeven_funding_ann": 0.07046461691048475
+    },
+    "reversal": {
+     "gross_edge": -0.03665146036080369,
+     "reason": null,
+     "fees": 0.0006447175460360803,
+     "net_edge": -0.03729617790683977,
+     "net_edge_usd": -2121.041096797559,
+     "net_edge_bps_notional": -387.99437625717235,
+     "net_edge_ann": -0.08347681145309252,
+     "breakeven_funding_ann": 0.08347681145309252
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": 0.10692530932554918,
+     "r_lock_gross": 0.10821944094339471
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": true,
+    "K": 62019.3,
+    "S": 53980.0,
+    "c_bid": 0.0720549,
+    "c_ask": 0.0742165,
+    "p_bid": 0.0269053,
+    "p_ask": 0.0277374,
+    "F_bid": 54927.4,
+    "F_ask": 54982.4,
+    "T": 0.584779,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     64895.297339859215,
+     65099.222327374904,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.172302091432895,
+     "reason": null,
+     "fees": 0.0006627984591432895,
+     "net_edge": 0.1716392929737517,
+     "net_edge_usd": 9265.089034723116,
+     "net_edge_bps_notional": 1493.9041612406327,
+     "net_edge_ann": 0.255464741593086,
+     "breakeven_funding_ann": 0.25546474159308596
+    },
+    "reversal": {
+     "gross_edge": -0.17642526693198657,
+     "reason": null,
+     "fees": 0.0006629114066931986,
+     "net_edge": -0.17708817833867976,
+     "net_edge_usd": -9559.219866721935,
+     "net_edge_bps_notional": -1541.3298548551716,
+     "net_edge_ann": -0.26357476155182924,
+     "breakeven_funding_ann": 0.2635747615518292
+    },
+    "inventory": {
+     "fees": 0.00055,
+     "r_lock": 0.31394118803766696,
+     "r_lock_gross": 0.3149250458723843
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 273.709,
+    "S": 246.462,
+    "c_bid": 20.3434,
+    "c_ask": 20.9537,
+    "p_bid": 14.0622,
+    "p_ask": 14.4971,
+    "F_bid": 248.357,
+    "F_ask": 248.605,
+    "T": 0.743183,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     279.5553,
+     280.6005,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 30.950300000000013,
+     "reason": null,
+     "fees": 0.37130025,
+     "net_edge": 30.578999750000012,
+     "net_edge_usd": 30.578999750000012,
+     "net_edge_bps_notional": 1117.2084129495197,
+     "net_edge_ann": 0.15032749846935678
+    },
+    "reversal": {
+     "gross_edge": -32.243500000000004,
+     "reason": null,
+     "fees": 0.37111425,
+     "net_edge": -32.61461425,
+     "net_edge_usd": -32.61461425,
+     "net_edge_bps_notional": -1191.579898724558,
+     "net_edge_ann": -0.16033465495370022
+    },
+    "inventory": {
+     "fees": 0.18484649999999997,
+     "r_lock": 0.17236200945655442,
+     "r_lock_gross": 0.1733953054359688
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 322.869,
+    "S": 361.365,
+    "c_bid": 16.3863,
+    "c_ask": 16.8779,
+    "p_bid": 24.8898,
+    "p_ask": 25.6596,
+    "F_bid": 367.255,
+    "F_ask": 367.623,
+    "T": 0.325637,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     313.5957,
+     314.8571,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -54.02729999999997,
+     "reason": null,
+     "fees": 0.5467409999999999,
+     "net_edge": -54.574040999999966,
+     "net_edge_usd": -54.574040999999966,
+     "net_edge_bps_notional": -1690.2843258411292,
+     "net_edge_ann": -0.5190701074635651
+    },
+    "reversal": {
+     "gross_edge": 52.397899999999964,
+     "reason": null,
+     "fees": 0.546465,
+     "net_edge": 51.85143499999997,
+     "net_edge_usd": 51.85143499999997,
+     "net_edge_bps_notional": 1605.95891832291,
+     "net_edge_ann": 0.49317458345424814
+    },
+    "inventory": {
+     "fees": 0.27102375,
+     "r_lock": -0.42596803851106674,
+     "r_lock_gross": -0.4237233061249149
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 231.303,
+    "S": 249.823,
+    "c_bid": 19.4534,
+    "c_ask": 20.037,
+    "p_bid": 4.51018,
+    "p_ask": 4.64967,
+    "F_bid": 253.978,
+    "F_ask": 254.232,
+    "T": 0.323505,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     246.10673,
+     246.82981999999998,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -8.125270000000004,
+     "reason": null,
+     "fees": 0.37804125,
+     "net_edge": -8.503311250000005,
+     "net_edge_usd": -8.503311250000005,
+     "net_edge_bps_notional": -367.62650073712854,
+     "net_edge_ann": -0.11363858386644057
+    },
+    "reversal": {
+     "gross_edge": 7.148180000000012,
+     "reason": null,
+     "fees": 0.37785075,
+     "net_edge": 6.770329250000012,
+     "net_edge_usd": 6.770329250000012,
+     "net_edge_bps_notional": 292.7039100227845,
+     "net_edge_ann": 0.09047894469105099
+    },
+    "inventory": {
+     "fees": 0.18736724999999999,
+     "r_lock": -0.05173303628924676,
+     "r_lock_gross": -0.04926962940433362
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 192.723,
+    "S": 217.55,
+    "c_bid": 8.66932,
+    "c_ask": 8.9294,
+    "p_bid": 19.2891,
+    "p_ask": 19.8857,
+    "F_bid": 218.894,
+    "F_ask": 219.114,
+    "T": 0.759884,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     181.50662000000003,
+     182.3633,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -37.60737999999999,
+     "reason": null,
+     "fees": 0.327498,
+     "net_edge": -37.93487799999999,
+     "net_edge_usd": -37.93487799999999,
+     "net_edge_bps_notional": -1968.362779740871,
+     "net_edge_ann": -0.2590346394635064
+    },
+    "reversal": {
+     "gross_edge": 36.530699999999996,
+     "reason": null,
+     "fees": 0.327333,
+     "net_edge": 36.20336699999999,
+     "net_edge_usd": 36.20336699999999,
+     "net_edge_bps_notional": 1878.5182360174963,
+     "net_edge_ann": 0.2472111843409647
+    },
+    "inventory": {
+     "fees": 0.16316250000000002,
+     "r_lock": -0.2265613655894517,
+     "r_lock_gross": -0.2256230994977756
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 193.503,
+    "S": 221.708,
+    "c_bid": 12.4941,
+    "c_ask": 12.8689,
+    "p_bid": 13.9657,
+    "p_ask": 14.3976,
+    "F_bid": 224.229,
+    "F_ask": 224.453,
+    "T": 0.990109,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     191.59949999999998,
+     192.40619999999998,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -32.85350000000002,
+     "reason": null,
+     "fees": 0.33462075,
+     "net_edge": -33.18812075000002,
+     "net_edge_usd": -33.18812075000002,
+     "net_edge_bps_notional": -1715.1217681379626,
+     "net_edge_ann": -0.1732255507361273
+    },
+    "reversal": {
+     "gross_edge": 31.82280000000003,
+     "reason": null,
+     "fees": 0.33445275,
+     "net_edge": 31.48834725000003,
+     "net_edge_usd": 31.48834725000003,
+     "net_edge_bps_notional": 1627.2795383017333,
+     "net_edge_ann": 0.1643535750409029
+    },
+    "inventory": {
+     "fees": 0.166281,
+     "r_lock": -0.14681261771771809,
+     "r_lock_gross": -0.14606185264430482
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 231.357,
+    "S": 252.88,
+    "c_bid": 19.6802,
+    "c_ask": 20.2706,
+    "p_bid": 15.7262,
+    "p_ask": 16.2126,
+    "F_bid": 255.809,
+    "F_ask": 256.065,
+    "T": 0.618537,
+    "side": "taker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     234.8246,
+     235.9014,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -21.240399999999998,
+     "reason": null,
+     "fees": 0.38170874999999993,
+     "net_edge": -21.62210875,
+     "net_edge_usd": -21.62210875,
+     "net_edge_bps_notional": -934.57767649131,
+     "net_edge_ann": -0.1510948700710402
+    },
+    "reversal": {
+     "gross_edge": 19.907599999999995,
+     "reason": null,
+     "fees": 0.38151674999999996,
+     "net_edge": 19.526083249999996,
+     "net_edge_usd": 19.526083249999996,
+     "net_edge_bps_notional": 843.9806554372678,
+     "net_edge_ann": 0.136447885160834
+    },
+    "inventory": {
+     "fees": 0.18965999999999997,
+     "r_lock": -0.1227184753458442,
+     "r_lock_gross": -0.12148954590429316
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 170.996,
+    "S": 179.873,
+    "c_bid": 6.59181,
+    "c_ask": 6.78956,
+    "p_bid": 4.36087,
+    "p_ask": 4.49574,
+    "F_bid": 181.514,
+    "F_ask": 181.696,
+    "T": 0.50895,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     173.09207,
+     173.42469,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -8.603929999999988,
+     "reason": null,
+     "fees": 0.22575275,
+     "net_edge": -8.829682749999987,
+     "net_edge_usd": -8.829682749999987,
+     "net_edge_bps_notional": -516.3677951531023,
+     "net_edge_ann": -0.10145747031203502,
+     "breakeven_funding_ann": -0.10145747031203503
+    },
+    "reversal": {
+     "gross_edge": 8.089310000000001,
+     "reason": null,
+     "fees": 0.22566175,
+     "net_edge": 7.863648250000001,
+     "net_edge_usd": 7.863648250000001,
+     "net_edge_bps_notional": 459.87322802872586,
+     "net_edge_ann": 0.09035725081613633,
+     "breakeven_funding_ann": -0.09035725081613633
+    },
+    "inventory": {
+     "fees": 0.13490475,
+     "r_lock": -0.07790146925220919,
+     "r_lock_gross": -0.07641103785063558
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 52.4721,
+    "S": 45.288,
+    "c_bid": 3.33125,
+    "c_ask": 3.43119,
+    "p_bid": 3.39584,
+    "p_ask": 3.50087,
+    "F_bid": 45.8657,
+    "F_ask": 45.9115,
+    "T": 0.922323,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     52.302479999999996,
+     52.50745,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 6.390980000000001,
+     "reason": null,
+     "fees": 0.05692174999999999,
+     "net_edge": 6.334058250000001,
+     "net_edge_usd": 6.334058250000001,
+     "net_edge_bps_notional": 1207.1287884418578,
+     "net_edge_ann": 0.13087918098560458,
+     "breakeven_funding_ann": 0.1308791809856046
+    },
+    "reversal": {
+     "gross_edge": -6.64175,
+     "reason": null,
+     "fees": 0.056898849999999994,
+     "net_edge": -6.69864885,
+     "net_edge_usd": -6.69864885,
+     "net_edge_bps_notional": -1276.6115421338197,
+     "net_edge_ann": -0.13841263224855282,
+     "breakeven_funding_ann": 0.13841263224855282
+    },
+    "inventory": {
+     "fees": 0.033965999999999996,
+     "r_lock": 0.15477681244893265,
+     "r_lock_gross": 0.1555866398556673
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 155.561,
+    "S": 163.814,
+    "c_bid": 18.4286,
+    "c_ask": 18.9815,
+    "p_bid": 13.1271,
+    "p_ask": 13.5331,
+    "F_bid": 163.762,
+    "F_ask": 163.926,
+    "T": 0.954905,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     160.4565,
+     161.4154,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -3.4694999999999805,
+     "reason": null,
+     "fees": 0.20482349999999996,
+     "net_edge": -3.6743234999999803,
+     "net_edge_usd": -3.6743234999999803,
+     "net_edge_bps_notional": -236.1982437757523,
+     "net_edge_ann": -0.024735260971065424,
+     "breakeven_funding_ann": -0.02473526097106542
+    },
+    "reversal": {
+     "gross_edge": 2.3465999999999934,
+     "reason": null,
+     "fees": 0.20474149999999997,
+     "net_edge": 2.1418584999999934,
+     "net_edge_usd": 2.1418584999999934,
+     "net_edge_bps_notional": 137.6860845584686,
+     "net_edge_ann": 0.014418825386658212,
+     "breakeven_funding_ann": -0.01441882538665821
+    },
+    "inventory": {
+     "fees": 0.12286049999999998,
+     "r_lock": -0.023171267999162283,
+     "r_lock_gross": -0.022361967458445653
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 7.15477,
+    "S": 6.50336,
+    "c_bid": 0.19033,
+    "c_ask": 0.19604,
+    "p_bid": 0.636255,
+    "p_ask": 0.655933,
+    "F_bid": 6.53688,
+    "F_ask": 6.54342,
+    "T": 0.66737,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     6.689167,
+     6.714555,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.14574699999999985,
+     "reason": null,
+     "fees": 0.00814923,
+     "net_edge": 0.13759776999999984,
+     "net_edge_usd": 0.13759776999999984,
+     "net_edge_bps_notional": 192.31613315312697,
+     "net_edge_ann": 0.028817018018959042,
+     "breakeven_funding_ann": 0.02881701801895905
+    },
+    "reversal": {
+     "gross_edge": -0.17767500000000003,
+     "reason": null,
+     "fees": 0.008145959999999999,
+     "net_edge": -0.18582096000000003,
+     "net_edge_usd": -0.18582096000000003,
+     "net_edge_bps_notional": -259.71618933941977,
+     "net_edge_ann": -0.03891637162884454,
+     "breakeven_funding_ann": 0.03891637162884454
+    },
+    "inventory": {
+     "fees": 0.00487752,
+     "r_lock": 0.038379290261054196,
+     "r_lock_gross": 0.03942765470897447
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 297.071,
+    "S": 264.962,
+    "c_bid": 14.0108,
+    "c_ask": 14.4311,
+    "p_bid": 16.8783,
+    "p_ask": 17.4003,
+    "F_bid": 264.923,
+    "F_ask": 265.189,
+    "T": 0.926706,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     293.6815,
+     294.6238,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 28.492500000000003,
+     "reason": null,
+     "fees": 0.331316,
+     "net_edge": 28.161184000000002,
+     "net_edge_usd": 28.161184000000002,
+     "net_edge_bps_notional": 947.9613964338491,
+     "net_edge_ann": 0.10229365046021599,
+     "breakeven_funding_ann": 0.10229365046021598
+    },
+    "reversal": {
+     "gross_edge": -29.700800000000026,
+     "reason": null,
+     "fees": 0.331183,
+     "net_edge": -30.031983000000025,
+     "net_edge_usd": -30.031983000000025,
+     "net_edge_bps_notional": -1010.9362071693306,
+     "net_edge_ann": -0.10908920490094276,
+     "breakeven_funding_ann": 0.10908920490094276
+    },
+    "inventory": {
+     "fees": 0.1987215,
+     "r_lock": 0.10891612477004485,
+     "r_lock_gross": 0.10971492485209797
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 322.61,
+    "S": 369.403,
+    "c_bid": 30.5547,
+    "c_ask": 31.4713,
+    "p_bid": 20.5203,
+    "p_ask": 21.1549,
+    "F_bid": 375.666,
+    "F_ask": 376.042,
+    "T": 0.522848,
+    "side": "taker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     332.00980000000004,
+     333.56100000000004,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -44.03219999999996,
+     "reason": null,
+     "fees": 0.46507325,
+     "net_edge": -44.497273249999964,
+     "net_edge_usd": -44.497273249999964,
+     "net_edge_bps_notional": -1379.2899553640605,
+     "net_edge_ann": -0.26380323829565394,
+     "breakeven_funding_ann": -0.26380323829565394
+    },
+    "reversal": {
+     "gross_edge": 42.10499999999998,
+     "reason": null,
+     "fees": 0.46488525,
+     "net_edge": 41.64011474999998,
+     "net_edge_usd": 41.64011474999998,
+     "net_edge_bps_notional": 1290.7261011747926,
+     "net_edge_ann": 0.24686450004108126,
+     "breakeven_funding_ann": -0.24686450004108126
+    },
+    "inventory": {
+     "fees": 0.27705225,
+     "r_lock": -0.21122399572034833,
+     "r_lock_gross": -0.20975265650581223
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 62.6253,
+    "S": 69.3127,
+    "c_bid": 5.91862,
+    "c_ask": 6.09618,
+    "p_bid": 4.9176,
+    "p_ask": 5.06969,
+    "F_bid": 70.5199,
+    "F_ask": 70.5905,
+    "T": 0.881444,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     63.474230000000006,
+     63.80388000000001,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -7.116270000000003,
+     "reason": null,
+     "fees": 0.06282866000000001,
+     "net_edge": -7.179098660000003,
+     "net_edge_usd": -7.179098660000003,
+     "net_edge_bps_notional": -1146.3575679477788,
+     "net_edge_ann": -0.13005449784079065
+    },
+    "reversal": {
+     "gross_edge": 6.716020000000004,
+     "reason": null,
+     "fees": 0.06280395000000001,
+     "net_edge": 6.653216050000004,
+     "net_edge_usd": 6.653216050000004,
+     "net_edge_bps_notional": 1062.3846991551343,
+     "net_edge_ann": 0.12052775889961635
+    },
+    "inventory": {
+     "fees": 0.038121985000000004,
+     "r_lock": -0.10175577267870688,
+     "r_lock_gross": -0.10112423526205687
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 50.6235,
+    "S": 49.4869,
+    "c_bid": 1.29279,
+    "c_ask": 1.33157,
+    "p_bid": 1.242,
+    "p_ask": 1.28041,
+    "F_bid": 50.0042,
+    "F_ask": 50.0542,
+    "T": 0.068804,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     50.63588,
+     50.71307,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 0.5816799999999984,
+     "reason": null,
+     "fees": 0.044736765,
+     "net_edge": 0.5369432349999984,
+     "net_edge_usd": 0.5369432349999984,
+     "net_edge_bps_notional": 106.06600393098036,
+     "net_edge_ann": 0.1541567407868443
+    },
+    "reversal": {
+     "gross_edge": -0.7088700000000026,
+     "reason": null,
+     "fees": 0.044719264999999994,
+     "net_edge": -0.7535892650000026,
+     "net_edge_usd": -0.7535892650000026,
+     "net_edge_bps_notional": -148.86154947800975,
+     "net_edge_ann": -0.21635595238359648
+    },
+    "inventory": {
+     "fees": 0.027217795,
+     "r_lock": 0.32568047540842265,
+     "r_lock_gross": 0.3336739984037654
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 395.457,
+    "S": 368.459,
+    "c_bid": 33.3321,
+    "c_ask": 34.3321,
+    "p_bid": 17.5523,
+    "p_ask": 18.0952,
+    "F_bid": 368.687,
+    "F_ask": 369.055,
+    "T": 0.803765,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     410.6939,
+     412.2368,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 41.638899999999985,
+     "reason": null,
+     "fees": 0.3318217,
+     "net_edge": 41.307078299999986,
+     "net_edge_usd": 41.307078299999986,
+     "net_edge_bps_notional": 1044.5403242324699,
+     "net_edge_ann": 0.12995593540804465
+    },
+    "reversal": {
+     "gross_edge": -43.549799999999976,
+     "reason": null,
+     "fees": 0.3316929,
+     "net_edge": -43.88149289999998,
+     "net_edge_usd": -43.88149289999998,
+     "net_edge_bps_notional": -1109.6400594754923,
+     "net_edge_ann": -0.13805528475057915
+    },
+    "inventory": {
+     "fees": 0.20265244999999998,
+     "r_lock": 0.13980636111337166,
+     "r_lock_gross": 0.140519953727627
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 175.735,
+    "S": 199.187,
+    "c_bid": 20.6864,
+    "c_ask": 21.307,
+    "p_bid": 2.29475,
+    "p_ask": 2.36572,
+    "F_bid": 200.4,
+    "F_ask": 200.6,
+    "T": 0.370961,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     194.05568000000002,
+     194.74725,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -6.544319999999981,
+     "reason": null,
+     "fees": 0.17976285000000003,
+     "net_edge": -6.724082849999982,
+     "net_edge_usd": -6.724082849999982,
+     "net_edge_bps_notional": -382.62627535778194,
+     "net_edge_ann": -0.10314460963761203
+    },
+    "reversal": {
+     "gross_edge": 5.652749999999994,
+     "reason": null,
+     "fees": 0.17969285000000002,
+     "net_edge": 5.473057149999994,
+     "net_edge_usd": 5.473057149999994,
+     "net_edge_bps_notional": 311.43808290892497,
+     "net_edge_ann": 0.08395440030324616
+    },
+    "inventory": {
+     "fees": 0.10955285000000001,
+     "r_lock": -0.07921734270569906,
+     "r_lock_gross": -0.07758501922175058
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 108.453,
+    "S": 112.063,
+    "c_bid": 8.04987,
+    "c_ask": 8.29137,
+    "p_bid": 6.38508,
+    "p_ask": 6.58256,
+    "F_bid": 114.214,
+    "F_ask": 114.328,
+    "T": 0.311266,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     109.92031,
+     110.35929,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -4.40769,
+     "reason": null,
+     "fees": 0.10164945,
+     "net_edge": -4.50933945,
+     "net_edge_usd": -4.50933945,
+     "net_edge_bps_notional": -415.787433266023,
+     "net_edge_ann": -0.1335794572057414
+    },
+    "reversal": {
+     "gross_edge": 3.8547099999999954,
+     "reason": null,
+     "fees": 0.10160954999999999,
+     "net_edge": 3.7531004499999954,
+     "net_edge_usd": 3.7531004499999954,
+     "net_edge_bps_notional": 346.05778078983474,
+     "net_edge_ann": 0.11117750759473723
+    },
+    "inventory": {
+     "fees": 0.06163465,
+     "r_lock": -0.06464362141813902,
+     "r_lock_gross": -0.06285369960982436
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 234.983,
+    "S": 267.852,
+    "c_bid": 20.5981,
+    "c_ask": 21.216,
+    "p_bid": 11.4746,
+    "p_ask": 11.8295,
+    "F_bid": 271.691,
+    "F_ask": 271.963,
+    "T": 0.109502,
+    "side": "maker",
+    "hedge_is_perp": false
+   },
+   "expected": {
+    "band": [
+     243.7516,
+     244.7244,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -28.21140000000002,
+     "reason": null,
+     "fees": 0.24250565,
+     "net_edge": -28.453905650000017,
+     "net_edge_usd": -28.453905650000017,
+     "net_edge_bps_notional": -1210.892092193904,
+     "net_edge_ann": -1.1058173295409253
+    },
+    "reversal": {
+     "gross_edge": 26.96659999999997,
+     "reason": null,
+     "fees": 0.24241044999999997,
+     "net_edge": 26.72418954999997,
+     "net_edge_usd": 26.72418954999997,
+     "net_edge_bps_notional": 1137.281826770446,
+     "net_edge_ann": 1.0385945706657833
+    },
+    "inventory": {
+     "fees": 0.1473186,
+     "r_lock": -0.8968356694064634,
+     "r_lock_gross": -0.8916444127618989
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 220.688,
+    "S": 198.556,
+    "c_bid": 21.5752,
+    "c_ask": 22.2225,
+    "p_bid": 8.08982,
+    "p_ask": 8.34002,
+    "F_bid": 199.336,
+    "F_ask": 199.536,
+    "T": 0.023495,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     233.92317999999997,
+     234.82067999999998,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 34.38717999999999,
+     "reason": null,
+     "fees": 0.1291594,
+     "net_edge": 34.25802059999999,
+     "net_edge_usd": 34.25802059999999,
+     "net_edge_bps_notional": 1552.3282008990063,
+     "net_edge_ann": 6.607057675671447,
+     "breakeven_funding_ann": 6.607057675671446
+    },
+    "reversal": {
+     "gross_edge": -35.484679999999976,
+     "reason": null,
+     "fees": 0.1291394,
+     "net_edge": -35.613819399999976,
+     "net_edge_usd": -35.613819399999976,
+     "net_edge_bps_notional": -1613.7632947872098,
+     "net_edge_ann": -6.8685392414863164,
+     "breakeven_funding_ann": 6.868539241486316
+    },
+    "inventory": {
+     "fees": 0.1092058,
+     "r_lock": 7.408910315293453,
+     "r_lock_gross": 7.433983997265141
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 245.707,
+    "S": 250.476,
+    "c_bid": 5.05083,
+    "c_ask": 5.20235,
+    "p_bid": 21.1358,
+    "p_ask": 21.7895,
+    "F_bid": 252.463,
+    "F_ask": 252.715,
+    "T": 0.149727,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     228.96832999999998,
+     229.77355,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -23.74667000000001,
+     "reason": null,
+     "fees": 0.16303330000000002,
+     "net_edge": -23.909703300000007,
+     "net_edge_usd": -23.909703300000007,
+     "net_edge_bps_notional": -973.0981738412014,
+     "net_edge_ann": -0.6499149611233789,
+     "breakeven_funding_ann": -0.6499149611233789
+    },
+    "reversal": {
+     "gross_edge": 22.68945,
+     "reason": null,
+     "fees": 0.16300810000000002,
+     "net_edge": 22.526441900000002,
+     "net_edge_usd": 22.526441900000002,
+     "net_edge_bps_notional": 916.800982470992,
+     "net_edge_ann": 0.6123150684051587,
+     "breakeven_funding_ann": -0.6123150684051587
+    },
+    "inventory": {
+     "fees": 0.1377618,
+     "r_lock": -0.5638795150188818,
+     "r_lock_gross": -0.5604371536210135
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 338.63,
+    "S": 387.99,
+    "c_bid": 2.71091,
+    "c_ask": 2.79224,
+    "p_bid": 35.4725,
+    "p_ask": 36.5696,
+    "F_bid": 393.096,
+    "F_ask": 393.49,
+    "T": 0.293165,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     304.77130999999997,
+     305.94974,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -88.71869000000001,
+     "reason": null,
+     "fees": 0.2527435,
+     "net_edge": -88.9714335,
+     "net_edge_usd": -88.9714335,
+     "net_edge_bps_notional": -2627.3937188081386,
+     "net_edge_ann": -0.8962167103194919,
+     "breakeven_funding_ann": -0.896216710319492
+    },
+    "reversal": {
+     "gross_edge": 87.14626000000001,
+     "reason": null,
+     "fees": 0.2527041,
+     "net_edge": 86.89355590000001,
+     "net_edge_usd": 86.89355590000001,
+     "net_edge_bps_notional": 2566.032421817323,
+     "net_edge_ann": 0.875286075014863,
+     "breakeven_funding_ann": -0.875286075014863
+    },
+    "inventory": {
+     "fees": 0.2133945,
+     "r_lock": -0.7512641583777439,
+     "r_lock_gross": -0.7495390969085574
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 27.508,
+    "S": 31.8432,
+    "c_bid": 3.22288,
+    "c_ask": 3.31957,
+    "p_bid": 2.1878,
+    "p_ask": 2.25546,
+    "F_bid": 32.1436,
+    "F_ask": 32.1758,
+    "T": 0.0917313,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     28.47542,
+     28.63977,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -3.700380000000003,
+     "reason": null,
+     "fees": 0.02073134,
+     "net_edge": -3.7211113400000033,
+     "net_edge_usd": -3.7211113400000033,
+     "net_edge_bps_notional": -1352.7378726188758,
+     "net_edge_ann": -1.4746742634399335,
+     "breakeven_funding_ann": -1.4746742634399337
+    },
+    "reversal": {
+     "gross_edge": 3.5038300000000002,
+     "reason": null,
+     "fees": 0.02072812,
+     "net_edge": 3.4831018800000004,
+     "net_edge_usd": 3.4831018800000004,
+     "net_edge_bps_notional": 1266.2141486113132,
+     "net_edge_ann": 1.3803512526382087,
+     "breakeven_funding_ann": -1.380351252638209
+    },
+    "inventory": {
+     "fees": 0.01751376,
+     "r_lock": -1.2652416184103816,
+     "r_lock_gross": -1.2590597356555302
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 315.916,
+    "S": 360.663,
+    "c_bid": 41.4068,
+    "c_ask": 42.649,
+    "p_bid": 37.2465,
+    "p_ask": 38.3985,
+    "F_bid": 361.821,
+    "F_ask": 362.183,
+    "T": 0.857815,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     318.9243,
+     321.3185,
+     null
+    ],
+    "conversion": {
+     "gross_edge": -43.2587,
+     "reason": null,
+     "fees": 0.23458295,
+     "net_edge": -43.493282949999994,
+     "net_edge_usd": -43.493282949999994,
+     "net_edge_bps_notional": -1376.7356813203507,
+     "net_edge_ann": -0.16049330931731792,
+     "breakeven_funding_ann": -0.16049330931731792
+    },
+    "reversal": {
+     "gross_edge": 40.502500000000026,
+     "reason": null,
+     "fees": 0.23454675,
+     "net_edge": 40.267953250000026,
+     "net_edge_usd": 40.267953250000026,
+     "net_edge_bps_notional": 1274.641146697224,
+     "net_edge_ann": 0.14859161319133193,
+     "breakeven_funding_ann": -0.14859161319133193
+    },
+    "inventory": {
+     "fees": 0.19836465,
+     "r_lock": -0.14530652034078095,
+     "r_lock_gross": -0.14466014273751499
+    }
+   }
+  },
+  {
+   "inputs": {
+    "inverse": false,
+    "K": 153.916,
+    "S": 158.327,
+    "c_bid": 14.5283,
+    "c_ask": 14.9641,
+    "p_bid": 1.84748,
+    "p_ask": 1.90462,
+    "F_bid": 160.824,
+    "F_ask": 160.984,
+    "T": 0.452489,
+    "side": "maker",
+    "hedge_is_perp": true
+   },
+   "expected": {
+    "band": [
+     166.53968,
+     167.03262,
+     null
+    ],
+    "conversion": {
+     "gross_edge": 5.555679999999988,
+     "reason": null,
+     "fees": 0.10317825,
+     "net_edge": 5.452501749999988,
+     "net_edge_usd": 5.452501749999988,
+     "net_edge_bps_notional": 354.25178344031735,
+     "net_edge_ann": 0.07828959012049296,
+     "breakeven_funding_ann": 0.07828959012049296
+    },
+    "reversal": {
+     "gross_edge": -6.208619999999986,
+     "reason": null,
+     "fees": 0.10316225000000001,
+     "net_edge": -6.311782249999986,
+     "net_edge_usd": -6.311782249999986,
+     "net_edge_bps_notional": -410.0796700797829,
+     "net_edge_ann": -0.09062754455462628,
+     "breakeven_funding_ann": 0.09062754455462628
+    },
+    "inventory": {
+     "fees": 0.08707985,
+     "r_lock": 0.11986374541089273,
+     "r_lock_gross": 0.12118416042042313
+    }
+   }
+  }
+ ],
+ "guards": [
+  {
+   "fn": "inv_band",
+   "args": [
+    100,
+    1.1,
+    1.2,
+    0.05,
+    0.06
+   ],
+   "expected": [
+    null,
+    null,
+    "inverse_denominator_non_positive"
+   ]
+  },
+  {
+   "fn": "lin_conversion",
+   "args": [
+    100,
+    0.0,
+    5,
+    101
+   ],
+   "expected": [
+    null,
+    "non_positive_input"
+   ]
+  },
+  {
+   "fn": "inv_inventory_rate",
+   "args": [
+    100,
+    100,
+    1.5,
+    0.2,
+    0.1
+   ],
+   "expected": [
+    null,
+    "inverse_denominator_non_positive"
+   ]
+  },
+  {
+   "fn": "lin_inventory_rate",
+   "args": [
+    100,
+    100,
+    5,
+    5,
+    5e-05,
+    0.0,
+    1
+   ],
+   "expected": [
+    null,
+    "tenor_below_min"
+   ]
+  }
+ ]
+}

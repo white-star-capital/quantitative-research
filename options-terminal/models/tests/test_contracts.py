@@ -95,3 +95,15 @@ def test_evaluation_vectors_are_reproducible_and_cover_every_flag_and_error():
         "pct_spot_requires_spot_ref",
         "invalid_premium",
     } <= set(doc["error_codes"])
+
+
+def test_parity_vectors_are_reproducible_and_cover_guards():
+    from terminal_models.tools.gen_parity_vectors import main as gen_parity
+
+    assert gen_parity(["--check"]) == 0
+    doc = json.loads((ROOT / "fixtures" / "parity" / "vectors.json").read_text())
+    kinds = {(c["inputs"]["inverse"], c["inputs"]["side"], c["inputs"]["hedge_is_perp"])
+             for c in doc["cases"]}  # fmt: skip
+    assert len(kinds) == 8  # inverse/linear × taker/maker × future/perp
+    reasons = {g["expected"][-1] for g in doc["guards"]}
+    assert {"inverse_denominator_non_positive", "non_positive_input", "tenor_below_min"} <= reasons

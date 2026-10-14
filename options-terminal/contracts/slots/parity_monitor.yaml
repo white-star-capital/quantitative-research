@@ -1,0 +1,19 @@
+slot_id: parity_monitor
+title: Put-call parity monitor
+description: >
+  Options-implied forwards and carry vs futures and funding, executable
+  conversion/reversal edges after fees, and lockable USD rate on inventory.
+payload_kind: composite
+payload_version: "1"
+scope:
+  dimensions: [underlying]
+  allowed:
+    underlying: [BTC, ETH, SOL, HYPE]
+max_age_seconds: 180
+conventions: >
+  Inverse (BTC/ETH) and linear (SOL/HYPE) parity per PARITY_MONITOR_IMPLEMENTATION_GUIDE.md §3.
+  Edges per 1 unit of underlying; inverse edges in coin with USD equivalent.
+  Rates simple annualized unless noted; r_lock continuous. Taker fees on all legs.
+display:
+  default_view: parity_monitor    # bespoke view; generic composite renderer as fallback
+  order: 2
