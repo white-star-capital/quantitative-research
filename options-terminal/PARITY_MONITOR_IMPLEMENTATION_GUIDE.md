@@ -21,6 +21,7 @@ These came out of building v0.1 against the existing code. Where they conflict w
 
   `parity_deribit` stays **out of `registry.yaml` until the fee table is filled**: the runner validates the whole registry each pass, so null fees in a registered manifest would also stop `bs_pricer`.
 - **A-6 Key casing.** Payload keys must match `^[a-z][a-z0-9_]{0,63}$` (CONTRACTS C-4), so the column names `F_impl*` and `F_hedge_*` in §4.2 are `f_impl*` and `f_hedge_*`. The `bands` table's single `band_bps` is two columns, `band_bid_bps` and `band_ask_bps`, because the band chart (§7.2) draws a bar between them. `expiries` also carries `status` (`ok` / `insufficient_strikes`), `venue_forward`, and `implied_basis_ann_bid` / `_ask` for the carry band. Opportunities carry `breakeven_funding_ann` on `perp_funding` rows.
+- **A-7 Headline numbers are locked-only.** In `context`, `best_net_edge_ann` and `n_confirmed` count `locked_future` rows only, and so do the monitor's "Best net edge" and "Confirmed opps" columns. Perp-hedged figures are reported separately as `best_perp_net_edge_ann` and `n_confirmed_perp`. A perp-hedged edge is mostly spot-vs-forward basis and isn't locked (§11), so it must never be a headline number.
 - **A-5 Sanity checks** `parity_band_ordering` and `implied_vs_venue_forward` are in `core/validation.py`. The bs_pricer checks assume that slot's sections.
 
 ---
