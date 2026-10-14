@@ -112,9 +112,9 @@ def _parity_payload(bands, expiries):
 
     usd = unit("price_usd")
     band_cols = [column("expiry_ts", "Expiry", "timestamp"), column("strike", "K", "number", usd),
-                 column("F_impl_bid", "Bid", "number", usd),
-                 column("F_impl_ask", "Ask", "number", usd)]  # fmt: skip
-    exp_cols = [column("expiry_ts", "Expiry", "timestamp"), column("F_impl", "F", "number", usd),
+                 column("f_impl_bid", "Bid", "number", usd),
+                 column("f_impl_ask", "Ask", "number", usd)]  # fmt: skip
+    exp_cols = [column("expiry_ts", "Expiry", "timestamp"), column("f_impl", "F", "number", usd),
                 column("venue_forward", "Venue", "number", usd)]  # fmt: skip
     return {
         "sections": [

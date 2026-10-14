@@ -20,6 +20,7 @@ These came out of building v0.1 against the existing code. Where they conflict w
   - fees are subtracted from the gross edge as paid (`net = gross − fees`). That is exact at `usd_rate = 0`, Deribit's convention. `core/quant/parity.py:net_metrics` derives `net_edge_usd` (inverse: coin × index), `net_edge_bps_notional` (vs the K USD notional) and `net_edge_ann` (simple). The frontend's maker/taker toggle uses the same derivation, held together by `contracts/fixtures/parity/vectors.json`.
 
   `parity_deribit` stays **out of `registry.yaml` until the fee table is filled**: the runner validates the whole registry each pass, so null fees in a registered manifest would also stop `bs_pricer`.
+- **A-6 Key casing.** Payload keys must match `^[a-z][a-z0-9_]{0,63}$` (CONTRACTS C-4), so the column names `F_impl*` and `F_hedge_*` in §4.2 are `f_impl*` and `f_hedge_*`. The `bands` table's single `band_bps` is two columns, `band_bid_bps` and `band_ask_bps`, because the band chart (§7.2) draws a bar between them. `expiries` also carries `status` (`ok` / `insufficient_strikes`), `venue_forward`, and `implied_basis_ann_bid` / `_ask` for the carry band. Opportunities carry `breakeven_funding_ann` on `perp_funding` rows.
 - **A-5 Sanity checks** `parity_band_ordering` and `implied_vs_venue_forward` are in `core/validation.py`. The bs_pricer checks assume that slot's sections.
 
 ---

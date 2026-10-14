@@ -1,0 +1,30 @@
+implementation_id: parity_deribit
+version: 1.0.0
+fills_slot: parity_monitor
+owner: alejandro
+description: Put-call parity on Deribit executable bid/ask; implied carry, net edges, inventory lock rate.
+schedule: "* * * * *"
+timeout_seconds: 40
+max_input_age_seconds: 30
+params:
+  usd_rate: 0.0
+  atm_band: 0.10
+  min_tte_hours: 1
+  min_strikes_for_forward: 3
+  max_snapshot_skew_s: 3
+  max_confirmations: 8
+  min_net_edge_bps: 0          # rows kept in `opportunities`
+  fees:                        # FILL FROM DERIBIT'S CURRENT FEE SCHEDULE — reviewed quarterly.
+    schedule_version: "TBD"    # While any value is null, validate-registry fails (guide §5), so
+    option_taker: null         # this implementation stays out of registry.yaml until filled.
+    option_maker: null         # fraction of underlying per option
+    option_cap_pct_of_price: null
+    future_taker: null
+    future_maker: null
+    perp_taker: null
+    perp_maker: null
+    option_delivery: null
+    future_delivery: null
+sanity_checks:
+  - parity_band_ordering       # F_impl_bid ≤ F_impl_ask for every strike; violation = bad data
+  - implied_vs_venue_forward   # |F_impl / venue underlying_price − 1| < 1%; else warning

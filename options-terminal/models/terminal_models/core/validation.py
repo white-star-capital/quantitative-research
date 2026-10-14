@@ -314,21 +314,21 @@ IMPLIED_FORWARD_TOLERANCE = 0.01
 
 
 def parity_band_ordering(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
-    """F_impl_bid <= F_impl_ask on every strike (parity guide §5). A crossed band means the
+    """f_impl_bid <= f_impl_ask on every strike (parity guide §5). A crossed band means the
     book or the inverse/linear conversion is wrong: bad data, hard failure."""
     crossed = [
         row
         for row in records(_need(payload, "bands"))
-        if row["F_impl_bid"] is not None
-        and row["F_impl_ask"] is not None
-        and row["F_impl_bid"] > row["F_impl_ask"] * (1 + PARITY_TOLERANCE)
+        if row["f_impl_bid"] is not None
+        and row["f_impl_ask"] is not None
+        and row["f_impl_bid"] > row["f_impl_ask"] * (1 + PARITY_TOLERANCE)
     ]
     if crossed:
         r = crossed[0]
         raise ValidationFailure(
             "parity_band_ordering",
             f"{len(crossed)} crossed parity bands (first {r['expiry_ts']} K={r['strike']}: "
-            f"{r['F_impl_bid']} > {r['F_impl_ask']})",
+            f"{r['f_impl_bid']} > {r['f_impl_ask']})",
         )
     return []
 
@@ -337,7 +337,7 @@ def implied_vs_venue_forward(payload: dict[str, Any], params: dict[str, Any]) ->
     """Options-implied forward within 1% of the venue's underlying_price per expiry, else warn."""
     off = []
     for row in records(_need(payload, "expiries")):
-        implied, venue = row["F_impl"], row["venue_forward"]
+        implied, venue = row["f_impl"], row["venue_forward"]
         if implied is None or not venue:
             continue
         gap = abs(implied / venue - 1)
