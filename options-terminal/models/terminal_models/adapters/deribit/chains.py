@@ -106,7 +106,55 @@ def normalize(underlying: str, instruments: list[dict], summaries: list[dict]) -
                 "open_interest": float(oi) if oi is not None else None,
                 "contract_size": float(m["contract_size"]),
                 "settlement": "inverse" if inverse else "linear",
+                # Native book prices (coin for inverse, USDC for linear): parity works on these
+                # (PARITY_MONITOR_IMPLEMENTATION_GUIDE.md §3), never on USD conversions.
+                "bid_native": _positive(s.get("bid_price")),
+                "ask_native": _positive(s.get("ask_price")),
+                "expiration_ms": int(m["expiration_timestamp"]),
+                "underlying_index": s.get("underlying_index"),
             }
         )
     rows.sort(key=lambda r: (r["expiry_ts"], r["strike"], r["option_type"]))
     return rows
+
+
+def normalize_futures(book: Book, instruments: list[dict], summaries: list[dict]) -> list[dict]:
+    """Dated futures and perps for one asset, joined to metadata on instrument_name (D-15).
+    Prices are USD (inverse futures quote USD; linear USDC futures quote USDC = USD).
+    `contract_size` from metadata: USD per contract for inverse, coin for linear (D-3)."""
+    meta = {
+        f["instrument_name"]: f
+        for f in instruments
+        if f.get("base_currency") == book.base and f.get("is_active", True)
+    }
+    rows = []
+    for s in summaries:
+        m = meta.get(s.get("instrument_name"))
+        if m is None:
+            continue
+        perpetual = m.get("settlement_period") == "perpetual"
+        rows.append(
+            {
+                "instrument_name": m["instrument_name"],
+                "is_perpetual": perpetual,
+                "expiration_ms": None if perpetual else int(m["expiration_timestamp"]),
+                "bid": _positive(s.get("bid_price")),
+                "ask": _positive(s.get("ask_price")),
+                "mark": _positive(s.get("mark_price")),
+                "contract_size": float(m["contract_size"]),
+                "settlement": "inverse" if is_inverse(m, book) else "linear",
+                "settlement_currency": m.get("settlement_currency"),
+            }
+        )
+    rows.sort(key=lambda r: (r["is_perpetual"], r["expiration_ms"] or 0, r["instrument_name"]))
+    return rows
+
+
+def book_side(levels: Any) -> list[list[float]]:
+    """Order-book levels as [[price, amount], ...], best first, positive values only."""
+    out = []
+    for level in levels or []:
+        price, amount = float(level[0]), float(level[1])
+        if price > 0 and amount > 0:
+            out.append([price, amount])
+    return out

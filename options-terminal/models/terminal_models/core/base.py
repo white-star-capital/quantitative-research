@@ -25,11 +25,14 @@ class ModelError(Exception):
 
 @dataclass(frozen=True)
 class InputSpec:
-    """One input a model needs. `source` names the adapter; `params` are adapter-specific."""
+    """One input a model needs. `source` names the adapter; `params` are adapter-specific.
+    An `optional` input that can't be fetched is left out instead of failing the run; the model
+    must handle its absence."""
 
     name: str
     source: str
     params: dict[str, Any] = field(default_factory=dict)
+    optional: bool = False
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,12 @@ class Model(ABC):
     @abstractmethod
     def required_inputs(self, scope: Scope) -> list[InputSpec]:
         """Declare which data the run needs. The runner fetches it via adapters."""
+
+    def followup_inputs(self, scope: Scope, inputs: dict[str, InputData]) -> list[InputSpec]:
+        """Second-stage inputs chosen from the first stage (e.g. order books for screened
+        candidates). Pure: no I/O. The runner fetches them before `run` and snapshots them
+        with the rest, so replay is unchanged. Default: none."""
+        return []
 
     @abstractmethod
     def run(self, ctx: RunContext) -> Payload:

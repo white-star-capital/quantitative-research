@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from terminal_models.adapters.base import AdapterError, DataAdapter
-from terminal_models.core.base import InputData, Model, ModelError, RunContext, Scope
+from terminal_models.core.base import InputData, InputSpec, Model, ModelError, RunContext, Scope
 from terminal_models.core.envelope import Envelope
 from terminal_models.core.manifest import Manifest
 from terminal_models.core.paths import MODELS_DIR
@@ -154,18 +154,33 @@ class RunSpec:
     as_of: datetime
 
 
-def fetch_inputs(spec: RunSpec, adapters: dict[str, DataAdapter]) -> dict[str, InputData]:
-    model = load_model(spec.manifest)
+def _fetch(
+    specs: list[InputSpec], adapters: dict[str, DataAdapter], as_of: datetime
+) -> dict[str, InputData]:
     inputs = {}
-    for input_spec in model.required_inputs(spec.scope):
+    for input_spec in specs:
         adapter = adapters.get(input_spec.source)
         if adapter is None:
             raise RunFailed("bad_input_spec", f"no adapter '{input_spec.source}'")
         try:
-            inputs[input_spec.name] = adapter.fetch(input_spec, spec.as_of)
+            inputs[input_spec.name] = adapter.fetch(input_spec, as_of)
         except AdapterError as exc:
+            if input_spec.optional:
+                log.warning("optional input %s unavailable: %s", input_spec.name, exc.message)
+                continue
             raise RunFailed(exc.code, exc.message) from exc
     return inputs
+
+
+def fetch_inputs(spec: RunSpec, adapters: dict[str, DataAdapter]) -> dict[str, InputData]:
+    """Declared inputs, then the model's follow-ups chosen from them (guide A-1)."""
+    model = load_model(spec.manifest)
+    inputs = _fetch(model.required_inputs(spec.scope), adapters, spec.as_of)
+    followups = model.followup_inputs(spec.scope, inputs)
+    clash = {s.name for s in followups} & inputs.keys()
+    if clash:
+        raise RunFailed("bad_input_spec", f"follow-up inputs reuse names: {sorted(clash)}")
+    return inputs | _fetch(followups, adapters, spec.as_of)
 
 
 def check_input_times(spec: RunSpec, inputs: dict[str, InputData]) -> None:

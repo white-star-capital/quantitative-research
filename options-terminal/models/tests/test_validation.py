@@ -102,4 +102,39 @@ def test_sanity_checks_registered():
         "spot_vs_perp",
         "monotonic_tenor",
         "greeks_signs",
+        "parity_band_ordering",
+        "implied_vs_venue_forward",
     }
+
+
+def _parity_payload(bands, expiries):
+    from terminal_models.core.payloads import column, section, unit
+
+    usd = unit("price_usd")
+    band_cols = [column("expiry_ts", "Expiry", "timestamp"), column("strike", "K", "number", usd),
+                 column("F_impl_bid", "Bid", "number", usd),
+                 column("F_impl_ask", "Ask", "number", usd)]  # fmt: skip
+    exp_cols = [column("expiry_ts", "Expiry", "timestamp"), column("F_impl", "F", "number", usd),
+                column("venue_forward", "Venue", "number", usd)]  # fmt: skip
+    return {
+        "sections": [
+            section("bands", "Bands", "table", {"columns": band_cols, "rows": bands}),
+            section("expiries", "Expiries", "table", {"columns": exp_cols, "rows": expiries}),
+        ]
+    }
+
+
+def test_parity_band_ordering_fails_on_a_crossed_band():
+    ok = _parity_payload([["2026-11-27T08:00:00Z", 100.0, 99.0, 101.0]], [])
+    assert SANITY_CHECKS["parity_band_ordering"](ok, {}) == []
+    crossed = _parity_payload([["2026-11-27T08:00:00Z", 100.0, 102.0, 101.0]], [])
+    with pytest.raises(ValidationFailure, match="1 crossed parity bands"):
+        SANITY_CHECKS["parity_band_ordering"](crossed, {})
+
+
+def test_implied_vs_venue_forward_warns_beyond_one_percent():
+    rows = [["2026-11-27T08:00:00Z", 100.5, 100.0], ["2026-12-25T08:00:00Z", 103.0, 100.0],
+            ["2027-03-26T08:00:00Z", None, 100.0]]  # fmt: skip
+    warnings = SANITY_CHECKS["implied_vs_venue_forward"](_parity_payload([], rows), {})
+    assert [w["code"] for w in warnings] == ["implied_vs_venue_forward"]
+    assert "2026-12-25T08:00:00Z 3.00%" in warnings[0]["message"]

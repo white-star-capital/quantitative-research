@@ -67,6 +67,7 @@ class Model(ABC):
 
 - **M-4** `run` MUST be deterministic: same `ctx` → same payload. Randomness (e.g. a fitter's initial guess) uses a seed from `ctx.params`.
 - **M-5** `run` MUST NOT do I/O. All data arrives through `ctx.inputs`; this is what makes model tests fast and reproducible.
+  - **M-5a** A model whose second fetch depends on the first (e.g. order books for screened candidates) MAY implement `followup_inputs(scope, inputs) -> list[InputSpec]`. It must be pure, like `run`. The runner fetches the declared inputs, then the follow-ups, and snapshots all of them, so replay is unchanged. Follow-ups marked `optional` that fail are left out; the model handles their absence. (PARITY_MONITOR_IMPLEMENTATION_GUIDE.md A-1.)
 - **M-6** `run` raises `ModelError(code, message)` for expected failures (e.g. insufficient strikes to fit). Any other exception is caught by the runner and recorded as `status = failed`, `error.code = "unhandled"`.
 
 ### 3.2 Data adapters

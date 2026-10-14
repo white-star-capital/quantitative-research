@@ -51,6 +51,14 @@ def load_registry(path: Path) -> Registry:
         return Registry.model_validate(yaml.safe_load(f) or {})
 
 
+def null_fees(manifest: Manifest) -> list[str]:
+    """Keys under `params.fees` that are null (PARITY_MONITOR_IMPLEMENTATION_GUIDE.md §5)."""
+    fees = manifest.params.get("fees")
+    if not isinstance(fees, dict):
+        return []
+    return sorted(key for key, value in fees.items() if value is None)
+
+
 def validate_registry(
     registry: Registry, slots: dict[str, SlotDefinition], library: Path
 ) -> dict[str, Manifest]:
@@ -93,6 +101,11 @@ def validate_registry(
                 problems.append(
                     f"{slot_id}: '{ref.implementation}' fills slot '{manifest.fills_slot}'"
                 )
+            problems += [
+                f"{slot_id}: {role} '{ref.implementation}' params.fees.{key} is null: fill it "
+                "from the venue's fee schedule (no model runs on placeholder fees)"
+                for key in null_fees(manifest)
+            ]
             manifests[ref.implementation] = manifest
 
         dims = set(slot.scope.dimensions)

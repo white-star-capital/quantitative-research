@@ -310,6 +310,49 @@ def spot_vs_perp(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
     return [{"code": "spot_vs_perp", "message": f"index and perp differ by {gap:.2%}"}]
 
 
+IMPLIED_FORWARD_TOLERANCE = 0.01
+
+
+def parity_band_ordering(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
+    """F_impl_bid <= F_impl_ask on every strike (parity guide §5). A crossed band means the
+    book or the inverse/linear conversion is wrong: bad data, hard failure."""
+    crossed = [
+        row
+        for row in records(_need(payload, "bands"))
+        if row["F_impl_bid"] is not None
+        and row["F_impl_ask"] is not None
+        and row["F_impl_bid"] > row["F_impl_ask"] * (1 + PARITY_TOLERANCE)
+    ]
+    if crossed:
+        r = crossed[0]
+        raise ValidationFailure(
+            "parity_band_ordering",
+            f"{len(crossed)} crossed parity bands (first {r['expiry_ts']} K={r['strike']}: "
+            f"{r['F_impl_bid']} > {r['F_impl_ask']})",
+        )
+    return []
+
+
+def implied_vs_venue_forward(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
+    """Options-implied forward within 1% of the venue's underlying_price per expiry, else warn."""
+    off = []
+    for row in records(_need(payload, "expiries")):
+        implied, venue = row["F_impl"], row["venue_forward"]
+        if implied is None or not venue:
+            continue
+        gap = abs(implied / venue - 1)
+        if gap >= IMPLIED_FORWARD_TOLERANCE:
+            off.append(f"{row['expiry_ts']} {gap:.2%}")
+    if not off:
+        return []
+    return [
+        {
+            "code": "implied_vs_venue_forward",
+            "message": f"implied forward >= 1% from venue forward: {', '.join(off)}",
+        }
+    ]
+
+
 def _pending(name: str) -> SanityCheck:
     def check(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
         raise NotImplementedError(f"sanity check '{name}' is not implemented yet")
@@ -323,6 +366,8 @@ SANITY_CHECKS: dict[str, SanityCheck] = {
     "put_call_parity": put_call_parity,
     "mark_reproduction": mark_reproduction,
     "spot_vs_perp": spot_vs_perp,
+    "parity_band_ordering": parity_band_ordering,
+    "implied_vs_venue_forward": implied_vs_venue_forward,
     "butterfly_arbitrage": _pending("butterfly_arbitrage"),
     "monotonic_tenor": _pending("monotonic_tenor"),
     "greeks_signs": _pending("greeks_signs"),

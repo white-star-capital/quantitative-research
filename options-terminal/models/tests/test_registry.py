@@ -139,3 +139,18 @@ def test_shadow_only_slot_is_allowed(slots, library):
 def test_null_production_needs_a_shadow():
     with pytest.raises(ValueError, match="at least one shadow"):
         registry(production=None)
+
+
+def test_null_fees_block_the_registry(slots, library):
+    """PARITY_MONITOR_IMPLEMENTATION_GUIDE.md §5 M1 blocker: no runs on placeholder fees."""
+    path = library / "vol_surface_svi" / "manifest.yaml"
+    path.write_text(
+        path.read_text()
+        + "params:\n  fees:\n    schedule_version: TBD\n"
+        + "    option_taker: null\n    perp_maker: 0.0\n"
+    )
+    found = problems(registry(), slots, library)
+    assert found == [
+        "vol_surface: production 'vol_surface_svi' params.fees.option_taker is null: fill it "
+        "from the venue's fee schedule (no model runs on placeholder fees)"
+    ]
