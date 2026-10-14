@@ -44,7 +44,7 @@ start: check-docker env check-url ## build and start api, runner and frontend (+
 	@echo "database: $(DB_MODE)"
 	TERMINAL_GIT_SHA=$(GIT_SHA) $(COMPOSE) up -d --build --wait --remove-orphans
 	@echo ""
-	@echo "Options terminal: http://localhost:$$(sed -n 's/^FRONTEND_PORT=//p' .env)"
+	@echo "Options terminal: http://localhost:$$(sed -n 's/^FRONTEND_PORT=//p' .env | grep . || echo 3000)"
 	@echo "Runs appear within a few minutes once Deribit answers. Follow with: make logs"
 
 check-url:
