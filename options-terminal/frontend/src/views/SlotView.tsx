@@ -35,7 +35,10 @@ export function SlotView({ slotId, scope, slots, onAsOf }: Props) {
   const id = encodeURIComponent(slotId);
   const detail = usePolled(slot ? `/v1/slots/${id}` : null, checkSlotDetail);
   // Production when there is one; the first shadow during a slot's initial shadow period (M-12).
-  const selection = useMemo(() => (detail.data ? runSelection(detail.data.implementations) : null), [detail.data]);
+  // Only this slot's detail: after navigating between slots the previous detail is still held
+  // for a moment, and its selection must not be sent to the new slot.
+  const own = detail.data?.slot_id === slotId ? detail.data : null;
+  const selection = useMemo(() => (own ? runSelection(own.implementations) : null), [own]);
   const path = slot && scopeCheck?.ok && selection ? `/v1/slots/${id}/latest${encodeScope({ ...scope, ...selection })}` : null;
   const latest = usePolled(path, checkLatest);
   const Bespoke = slot ? bespokeFor(slot) : null;
@@ -62,7 +65,7 @@ export function SlotView({ slotId, scope, slots, onAsOf }: Props) {
     </span>
   );
   if (Bespoke && !generic) {
-    if (!detail.data || !selection) {
+    if (!own || !selection) {
       return detail.error ? <ErrorIndicator error={detail.error} lastGoodAsOf={null} /> : <Loading what="SLOT" />;
     }
     return (
@@ -73,7 +76,7 @@ export function SlotView({ slotId, scope, slots, onAsOf }: Props) {
         </div>
         {selection.role === "shadow" && <ShadowBanner implementation={selection.implementation ?? ""} />}
         <PanelBoundary>
-          <Bespoke slot={slot} detail={detail.data} scope={scope} selection={selection} latest={latest} slots={slots.data ?? []} />
+          <Bespoke slot={slot} detail={own} scope={scope} selection={selection} latest={latest} slots={slots.data ?? []} />
         </PanelBoundary>
       </section>
     );

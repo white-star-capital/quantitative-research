@@ -201,10 +201,10 @@ function OpportunitiesPanel({ env, payload, underlying, spot, skew }: { env: Suc
                 const exec = executable(o) && !(skew && !o.confirmed);
                 return (
                   <tr key={`${o.expiry_ts}-${o.strike}-${o.structure}`} className={perp || !o.confirmed ? "dim" : undefined} title={`${RESIDUAL_RISK[o.hedge_type]} ${indicative}`}>
-                    <td data-label="Expiry">{fmtExpiry(o.expiry_ts)}</td>
+                    <td data-label="Expiry" style={{ whiteSpace: "nowrap" }}>{fmtExpiry(o.expiry_ts)}</td>
                     <td data-label="Strike" className="num">{fmtSpot(underlying, o.strike)}</td>
                     <td data-label="Structure">{o.structure === "conversion" ? "▲ CONVERSION" : "▼ REVERSAL"}</td>
-                    <td data-label="Hedge">
+                    <td data-label="Hedge" style={{ whiteSpace: "nowrap" }}>
                       <span className={`badge ${perp ? "bad" : ""}`} title={RESIDUAL_RISK[o.hedge_type]}>{perp ? "PERP · UNLOCKED" : "LOCKED FUTURE"}</span>{" "}
                       <span className="dim">{o.hedge_instrument}</span>
                     </td>

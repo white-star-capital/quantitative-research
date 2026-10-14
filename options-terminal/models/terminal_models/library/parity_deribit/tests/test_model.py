@@ -149,6 +149,10 @@ def test_perp_only_asset_shows_breakeven_funding():
     curve = get_section(env["payload"], "carry_curve")
     future = next(s for s in curve["series"] if s["key"] == "future_basis_ann")
     assert set(future["values"]) == {None}
+    # perp edges are unlocked: never the headline best edge or confirmed count (guide §11)
+    ctx = scalars(get_section(env["payload"], "context"))
+    assert ctx["best_net_edge_ann"] is None and ctx["n_confirmed"] == 0
+    assert ctx["best_perp_net_edge_ann"] > 0 and ctx["n_confirmed_perp"] >= 1
 
 
 def test_snapshot_skew_flags_and_never_marks_unconfirmed_rows_executable():

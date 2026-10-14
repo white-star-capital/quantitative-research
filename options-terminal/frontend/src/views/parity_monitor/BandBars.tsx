@@ -21,7 +21,7 @@ export interface Bar {
   confirmed: boolean;
 }
 
-const PAD = { top: 14, right: 8, bottom: 22, left: 8 };
+const PAD = { top: 14, right: 64, bottom: 22, left: 8 }; // right: room for the y-axis labels
 const COLOR: Record<BarStatus, string> = { net: "var(--up)", gross: "var(--yellow)", inside: "var(--dim)" };
 const WORD: Record<BarStatus, string> = { net: "NET OF FEES", gross: "GROSS ONLY", inside: "INSIDE" };
 
@@ -76,18 +76,17 @@ export function BandBars({
           <svg width="10" height="10"><circle cx="5" cy="5" r="3" fill="none" stroke="var(--paper)" strokeWidth={2} /></svg>
           CONFIRMED ON ORDER BOOKS
         </span>
+        <span className="legend-item">
+          <svg width="18" height="8"><line x1="0" x2="18" y1="4" y2="4" stroke="var(--cyan)" strokeWidth={2} strokeDasharray="6 4" /></svg>
+          HEDGE BID / ASK {hedgeBidBp !== null && hedgeAskBp !== null ? `(${fmtBp(hedgeBidBp)} / ${fmtBp(hedgeAskBp)})` : ""}
+        </span>
       </div>
       {width > 0 && (
         <svg width={width} height={height} role="img" aria-label={title} tabIndex={0}
           onPointerMove={move} onPointerLeave={() => setHover(null)} onKeyDown={key}>
           <YAxis scale={sy} ticks={yTicks} width={width} format={(v) => fmtBp(v)} />
-          {([["HEDGE ASK", hedgeAskBp], ["HEDGE BID", hedgeBidBp]] as const).map(([label, y]) =>
-            y === null ? null : (
-              <g key={label}>
-                <line x1={PAD.left} x2={width - PAD.right} y1={sy(y)} y2={sy(y)} stroke="var(--cyan)" strokeDasharray="6 4" />
-                <text className="chart-text" x={PAD.left + 2} y={sy(y) + (label === "HEDGE ASK" ? -3 : 11)}>{label}</text>
-              </g>
-            ),
+          {([["ask", hedgeAskBp], ["bid", hedgeBidBp]] as const).map(([k, y]) =>
+            y === null ? null : <line key={k} x1={PAD.left} x2={width - PAD.right} y1={sy(y)} y2={sy(y)} stroke="var(--cyan)" strokeDasharray="6 4" />,
           )}
           {bars.map((b, i) => {
             const x = sx(b.strike) - barW / 2;

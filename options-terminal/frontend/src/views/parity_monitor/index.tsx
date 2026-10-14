@@ -89,8 +89,8 @@ function ParityAsset(props: BespokeProps & { underlying: string }) {
     ["Implied basis 30d", fmtRateAnn(at30d(expiries, "implied_basis_ann"))],
     ["Options vs futures 30d", perpOnly(expiries) ? "perp only" : fmtBp(at30d(expiries, "options_vs_future_bps"))],
     ["Perp funding", fmtRateAnn(n(ctx.funding_ann))],
-    ["Best net edge", fmtRateAnn(n(ctx.best_net_edge_ann)), `${n(ctx.n_candidates) ?? "—"} after fees`],
-    ["Confirmed", String(n(ctx.n_confirmed) ?? "—"), "on order books"],
+    ["Best net edge, locked", fmtRateAnn(n(ctx.best_net_edge_ann)), `perp-hedged ${fmtRateAnn(n(ctx.best_perp_net_edge_ann))} (unlocked)`],
+    ["Confirmed, locked", String(n(ctx.n_confirmed) ?? "—"), `+${n(ctx.n_confirmed_perp) ?? 0} perp-hedged`],
     ["Book skew", n(ctx.snapshot_skew_s) === null ? "—" : `${formatNumber(n(ctx.snapshot_skew_s) as number, 1)}s`, skewFlagged(payload) ? "SKEW" : undefined],
   ];
   return (

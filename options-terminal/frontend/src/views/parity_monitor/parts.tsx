@@ -17,6 +17,8 @@ import { ParityPanels } from "./ParityPanels.tsx";
 export const PARITY_COLUMNS = [
   "Implied basis 30d", "Future basis 30d", "Options vs futures", "Funding (ann.)", "Best net edge (ann.)", "Confirmed opps", "Inventory r_lock 30d",
 ];
+// Best net edge and confirmed count are locked-future only (the model's context): perp-hedged
+// edges are unlocked and never headline numbers (guide §11).
 
 /** The parity slot's run selection (production, else its first shadow), or null while loading. */
 export function useParitySelection(slot: SlotSummary | null): Record<string, string> | null {

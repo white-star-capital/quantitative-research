@@ -340,9 +340,15 @@ class ParityDeribit(Model):
             if inverse
             else USD
         )
-        confirmed = [o for o in opps if o["confirmed"]]
-        best_ann = max((o["net_edge_ann"] for o in opps if o["net_edge_ann"] is not None),
+        # Headline numbers count locked rows only: perp-hedged edges are not locked (guide §11),
+        # so they are reported separately and never as the best edge.
+        locked = [o for o in opps if o["hedge_type"] == "locked_future"]
+        perps = [o for o in opps if o["hedge_type"] == "perp_funding"]
+
+        def best(rows: list[dict]) -> float | None:
+            return max((o["net_edge_ann"] for o in rows if o["net_edge_ann"] is not None),
                        default=None)  # fmt: skip
+
         context = [
             item("spot", "Spot index", spot, USD),
             item("funding_ann", "Perp funding (ann.)", funding_ann, RATE),
@@ -350,8 +356,13 @@ class ParityDeribit(Model):
             item("n_locked_expiries", "Expiries with a dated future",
                  sum(1 for b in books if b.hedge and not b.hedge.is_perp), COUNT),
             item("n_candidates", "Opportunities after fees", len(opps), COUNT),
-            item("n_confirmed", "Confirmed on order books", len(confirmed), COUNT),
-            item("best_net_edge_ann", "Best net edge (ann.)", best_ann, RATE),
+            item("n_confirmed", "Confirmed, locked future",
+                 sum(1 for o in locked if o["confirmed"]), COUNT),
+            item("best_net_edge_ann", "Best net edge, locked future (ann.)", best(locked), RATE),
+            item("n_confirmed_perp", "Confirmed, perp-hedged (unlocked)",
+                 sum(1 for o in perps if o["confirmed"]), COUNT),
+            item("best_perp_net_edge_ann", "Best net edge, perp-hedged (ann., unlocked)",
+                 best(perps), RATE),
             item("snapshot_skew_s", "Option vs futures book skew", skew_s, SECONDS,
                  ("snapshot_skew",) if skewed else ()),
         ]  # fmt: skip
