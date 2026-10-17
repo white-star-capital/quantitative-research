@@ -14,17 +14,17 @@ params:
   max_snapshot_skew_s: 3
   max_confirmations: 8
   min_net_edge_bps: 0          # rows kept in `opportunities`
-  fees:                        # FILL FROM DERIBIT'S CURRENT FEE SCHEDULE — reviewed quarterly.
-    schedule_version: "TBD"    # While any value is null, validate-registry fails (guide §5), so
-    option_taker: null         # this implementation stays out of registry.yaml until filled.
-    option_maker: null         # fraction of underlying per option
-    option_cap_pct_of_price: null
-    future_taker: null
-    future_maker: null
-    perp_taker: null
-    perp_maker: null
-    option_delivery: null
-    future_delivery: null
+  fees:                        # Deribit standard tier, fees page updated 14 Oct 2026; review quarterly.
+    schedule_version: "deribit-2026-10"
+    option_taker: 0.0003       # fraction of underlying per option, capped at
+    option_maker: 0.0003       # option_cap_pct_of_price × option price
+    option_cap_pct_of_price: 0.125
+    future_taker: 0.00035
+    future_maker: 0.00015
+    perp_taker: 0.00035
+    perp_maker: 0.00015
+    option_delivery: 0.00015   # daily options deliver at 0%; one rate for all expiries is conservative
+    future_delivery: 0.00025   # weekly futures deliver at 0%; same note. Block and liquidation fees not modelled.
 sanity_checks:
   - parity_band_ordering       # F_impl_bid ≤ F_impl_ask for every strike; violation = bad data
   - implied_vs_venue_forward   # |F_impl / venue underlying_price − 1| < 1%; else warning

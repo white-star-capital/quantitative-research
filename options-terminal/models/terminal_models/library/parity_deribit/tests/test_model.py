@@ -5,6 +5,7 @@ import json
 import math
 
 import pytest
+import yaml
 
 from terminal_models.core.manifest import load_manifest
 from terminal_models.core.paths import library_dir
@@ -45,15 +46,20 @@ def planted(asset="BTC", bump=0.005, days=31, m=0.0, futures=None, **kw):
     return inputs, followups, syn.order_books(chain, futures, names)
 
 
-def test_shipped_manifest_has_null_fees_and_stays_unregistered():
-    """§5 M1 blocker: the shipped fee table is null, so the registry would refuse it."""
-    assert null_fees(SHIPPED) == sorted(syn.TEST_FEES.keys() - {"schedule_version"})
-    registry = (library_dir().parent.parent / "registry.yaml").read_text()
-    assert "parity_deribit" not in registry
+def test_shipped_manifest_has_fees_and_is_registered_as_shadow():
+    """§5: the fee table is filled from Deribit's schedule, so the registry accepts it."""
+    assert null_fees(SHIPPED) == []
+    assert SHIPPED.params["fees"]["schedule_version"] == "deribit-2026-10"
+    registry = yaml.safe_load((library_dir().parent.parent / "registry.yaml").read_text())
+    slot = registry["slots"]["parity_monitor"]
+    assert slot["production"] is None
+    assert slot["shadow"] == [{"implementation": "parity_deribit", "version": SHIPPED.version}]
 
 
 def test_null_fees_fail_the_run():
-    env = run(syn.inputs(), manifest=SHIPPED)
+    nulled = {k: None for k in syn.TEST_FEES} | {"schedule_version": "TBD"}
+    manifest = SHIPPED.model_copy(update={"params": SHIPPED.params | {"fees": nulled}})
+    env = run(syn.inputs(), manifest=manifest)
     assert env["status"] == "failed" and env["error"]["code"] == "fees_unavailable"
 
 
@@ -239,10 +245,13 @@ def test_followups_go_through_execute_and_replay(tmp_path, monkeypatch):
 
 
 def test_runner_replay_cli(tmp_path, monkeypatch):
-    """`runner replay --envelope` needs the implementation registered; it isn't yet (null
-    fees), so replay must refuse rather than run it."""
+    """`runner replay --envelope` re-runs the registered manifest on the stored inputs."""
     monkeypatch.setenv("SNAPSHOT_DIR", str(tmp_path))
-    env = run(syn.inputs())
+    inputs, _, books = planted()
+    adapter = StubAdapter(inputs | books)
+    env = execute(spec(manifest=SHIPPED), {"deribit": adapter}, SnapshotStore(), "a1b2c3d",
+                  isolate=False)  # fmt: skip
+    assert env["status"] == "success", env.get("error")
     path = tmp_path / "env.json"
     path.write_text(json.dumps(env))
-    assert runner(["replay", "--envelope", str(path)]) == 2
+    assert runner(["replay", "--envelope", str(path)]) == 0

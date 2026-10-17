@@ -206,7 +206,7 @@ def test_fixtures_are_valid_successful_runs(built):
 
 def test_invalid_variants_each_fail(built):
     files, _ = built
-    invalid = {n: v for n, v in files.items() if "__" in n}
+    invalid = {n: v for n, v in files.items() if "__" in n and n.startswith("bs_pricer_")}
     assert set(invalid) == {
         "bs_pricer_btc__nan_iv.json",
         "bs_pricer_btc__chain_row_missing_fair_usd.json",
@@ -308,7 +308,7 @@ def test_runner_replay_reproduces_built_fixture(recording, built, tmp_path, monk
 
 # ---- parity_deribit leg: recorded follow-up order books → parity fixtures ------------------
 
-TEST_FEES = {  # TEST-ONLY arithmetic, never a schedule; the shipped manifest's fees stay null
+TEST_FEES = {  # TEST-ONLY arithmetic, never a schedule; keeps these tests off the shipped rates
     "schedule_version": "TEST-ONLY",
     "option_taker": 0.0003, "option_maker": 0.0002, "option_cap_pct_of_price": 0.125,
     "future_taker": 0.0005, "future_maker": 0.0001, "perp_taker": 0.0005, "perp_maker": 0.0001,
@@ -350,15 +350,40 @@ def test_recorder_records_parity_followup_order_books(parity_built):
     assert any(k.startswith("parity_deribit.order_book:") for k in inputs)
 
 
-def test_null_fees_skip_parity_and_say_so(recording, built):
+def test_shipped_fees_record_and_build_parity(recording, built):
     manifest = json.loads((recording / "manifest.json").read_text())
+    assert manifest["notes"] == []
+    files, _ = built
+    assert {"parity_btc.json", "parity_hype.json"} <= set(files)
+
+
+def with_null_fees(path):
+    from terminal_models.core.manifest import load_manifest
+
+    manifest = load_manifest(path)
+    if manifest.implementation_id != "parity_deribit":
+        return manifest
+    nulled = {k: None for k in TEST_FEES} | {"schedule_version": "TBD"}
+    return manifest.model_copy(update={"params": manifest.params | {"fees": nulled}})
+
+
+def test_null_fees_skip_parity_and_say_so(tmp_path):
+    from terminal_models.tools import record_deribit
+
+    out = tmp_path / "deribit_20261013T165955Z"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TERMINAL_GIT_SHA", "a1b2c3d")
+        mp.setattr(record_deribit, "load_manifest", with_null_fees)
+        mp.setattr(build_fixtures, "load_manifest", with_null_fees)
+        assert record(out, ["BTC"], False, client_factory=client_factory) == 0
+        files, notes = build_fixtures.build(out)
+    manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["notes"] == [
         "parity_deribit: follow-up inputs not recorded (params.fees null: future_delivery, "
         "future_maker, future_taker, option_cap_pct_of_price, option_delivery, option_maker, "
         "option_taker, perp_maker, perp_taker)"
     ]
-    files, notes = built
-    assert not any(n.startswith("parity_") for n in files)
+    assert not any(p.name.startswith("parity_") for p in files)
     assert "parity_deribit: skipped, params.fees is null" in notes
 
 

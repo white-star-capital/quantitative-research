@@ -63,7 +63,7 @@ Use the **Session** pooler (port 5432). The API holds a `LISTEN` connection and 
 Notes:
 - **The runner needs outbound access to `www.deribit.com`.** Without it, runs are recorded as failed (`source_unavailable`) and the UI shows "no output yet". Nothing is filled in.
 - The pricer runs every 5 minutes, so the first runs land within about 5 minutes of `make start`.
-- `parity_monitor` stays empty until `parity_deribit` is registered, which happens once its fee table is filled (see its guide).
+- `parity_monitor` (shadow `parity_deribit`, Deribit fees `deribit-2026-10`) runs every minute. It appears as catalog entry 2, as a Parity tab on each asset page, and as parity columns in the cross-asset monitor.
 - Migrations only run on a fresh volume. After a schema change, run `make clean` before `make start`.
 - `make stop` leaves Docker's global build cache alone, because it can't be filtered by project. To reclaim that space too, run `docker builder prune`; that affects every project on the machine.
 - Behind nginx the API's rate limiter sees one client address. That's fine locally; a shared deployment needs the trusted-proxy setup in API.md A-18.

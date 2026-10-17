@@ -2,7 +2,7 @@
 
 Fills slot `parity_monitor`. Full methodology: [`PARITY_MONITOR_IMPLEMENTATION_GUIDE.md`](../../../../PARITY_MONITOR_IMPLEMENTATION_GUIDE.md) §2–3 and its amendments.
 
-**Not registered yet.** `params.fees` is null until the fee table is filled from Deribit's current schedule and reviewed by trading. `validate-registry` refuses any registered manifest with a null fee, and the runner validates the whole registry each pass, so registering it early would also stop `bs_pricer`. Once the fees are filled, add it to `models/registry.yaml` as shadow (`production: null`).
+**Registered as shadow** (`production: null`) in `models/registry.yaml`. `params.fees` holds Deribit's standard-tier schedule, `deribit-2026-10` (fees page updated 14 Oct 2026); review it quarterly. `validate-registry` refuses any registered manifest with a null fee. One delivery rate applies to every expiry, even though daily options and weekly futures deliver at 0%, which is conservative. Block and liquidation fees are not modelled.
 
 **Method.**
 - Parity runs on executable bid/ask, never marks. Inverse books (BTC/ETH) use the coin formulas, hedged with inverse futures at K USD notional per coin. Linear books (SOL/HYPE) use the USD formulas.

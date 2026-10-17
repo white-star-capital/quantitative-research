@@ -10,3 +10,12 @@ slots:
       - { underlying: ETH }
       - { underlying: SOL }
       - { underlying: HYPE }
+  parity_monitor:
+    production: null                   # shadow until validated against live Deribit (guide §9)
+    shadow:
+      - { implementation: parity_deribit, version: 1.0.0 }
+    scopes:
+      - { underlying: BTC }
+      - { underlying: ETH }
+      - { underlying: SOL }
+      - { underlying: HYPE }

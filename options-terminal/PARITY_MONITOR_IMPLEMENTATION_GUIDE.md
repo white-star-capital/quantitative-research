@@ -19,7 +19,7 @@ These came out of building v0.1 against the existing code. Where they conflict w
   - delivery, for structures held to expiry: exactly one option leg finishes in the money, and it pays `option_delivery × U`. The cap isn't applied, because the option's value at expiry is unknown, so the uncapped fee is the conservative bound. A dated-future hedge also pays `future_delivery` on its notional. A perp pays no delivery fee;
   - fees are subtracted from the gross edge as paid (`net = gross − fees`). That is exact at `usd_rate = 0`, Deribit's convention. `core/quant/parity.py:net_metrics` derives `net_edge_usd` (inverse: coin × index), `net_edge_bps_notional` (vs the K USD notional) and `net_edge_ann` (simple). The frontend's maker/taker toggle uses the same derivation, held together by `contracts/fixtures/parity/vectors.json`.
 
-  `parity_deribit` stays **out of `registry.yaml` until the fee table is filled**: the runner validates the whole registry each pass, so null fees in a registered manifest would also stop `bs_pricer`.
+  `parity_deribit` stayed out of `registry.yaml` until the fee table was filled, because the runner validates the whole registry each pass and null fees in a registered manifest would also stop `bs_pricer`. It is now filled from Deribit's standard tier (`deribit-2026-10`) and registered as shadow. Deribit charges 0% delivery on daily options and weekly futures, but the model applies one `option_delivery` / `future_delivery` rate to every expiry. That overstates fees on those expiries, which is conservative. Block-trade and liquidation fees are not modelled.
 - **A-6 Key casing.** Payload keys must match `^[a-z][a-z0-9_]{0,63}$` (CONTRACTS C-4), so the column names `F_impl*` and `F_hedge_*` in §4.2 are `f_impl*` and `f_hedge_*`. The `bands` table's single `band_bps` is two columns, `band_bid_bps` and `band_ask_bps`, because the band chart (§7.2) draws a bar between them. `expiries` also carries `status` (`ok` / `insufficient_strikes`), `venue_forward`, and `implied_basis_ann_bid` / `_ask` for the carry band. Opportunities carry `breakeven_funding_ann` on `perp_funding` rows.
 - **A-7 Headline numbers are locked-only.** In `context`, `best_net_edge_ann` and `n_confirmed` count `locked_future` rows only, and so do the monitor's "Best net edge" and "Confirmed opps" columns. Perp-hedged figures are reported separately as `best_perp_net_edge_ann` and `n_confirmed_perp`. A perp-hedged edge is mostly spot-vs-forward basis and isn't locked (§11), so it must never be a headline number.
 - **A-5 Sanity checks** `parity_band_ordering` and `implied_vs_venue_forward` are in `core/validation.py`. The bs_pricer checks assume that slot's sections.
@@ -415,7 +415,7 @@ Four panels, in this order:
 | # | Step | Done when |
 |---|---|---|
 | 1 | Contracts PR (slot, fixtures, vectors) | CI green |
-| 2 | Fee table populated from Deribit's schedule; reviewed by trading | `fees.schedule_version` set; `validate-registry` passes |
+| 2 | Fee table populated from Deribit's schedule; reviewed by trading | `fees.schedule_version` set; `validate-registry` passes. **Done:** `deribit-2026-10`, standard tier |
 | 3 | Models PR (parity core, adapter additions, snapshot cache, implementation) as shadow | §5 tests green; local runs for all four assets |
 | 4 | Verify same-expiry option/future settlement alignment (§2.2) | Documented in adapter README |
 | 5 | Frontend PR (monitor columns, Parity tab) | Fixture renders; design/security sign-off |
