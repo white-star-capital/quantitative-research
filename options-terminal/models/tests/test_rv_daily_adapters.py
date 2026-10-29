@@ -22,7 +22,12 @@ from terminal_models.adapters.http import HttpSource
 from terminal_models.adapters.hyperliquid import HyperliquidAdapter
 from terminal_models.adapters.hyperliquid.client import HyperliquidClient
 from terminal_models.adapters.hyperliquid.replay import RecordedHyperliquidClient
-from terminal_models.adapters.rv_daily import MS_PER_DAY, DayCache, fetch_rv_daily
+from terminal_models.adapters.rv_daily import (
+    MAX_SPLIT_DEPTH,
+    MS_PER_DAY,
+    DayCache,
+    fetch_rv_daily,
+)
 from terminal_models.core.base import InputSpec
 from terminal_models.tools.record_deribit import Recorder
 
@@ -99,9 +104,13 @@ def test_completed_days_only_with_rv_and_coverage():
     assert d["rv"][1] is None  # below min_coverage: null, never filled
     # The day after a gap drops the return reaching back across it (core daily_rv): 23 returns.
     assert d["rv"][2] == pytest.approx(23 * STEP**2)
-    [page] = chart_calls(calls)
+    page, *splits = chart_calls(calls)
     assert int(page["start_timestamp"]) == C_MS - 4 * MS_PER_DAY  # one extra day for a prior close
     assert int(page["end_timestamp"]) == C_MS - 1  # end is inclusive at Deribit
+    # The short day is asked again in its half (it may be a cut-short page); that half adds no bar
+    # and is smaller than the page, so the shortfall is real and the split stops there.
+    windows = [(int(p["start_timestamp"]), int(p["end_timestamp"]) + 1) for p in splits]
+    assert windows == [(C_MS - 2 * MS_PER_DAY, C_MS)]
     assert got.raw["get_tradingview_chart_data"][0]["usOut"]
 
 
@@ -192,13 +201,105 @@ def test_partial_and_truncated_days_are_not_cached(tmp_path):
     for f in tmp_path.rglob("*.json"):
         f.unlink()
 
-    def truncated(start, end):  # TEST-ONLY: a lower row cap than assumed cuts the page at 40 rows
-        times = list(range(start, end, hour))[:40]
+    def outage(start, end):  # TEST-ONLY: 2026-10-26 has 10 bars, on every request
+        times = [t for t in range(start, end, hour) if t // hour % 24 < 10 or
+                 t - t % MS_PER_DAY != C_MS - 2 * MS_PER_DAY]  # fmt: skip
         return times, [close_at(t, hour) for t in times], AS_OF, None
 
-    data, _, _ = fetch(truncated)
-    assert data["rv"][1:] == [None, None]
-    assert [p.name for p in tmp_path.rglob("*.json")] == ["2026-10-24.json"]  # the one full day
+    data, _, _ = fetch(outage)
+    assert data["rv"][1] is None and None not in data["rv"][::2]
+    assert "2026-10-26.json" not in [p.name for p in tmp_path.rglob("*.json")]
+
+
+def capped_venue(cap: int, keep: str, res_ms: int, first_ms: int = 0, calls=None):
+    """TEST-ONLY venue whose hidden row cap is below rows_per_call: it returns the earliest or the
+    latest `cap` bars of the window, and nothing before `first_ms` (history it doesn't serve)."""
+
+    def page(start, end):
+        times = [t for t in range(start, end, res_ms) if t >= first_ms]
+        times = times[:cap] if keep == "earliest" else times[-cap:]
+        if calls is not None:
+            calls.append((start, end))
+        return times, [close_at(t, res_ms) for t in times], AS_OF, {"window": [start, end]}
+
+    return page
+
+
+def rv_fetch(page, cache=None, lookback=300, resolution="60"):
+    return fetch_rv_daily("rv", venue="v", instrument="i", resolution=resolution,
+                          lookback_days=lookback, min_coverage=0.9, as_of=AS_OF,
+                          rows_per_call=5000, fetch_page=page, cache=cache)  # fmt: skip
+
+
+@pytest.mark.parametrize("keep", ["earliest", "latest"])
+@pytest.mark.parametrize("resolution", ["60", "5"])
+def test_pages_cut_by_a_lower_row_cap_are_split_until_covered(tmp_path, keep, resolution):
+    calls = []
+    res_ms = int(resolution) * 60_000
+    lookback = 300 if resolution == "60" else 40
+    cache = DayCache(tmp_path)
+    data, _, raws = rv_fetch(
+        capped_venue(700, keep, res_ms, calls=calls), cache, lookback, resolution
+    )
+    per_day = 1440 // int(resolution)
+    assert data["n_bars"] == [per_day] * lookback  # every day covered, no bar counted twice
+    assert data["rv"] == pytest.approx([per_day * STEP**2] * lookback)
+    assert len(raws) == len(calls)  # every response body is kept
+    assert all(end - start <= 2 * 208 * MS_PER_DAY for start, end in calls)
+    files = list(tmp_path.rglob("*.json"))
+    assert len(files) == lookback + 1  # the extra first day is covered and cached too
+    for f in files:
+        t = json.loads(f.read_text())["t"]
+        assert len(t) == per_day and t == sorted(set(t))
+    calls.clear()  # the next run needs no page: what was recovered is cached
+    rv_fetch(capped_venue(700, keep, res_ms, calls=calls), cache, lookback, resolution)
+    assert calls == []
+
+
+@pytest.mark.parametrize("keep", ["earliest", "latest"])
+def test_split_stops_at_empty_history_with_bounded_calls(keep):
+    calls = []
+    first = C_MS - 50 * MS_PER_DAY  # the venue serves only the last 50 days
+    data, _, _ = rv_fetch(capped_venue(700, keep, 3_600_000, first, calls))
+    assert data["rv"][: 300 - 50] == [None] * 250 and None not in data["rv"][250:]
+    # Two pages; each split level asks at most the two halves holding a short day.
+    assert len(calls) <= 2 * (1 + 2 * MAX_SPLIT_DEPTH)
+
+
+def test_split_of_a_persistently_short_day_is_bounded():
+    calls = []
+    hour = 3_600_000
+
+    def outage(start, end):  # TEST-ONLY: one day always has 10 bars
+        calls.append((start, end))
+        times = [t for t in range(start, end, hour) if t // hour % 24 < 10 or
+                 t - t % MS_PER_DAY != C_MS - 100 * MS_PER_DAY]  # fmt: skip
+        return times, [close_at(t, hour) for t in times], AS_OF, None
+
+    data, _, _ = rv_fetch(outage)
+    assert data["n_bars"].count(24) == 298  # the short day and the next (its first return) differ
+    assert len(calls) == 3  # two pages and the half holding it, which adds no bar: real, no cap
+
+
+def test_split_stops_when_every_day_is_short():
+    calls = []
+    hour = 3_600_000
+
+    def thin(start, end):  # TEST-ONLY: every day has 20 of 24 bars, on every request
+        calls.append((start, end))
+        times = [t for t in range(start, end, hour) if t // hour % 24 < 20]
+        return times, [close_at(t, hour) for t in times], AS_OF, None
+
+    data, _, _ = rv_fetch(thin, lookback=207)  # one page of 208 days
+    assert set(data["n_bars"]) == {19}  # returns within the day
+    assert len(calls) == 3  # the page and its two halves, not the 2^7 - 1 tree
+
+
+def test_split_stops_under_a_cap_below_one_day():
+    calls = []
+    data, _, _ = rv_fetch(capped_venue(20, "earliest", 3_600_000, calls=calls), lookback=207)
+    assert data["rv"] == [None] * 207
+    assert len(calls) == 1  # 20 bars can never cover a day at any window size
 
 
 def test_day_closing_inside_the_settle_window_is_not_cached(tmp_path):
@@ -242,7 +343,28 @@ def test_dvol_history_pages_back_and_converts_percent():
     assert len(got.raw["get_volatility_index_data"]) == 2
 
 
-def test_dvol_history_refuses_assets_without_dvol_and_unaligned_candles():
+def test_dvol_history_keys_offset_candles_by_the_day_they_close_in():
+    # TEST-ONLY: the same series with candles opening at 08:00 UTC instead of 00:00.
+    def offset(start, end):
+        body = dvol_pages(start - 8 * 3_600_000, end - 8 * 3_600_000)
+        return body | {"data": [[t + 8 * 3_600_000, *rest] for t, *rest in body["data"]]}
+
+    spec = InputSpec("dvol", "deribit", {"kind": "dvol_history", "underlying": "ETH",
+                                         "lookback_days": 5})  # fmt: skip
+    aligned = DeribitAdapter(deribit([], dvol=dvol_pages)).fetch(spec, AS_OF).data
+    assert aligned["close_offset_h"] == 0
+    calls = []
+    got = DeribitAdapter(deribit(calls, dvol=offset)).fetch(spec, AS_OF).data
+    assert got["close_offset_h"] == 8
+    assert got["day"] == aligned["day"]
+    # The candle opening at d-1 08:00 closes at d 08:00: the latest close known at d's close.
+    # The one opening on 10-27 at 08:00 is still open at C and is never used.
+    assert got["dvol"] == pytest.approx([0.44, 0.45, 0.46, None, 0.48])
+    first = [p for m, p in calls if m == "get_volatility_index_data"][0]
+    assert int(first["start_timestamp"]) == C_MS - 6 * MS_PER_DAY + 1  # day[0]'s candle included
+
+
+def test_dvol_history_refuses_assets_without_dvol_and_mixed_hours():
     spec = InputSpec("dvol", "deribit", {"kind": "dvol_history", "underlying": "SOL",
                                          "lookback_days": 5})  # fmt: skip
     with pytest.raises(AdapterError) as err:
@@ -250,7 +372,8 @@ def test_dvol_history_refuses_assets_without_dvol_and_unaligned_candles():
     assert err.value.code == "bad_input_spec"
     spec = InputSpec("dvol", "deribit", {"kind": "dvol_history", "underlying": "BTC",
                                          "lookback_days": 5})  # fmt: skip
-    hourly = lambda s, e: {"data": [[C_MS - 3_600_000, 1, 1, 1, 50]], "continuation": None}  # noqa: E731
+    hourly = lambda s, e: {"data": [[C_MS - h * 3_600_000, 1, 1, 1, 50] for h in (25, 26)],  # noqa: E731
+                           "continuation": None}  # fmt: skip
     with pytest.raises(AdapterError) as err:
         DeribitAdapter(deribit([], dvol=hourly)).fetch(spec, AS_OF)
     assert err.value.code == "venue_unavailable"
@@ -261,7 +384,9 @@ def test_dvol_history_refuses_assets_without_dvol_and_unaligned_candles():
 INTERVAL_MS = {"1m": 60_000, "5m": 300_000, "1h": 3_600_000}
 
 
-def hyperliquid(calls, now=AS_OF, status=200, body=None):
+def hyperliquid(calls, now=AS_OF, status=200, body=None, future_end="ok"):
+    """`future_end`: how the venue treats an endTime after `now`: "ok", "reject" (HTTP 422),
+    "empty" ([]) or "error" (an error object)."""
     now_ms = int(now.timestamp() * 1000)
 
     def handler(request: httpx.Request):
@@ -271,6 +396,9 @@ def hyperliquid(calls, now=AS_OF, status=200, body=None):
         if body is not None or status != 200:
             return httpx.Response(status, text=body or "")
         r = req["req"]
+        if r["endTime"] > now_ms and future_end != "ok":
+            replies = {"reject": (422, ""), "empty": (200, "[]"), "error": (200, '{"error": "x"}')}
+            return httpx.Response(replies[future_end][0], text=replies[future_end][1])
         step = INTERVAL_MS[r["interval"]]
         ticks = bars(r["startTime"], r["endTime"], step, now_ms, set())
         candles = [{"t": t, "T": t + step - 1, "s": r["coin"], "i": r["interval"], "o": "1",
@@ -310,6 +438,19 @@ def test_hyperliquid_venue_time_is_when_the_venue_answered():
     late = AS_OF + timedelta(seconds=150)
     got = HyperliquidAdapter(HyperliquidClient(hyperliquid([], now=late))).fetch(hl_spec(), AS_OF)
     assert got.snapshot_at == AS_OF + timedelta(minutes=2)  # the 1m candle open at `late`
+
+
+@pytest.mark.parametrize("future_end", ["reject", "empty", "error"])
+def test_hyperliquid_clock_falls_back_to_as_of_when_a_future_end_is_refused(future_end):
+    calls = []
+    late = AS_OF + timedelta(seconds=150)  # the venue answers late; the fallback stops at as_of
+    client = HyperliquidClient(hyperliquid(calls, now=late, future_end=future_end))
+    got = HyperliquidAdapter(client).fetch(hl_spec(), AS_OF)
+    now_ms = int(AS_OF.timestamp() * 1000)
+    clocks = [c["req"] for c in calls if c["req"]["interval"] == "1m"]
+    assert [c["endTime"] for c in clocks] == [now_ms + 600_000, now_ms]  # retried once
+    assert got.snapshot_at == AS_OF  # the 1m candle in progress at as_of
+    assert got.data["rv"] == pytest.approx([24 * STEP**2] * 3)
 
 
 def test_hyperliquid_cache_and_paging(tmp_path):

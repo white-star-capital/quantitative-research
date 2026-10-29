@@ -17,6 +17,16 @@ under `SNAPSHOT_DIR/rv_daily/` and fetched once. A file is written once and neve
 and only after the day's close is CACHE_SETTLE_S behind the venue's clock. Only days missing from
 the cache are fetched. Pages are whole days, at most `rows_per_call` bars each.
 
+`rows_per_call` is an upper bound, not a fact about the venue (VRP-A-8). A page that comes back
+with some bars but some of its days below `min_coverage` (a venue that caps rows below
+`rows_per_call` and keeps either end of the window, or a short day) is split into two halves of
+whole days, and each half holding a short day is requested again, at most MAX_SPLIT_DEPTH times
+deep. Splitting stops where it cannot help: a response with fewer bars than one covered day
+(empty: history the venue doesn't serve; or a cap below one day), and a half that came back with
+fewer bars than its parent and none more on a short day (a real shortfall, not a cap). Each day
+keeps the bars of the one response that returned the most for it, so no bar is counted twice;
+every response body is kept.
+
 Only a covered day, one with at least `min_coverage` of its bars, is cached. An empty or short day
 (an outage, a transient `no_data`, a page the venue cut short under a lower row cap than assumed,
 or history it doesn't serve) stays uncached and is fetched again on the next run, so one bad
@@ -38,6 +48,7 @@ from terminal_models.core.quant.rv import daily_rv
 
 MS_PER_DAY = 86_400_000
 CACHE_SETTLE_S = 300  # a closed day's last bar may still be settling at the venue just after 00:00
+MAX_SPLIT_DEPTH = 6  # halvings of a short page: covers a venue cap down to 1/64 of rows_per_call
 
 # start_ms, end_ms (exclusive) -> (bar open times ms, closes, venue time, raw body)
 FetchPage = Callable[[int, int], tuple[list[int], list[float], datetime, Any]]
@@ -129,21 +140,47 @@ def fetch_rv_daily(
             bars[day] = hit
     missing = [d for d in days if d not in bars]
     venue_time, raws = None, []
-    for start, stop in pages(missing, max(1, rows_per_call // per_day)):
+
+    def fetch(
+        start: int, stop: int, depth: int, parent: tuple[dict[int, int], int] | None = None
+    ) -> dict[int, tuple[list[int], list[float], Any]]:
+        """Day → (bar times, closes, venue time of the response) over [start, stop). `parent` is
+        the enclosing response's (bars per day, total bars), None for a page."""
+        nonlocal venue_time
         times, closes, venue_time, raw = fetch_page(start, stop)
         raws.append(raw)
-        fetched: dict[int, tuple[list[int], list[float]]] = {
-            day: ([], []) for day in range(start, stop, MS_PER_DAY)
+        got: dict[int, tuple[list[int], list[float], Any]] = {
+            day: ([], [], venue_time) for day in range(start, stop, MS_PER_DAY)
         }
         for t, c in zip(times, closes, strict=True):
-            if (day := t - t % MS_PER_DAY) in fetched:  # bars outside the window are dropped
-                fetched[day][0].append(t)
-                fetched[day][1].append(c)
-        settled_ms = venue_time.timestamp() * 1000 - CACHE_SETTLE_S * 1000
-        for day, day_bars in fetched.items():
-            bars[day] = day_bars
-            if cache and len(day_bars[0]) >= covered and day + MS_PER_DAY <= settled_ms:
-                cache.put(venue, instrument, resolution, day, *day_bars)
+            if (day := t - t % MS_PER_DAY) in got:  # bars outside the window are dropped
+                got[day][0].append(t)
+                got[day][1].append(c)
+        short = [day for day, (t, _, _) in got.items() if len(t) < covered]
+        n = sum(len(t) for t, _, _ in got.values())
+        # Fewer bars than one covered day: no window here can cover a day (an empty window is
+        # history the venue doesn't serve; a non-empty one is a cap below a day, or sparse data).
+        if n < covered or not short or depth >= MAX_SPLIT_DEPTH or stop - start <= MS_PER_DAY:
+            return got
+        # A half that added no bar to a short day and came back smaller than its parent was not
+        # cut by a cap (a capped half returns as many rows as its parent): the shortfall is real.
+        if parent and n < parent[1] and all(len(got[d][0]) <= parent[0][d] for d in short):
+            return got
+        mid = start + (stop - start) // MS_PER_DAY // 2 * MS_PER_DAY
+        counts = {day: len(t) for day, (t, _, _) in got.items()}
+        for lo, hi in ((start, mid), (mid, stop)):
+            if any(lo <= day < hi for day in short):
+                for day, sub in fetch(lo, hi, depth + 1, (counts, n)).items():
+                    if len(sub[0]) > len(got[day][0]):
+                        got[day] = sub
+        return got
+
+    for start, stop in pages(missing, max(1, rows_per_call // per_day)):
+        for day, (t, c, page_time) in fetch(start, stop, 0).items():
+            bars[day] = (t, c)
+            settled_ms = page_time.timestamp() * 1000 - CACHE_SETTLE_S * 1000
+            if cache and len(t) >= covered and day + MS_PER_DAY <= settled_ms:
+                cache.put(venue, instrument, resolution, day, t, c)
     merged = sorted({t: c for day in days for t, c in zip(*bars[day], strict=True)}.items())
     if not merged:
         raise AdapterError(

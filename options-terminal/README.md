@@ -26,6 +26,7 @@ Needs Docker (Desktop or daemon) and `make`. From `options-terminal/`:
 | `make stop` | Stops everything and removes this project's containers, network, the images it built and their dangling layers. Keeps the database and snapshot volumes. Nothing outside this compose project is touched. |
 | `make clean` | `stop`, then also deletes the database and snapshot volumes. |
 | `make logs` / `make ps` / `make restart` | Follow logs / status / rebuild and restart. |
+| `make probe` | Read-only Deribit and Hyperliquid calls that answer what `vrp_signal` can't check offline: candle row caps, 5-minute history depth, Hyperliquid's future `endTime`, DVOL daily candle hours. Prints a verdict table and writes `models/terminal_models/library/rv_har/validation/venue_probe.json`. Runs are correct whatever the answers; they inform the 5-minute upgrade and the docs. |
 
 What runs:
 - **`db`** (Postgres 17, local mode only), plus the one-shot **`db-init`**, which applies the migrations if needed and the setup in `docker/db/setup.sql`.

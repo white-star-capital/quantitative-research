@@ -30,7 +30,8 @@ from terminal_models.adapters.rv_daily import (
 )
 from terminal_models.core.base import InputData, InputSpec
 
-# Rows per get_tradingview_chart_data call: assumed cap (UNVERIFIED; check live, VRP-A-8).
+# Rows per get_tradingview_chart_data call: an upper bound; a lower venue cap is split around
+# (adapters/rv_daily.py). The real cap is UNVERIFIED (check live with `make probe`, VRP-A-8).
 CHART_ROWS_PER_CALL = 5000
 DVOL_MAX_PAGES = 100  # continuation pages per dvol_history fetch; more means a paging fault
 
@@ -192,28 +193,42 @@ class DeribitAdapter(DataAdapter):
     def _dvol_history(self, spec: InputSpec, currency: str, as_of: datetime) -> InputData:
         """Daily DVOL closes, in decimal (Deribit quotes DVOL in vol points: 55.5 → 0.555).
 
-        Daily candles (resolution 1D) opening at 00:00 UTC; day d's value is the close of the
-        candle opening at d, i.e. DVOL at d's close. Completed days only, gap-free, None where
-        Deribit has no candle. Pages back from C via `continuation` (next end_timestamp)."""
+        Daily candles (resolution 1D). Day d's value is the close of the last candle closing in
+        (d, d + 1d], i.e. the latest DVOL known at d's close: the candle opening at d when they
+        open at 00:00 UTC. Whether they do is UNVERIFIED (check live with `make probe`), so the
+        keying doesn't assume it: a candle opening at `ts` is day ceil_day(ts), which is `ts`
+        when aligned and never a candle still open at C. `close_offset_h` is the hour of day
+        (UTC) the candles close at, 0 when aligned, None with no candle; candles at mixed hours
+        are not daily candles and fail. Completed days only, gap-free, None where Deribit has no
+        candle. Pages back from C via `continuation` (next end_timestamp)."""
         end = day_floor_ms(as_of)
         days = list(range(end - int(spec.params["lookback_days"]) * MS_PER_DAY, end, MS_PER_DAY))
+        lo = days[0] - MS_PER_DAY  # day[0]'s candle opens after this
         closes: dict[int, float] = {}
+        offsets: set[int] = set()
         raws, cursor, r = [], end - 1, None
         for _ in range(DVOL_MAX_PAGES):
-            r = self.client.volatility_index_page(currency, days[0], cursor, "1D")
+            r = self.client.volatility_index_page(currency, lo + 1, cursor, "1D")
             raws.append(r.raw)
             for ts, *_ohl, close in r.result["data"]:
-                if ts % MS_PER_DAY:
-                    raise AdapterError("venue_unavailable", f"{spec.name}: DVOL candle at {ts}")
-                if days[0] <= ts < end and close is not None and float(close) > 0:
-                    closes[int(ts)] = float(close) * 0.01
+                day = int(ts) + -int(ts) % MS_PER_DAY  # ceil to the day: the candle closes in it
+                if days[0] <= day < end and close is not None and float(close) > 0:
+                    offsets.add(int(ts) % MS_PER_DAY)
+                    closes[day] = float(close) * 0.01
             nxt = r.result.get("continuation")
-            if nxt is None or nxt <= days[0]:
+            if nxt is None or nxt <= lo:
                 break
             if nxt >= cursor:
                 raise AdapterError("venue_unavailable", f"{spec.name}: continuation did not move")
             cursor = nxt
         else:
             raise AdapterError("venue_unavailable", f"{spec.name}: over {DVOL_MAX_PAGES} pages")
-        data = {"day": [iso_day(d) for d in days], "dvol": [closes.get(d) for d in days]}
+        if len(offsets) > 1:
+            raise AdapterError("venue_unavailable", f"{spec.name}: DVOL candles at mixed hours")
+        offset_h = offsets.pop() / 3_600_000 if offsets else None
+        data = {
+            "day": [iso_day(d) for d in days],
+            "dvol": [closes.get(d) for d in days],
+            "close_offset_h": offset_h,
+        }
         return InputData(spec.name, r.server_time, data, raw={"get_volatility_index_data": raws})

@@ -31,8 +31,9 @@ Public, keyless JSON-RPC over HTTPS (`https://www.deribit.com/api/v2/public/*`).
 
 ## vrp_signal inputs (RV_FORECAST_IMPLEMENTATION_GUIDE.md VRP-A-8, §12)
 
-- `rv_daily`: `get_tradingview_chart_data` on `params.instrument`, or the discovered perpetual, at `params.resolution` (minutes). Paged in whole UTC days of at most `CHART_ROWS_PER_CALL` bars, reduced to completed days by `core/quant/rv.daily_rv`; days below `min_coverage` are null. Shared with Hyperliquid in `adapters/rv_daily.py`, including the completed-day cache under `SNAPSHOT_DIR/rv_daily/` (runner only; recordings and replay don't use it). `snapshot_at` is the last page's `usOut`, or `get_time` when every day was cached.
-- `dvol_history`: `get_volatility_index_data` at resolution `1D`, paged back via `continuation`. Each completed day's close, in vol points ÷ 100 (decimal). BTC/ETH only; other assets are `bad_input_spec`.
+- `rv_daily`: `get_tradingview_chart_data` on `params.instrument`, or the discovered perpetual, at `params.resolution` (minutes). Paged in whole UTC days of at most `CHART_ROWS_PER_CALL` bars, reduced to completed days by `core/quant/rv.daily_rv`; days below `min_coverage` are null. `CHART_ROWS_PER_CALL` is an upper bound, not the venue's cap: a page that comes back with some bars but short days is halved and asked again (at most `MAX_SPLIT_DEPTH` deep; it stops at a response with fewer bars than one covered day, or a half that adds no bar to a short day and returns fewer bars than its parent), so a lower cap costs calls, never coverage. Shared with Hyperliquid in `adapters/rv_daily.py`, including the completed-day cache under `SNAPSHOT_DIR/rv_daily/` (runner only; recordings and replay don't use it). `snapshot_at` is the last page's `usOut`, or `get_time` when every day was cached.
+- `dvol_history`: `get_volatility_index_data` at resolution `1D`, paged back via `continuation`. Each completed day's close, in vol points ÷ 100 (decimal). BTC/ETH only; other assets are `bad_input_spec`. A candle opening at `ts` is keyed to day `ceil_day(ts)`: its own day when candles open at 00:00 UTC, otherwise the day its close falls in, so a day's value is the latest DVOL known at that day's close and never a candle still open. `close_offset_h` in the data is the candles' UTC close hour (0 when aligned); candles at mixed hours fail.
+- BTC/ETH `rv_daily` stays on hourly bars in v1: it matches bs_pricer's RV basis, HAR on log RV gains little from 5-minute sampling at 7–60-day horizons, and switching resolution mid-series shifts the level. Moving to 5-minute bars is a later, versioned change, gated on `make probe` (5-minute history depth) and a `validate_rv` comparison.
 
 ## To confirm on first live access (guide §2, M1)
 
@@ -40,7 +41,7 @@ Public, keyless JSON-RPC over HTTPS (`https://www.deribit.com/api/v2/public/*`).
 - [x] `btcdvol_usdc` / `ethdvol_usdc` index names (confirmed live 2026-10-13).
 - [ ] Whether Deribit lists a SOL/HYPE perpetual. Until one is listed, SOL/HYPE runs fail with `no_perpetual`; the first recording will show it.
 - [ ] parity: `funding_8h` semantics; order-book `amount` units (inverse futures USD, options in contracts, linear futures coin); same-expiry option and future delivery prices match (else `locked_future` → `basis_risk`).
-- [ ] vrp_signal: the `get_tradingview_chart_data` row cap (assumed 5,000) and 5-min history depth; that `1D` DVOL candles open at 00:00 UTC (otherwise `dvol_history` fails) and how `continuation` pages.
+- [ ] vrp_signal: the `get_tradingview_chart_data` row cap (`CHART_ROWS_PER_CALL` 5,000 is an upper bound; a lower cap is split around) and 5-min history depth; the `1D` DVOL candles' open hour (any hour works; non-zero shows as `close_offset_h`) and how `continuation` pages. `make probe` (tools/probe_venues.py) answers all of these and writes `library/rv_har/validation/venue_probe.json`.
 - [ ] Depth of the inverse BTC/ETH books vs linear `BTC_USDC`/`ETH_USDC`; record the choice here (both books' summaries are in the first recording).
 
 ## Recording snapshots (fixtures, golden tests, parity vectors)

@@ -2,6 +2,7 @@
 #   make start          build and start everything, wait until healthy
 #   make stop           stop and remove this project's containers, network and images (data kept)
 #   make clean          stop + delete the local database and snapshot volumes
+#   make probe          check the venue facts vrp_signal assumes (read-only calls, report file)
 # Database: Supabase when .env sets SUPABASE_DB_URL, else a local Postgres container.
 # Only resources labelled with this compose project are touched; nothing else on the machine.
 
@@ -23,7 +24,7 @@ endif
 COMPOSE_ALL := docker compose --profile local  # stop/clean cover both modes
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop clean restart logs ps check-docker env check-url
+.PHONY: help start stop clean restart logs ps probe check-docker env check-url
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  make %-14s %s\n", $$1, $$2}'
@@ -67,3 +68,11 @@ logs: env ## follow all service logs
 
 ps: env ## show service status
 	$(COMPOSE) ps
+
+# Read-only Deribit/Hyperliquid calls from the runner image (tools/probe_venues.py); runs as the
+# host user so the report lands in the bind-mounted folder. No database or snapshot dir needed.
+PROBE_DIR := models/terminal_models/library/rv_har/validation
+probe: check-docker env ## check Deribit/Hyperliquid candle caps, history, DVOL hours; writes venue_probe.json
+	@mkdir -p $(PROBE_DIR)
+	$(COMPOSE) run --rm --no-deps --build --user "$$(id -u):$$(id -g)" -v "$(CURDIR)/$(PROBE_DIR):/out" \
+		runner python -m terminal_models.tools.probe_venues --out /out/venue_probe.json
