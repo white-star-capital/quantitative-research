@@ -6,7 +6,7 @@ The data contract shared by `models/`, `api/` and `frontend/`. The rules live in
 |---|---|
 | `schemas/envelope/v1.json` | Done |
 | `schemas/payloads/<kind>/v1.json` | Done (scalar_set, curve, surface, timeseries, table, composite) |
-| `slots/*.yaml` | `vol_surface` (CONTRACTS §4 example), `bs_pricer`, `parity_monitor` |
+| `slots/*.yaml` | `vol_surface` (CONTRACTS §4 example), `bs_pricer`, `parity_monitor`, `vrp_signal` |
 | `db/migrations/` | `0001_init.sql` from CONTRACTS §6 |
 | `fixtures/valid/`, `fixtures/invalid/` | M0. Fixtures must come from recorded real snapshots, never invented prices |
 | `fixtures/pricing/` | Python→Rust evaluation parity vectors (math only, no market data) |

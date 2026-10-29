@@ -112,6 +112,32 @@ class DeribitClient:
             resolution="60",
         )
 
+    def chart_data(self, instrument: str, resolution: str, start_ms: int, end_ms: int) -> Response:
+        """One page of perp candles for `rv_daily` (bars opening in [start_ms, end_ms])."""
+        return self.call(
+            "get_tradingview_chart_data",
+            instrument_name=instrument,
+            start_timestamp=start_ms,
+            end_timestamp=end_ms,
+            resolution=resolution,
+        )
+
+    def volatility_index_page(
+        self, currency: str, start_ms: int, end_ms: int, resolution: str
+    ) -> Response:
+        """One page of DVOL candles for `dvol_history`; `continuation` gives the next end."""
+        return self.call(
+            "get_volatility_index_data",
+            currency=currency,
+            start_timestamp=start_ms,
+            end_timestamp=end_ms,
+            resolution=resolution,
+        )
+
+    def time(self) -> Response:
+        """Server time only: dates an input served entirely from the completed-day cache."""
+        return self.call("get_time")
+
     def volatility_index(self, currency: str, start: datetime, end: datetime) -> Response:
         return self.call(
             "get_volatility_index_data",

@@ -46,7 +46,7 @@ def dsn():
 
 
 def registry(production=None):
-    shadow = [{"implementation": "bs_pricer_black76", "version": "1.0.0"}]
+    shadow = [{"implementation": "bs_pricer_black76", "version": "1.0.1"}]
     return Registry.model_validate(
         {
             "slots": {
@@ -78,7 +78,7 @@ def test_sync_is_idempotent_and_notifies(dsn):
         ).fetchone()
     assert row == (
         None,
-        [{"implementation": "bs_pricer_black76", "version": "1.0.0"}],
+        [{"implementation": "bs_pricer_black76", "version": "1.0.1"}],
         "active",
         "black76_surface_v1",
     )
@@ -152,7 +152,7 @@ def test_failed_run_is_written_and_lock_blocks_overlap(dsn):
                 "run_id": "0192f3a0-6b1e-7c3a-9a51-2f8e4d1c7b29",
                 "slot_id": "bs_pricer",
                 "implementation_id": "bs_pricer_black76",
-                "implementation_version": "1.0.0",
+                "implementation_version": "1.0.1",
                 "scope": {"underlying": "ETH"},
                 "status": "failed",
                 "as_of": "2026-10-13T17:00:00Z",

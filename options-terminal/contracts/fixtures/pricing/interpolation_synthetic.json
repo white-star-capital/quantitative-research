@@ -6,7 +6,7 @@
   "run_id": "0192f3a0-6b1e-7c3a-9a51-000000000001",
   "slot_id": "bs_pricer",
   "implementation_id": "bs_pricer_black76",
-  "implementation_version": "1.0.0",
+  "implementation_version": "1.0.1",
   "scope": {
    "underlying": "BTC"
   },

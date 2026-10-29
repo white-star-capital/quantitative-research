@@ -71,6 +71,7 @@
             "ratio",
             "probability",
             "yield_annualized",
+            "zscore",
             "bps",
             "strike",
             "moneyness_log",

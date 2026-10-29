@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from terminal_models.adapters.deribit import DeribitAdapter
+from terminal_models.adapters.hyperliquid import HyperliquidAdapter
+from terminal_models.adapters.rv_daily import DayCache
 from terminal_models.core.manifest import Manifest
 from terminal_models.core.paths import contracts_dir, library_dir, registry_path
 from terminal_models.core.registry import Registry, RegistryError, load_registry, validate_registry
@@ -89,7 +91,11 @@ def _parse_utc(value: str) -> datetime:
 
 
 def _adapters() -> dict:
-    return {"deribit": DeribitAdapter()}
+    rv_cache = DayCache.default()  # completed-day candles (rv_daily), fetched once
+    return {
+        "deribit": DeribitAdapter(rv_cache=rv_cache),
+        "hyperliquid": HyperliquidAdapter(rv_cache=rv_cache),
+    }
 
 
 def _summary(envelope: dict, role: str) -> str:

@@ -1,9 +1,10 @@
 """Deribit public API: option chains, spot index, perp candles, DVOL (MODELS.md §3.2). Keyless.
 
-Input kinds (InputSpec params["kind"]): `chain`, `index`, `candles_1h`, `dvol`, and for
+Input kinds (InputSpec params["kind"]): `chain`, `index`, `candles_1h`, `dvol`, for
 parity_monitor `futures_book`, `funding` and `order_book` (PARITY_MONITOR_IMPLEMENTATION_GUIDE.md
-§2.1). Any failure after retries is an AdapterError with code `venue_unavailable` (D-8); there is
-no fallback data (D-10).
+§2.1), and for vrp_signal `rv_daily` and `dvol_history` (RV_FORECAST_IMPLEMENTATION_GUIDE.md
+VRP-A-8, §12). Any failure after retries is an AdapterError with code `venue_unavailable` (D-8);
+there is no fallback data (D-10).
 """
 
 from __future__ import annotations
@@ -20,14 +21,28 @@ from terminal_models.adapters.deribit.chains import (
     normalize_futures,
 )
 from terminal_models.adapters.deribit.client import DeribitClient
+from terminal_models.adapters.rv_daily import (
+    MS_PER_DAY,
+    DayCache,
+    day_floor_ms,
+    fetch_rv_daily,
+    iso_day,
+)
 from terminal_models.core.base import InputData, InputSpec
+
+# Rows per get_tradingview_chart_data call: assumed cap (UNVERIFIED; check live, VRP-A-8).
+CHART_ROWS_PER_CALL = 5000
+DVOL_MAX_PAGES = 100  # continuation pages per dvol_history fetch; more means a paging fault
 
 
 class DeribitAdapter(DataAdapter):
     name = "deribit"
 
-    def __init__(self, client: DeribitClient | None = None) -> None:
+    def __init__(
+        self, client: DeribitClient | None = None, rv_cache: DayCache | None = None
+    ) -> None:
         self.client = client or DeribitClient()
+        self.rv_cache = rv_cache  # None: no completed-day cache (recording, replay, tests)
 
     def fetch(self, spec: InputSpec, as_of: datetime) -> InputData:
         underlying = spec.params.get("underlying")
@@ -54,6 +69,13 @@ class DeribitAdapter(DataAdapter):
                 return self._funding(spec, self._perpetual(spec, book))
             if kind == "order_book":
                 return self._order_book(spec, str(spec.params["instrument_name"]))
+            if kind == "rv_daily":
+                instrument = spec.params.get("instrument") or self._perpetual(spec, book)
+                return self._rv_daily(spec, str(instrument), as_of)
+            if kind == "dvol_history":
+                if book.dvol is None:
+                    raise AdapterError("bad_input_spec", f"no DVOL index for {underlying}")
+                return self._dvol_history(spec, book.currency, as_of)
         except AdapterError:
             raise
         except (KeyError, TypeError, ValueError) as exc:
@@ -136,3 +158,62 @@ class DeribitAdapter(DataAdapter):
             {"t": [iso_ms(t) for t in ticks], "close": [float(c) for c in closes]},
             raw=r.raw,
         )
+
+    def _rv_daily(self, spec: InputSpec, instrument: str, as_of: datetime) -> InputData:
+        resolution = str(spec.params["resolution"])
+
+        def page(start_ms: int, end_ms: int):
+            # end_timestamp is inclusive at Deribit; the shared code drops bars outside the window.
+            r = self.client.chart_data(instrument, resolution, start_ms, end_ms - 1)
+            status = r.result.get("status")
+            if status == "no_data":
+                return [], [], r.server_time, r.raw
+            if status != "ok":
+                raise AdapterError("venue_unavailable", f"{spec.name}: candles status {status}")
+            closes = [float(c) for c in r.result["close"]]
+            return [int(t) for t in r.result["ticks"]], closes, r.server_time, r.raw
+
+        data, server_time, raws = fetch_rv_daily(
+            spec.name,
+            venue="deribit",
+            instrument=instrument,
+            resolution=resolution,
+            lookback_days=int(spec.params["lookback_days"]),
+            min_coverage=float(spec.params["min_coverage"]),
+            as_of=as_of,
+            rows_per_call=CHART_ROWS_PER_CALL,
+            fetch_page=page,
+            cache=self.rv_cache,
+        )
+        if server_time is None:  # every day was cached: the server clock still dates the input
+            server_time = self.client.time().server_time
+        return InputData(spec.name, server_time, data, raw={"get_tradingview_chart_data": raws})
+
+    def _dvol_history(self, spec: InputSpec, currency: str, as_of: datetime) -> InputData:
+        """Daily DVOL closes, in decimal (Deribit quotes DVOL in vol points: 55.5 → 0.555).
+
+        Daily candles (resolution 1D) opening at 00:00 UTC; day d's value is the close of the
+        candle opening at d, i.e. DVOL at d's close. Completed days only, gap-free, None where
+        Deribit has no candle. Pages back from C via `continuation` (next end_timestamp)."""
+        end = day_floor_ms(as_of)
+        days = list(range(end - int(spec.params["lookback_days"]) * MS_PER_DAY, end, MS_PER_DAY))
+        closes: dict[int, float] = {}
+        raws, cursor, r = [], end - 1, None
+        for _ in range(DVOL_MAX_PAGES):
+            r = self.client.volatility_index_page(currency, days[0], cursor, "1D")
+            raws.append(r.raw)
+            for ts, *_ohl, close in r.result["data"]:
+                if ts % MS_PER_DAY:
+                    raise AdapterError("venue_unavailable", f"{spec.name}: DVOL candle at {ts}")
+                if days[0] <= ts < end and close is not None and float(close) > 0:
+                    closes[int(ts)] = float(close) * 0.01
+            nxt = r.result.get("continuation")
+            if nxt is None or nxt <= days[0]:
+                break
+            if nxt >= cursor:
+                raise AdapterError("venue_unavailable", f"{spec.name}: continuation did not move")
+            cursor = nxt
+        else:
+            raise AdapterError("venue_unavailable", f"{spec.name}: over {DVOL_MAX_PAGES} pages")
+        data = {"day": [iso_day(d) for d in days], "dvol": [closes.get(d) for d in days]}
+        return InputData(spec.name, r.server_time, data, raw={"get_volatility_index_data": raws})

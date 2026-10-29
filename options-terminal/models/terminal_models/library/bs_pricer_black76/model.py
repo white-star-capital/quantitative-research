@@ -8,13 +8,11 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections import defaultdict
-from datetime import UTC, datetime
 from typing import Any
 
-from terminal_models.core.base import InputSpec, Model, ModelError, RunContext, Scope
+from terminal_models.core.base import InputSpec, Model, RunContext, Scope
 from terminal_models.core.payloads import axis, column, item, section, series, unit
-from terminal_models.core.quant.black76 import black76, implied_vol
+from terminal_models.core.quant.black76 import black76
 from terminal_models.core.quant.metrics import (
     atm_iv,
     change_24h,
@@ -22,7 +20,8 @@ from terminal_models.core.quant.metrics import (
     realized_vol,
     skew_at_tenor,
 )
-from terminal_models.core.quant.smile import Expiry, Node, Surface, k_grid, year_fraction
+from terminal_models.core.quant.smile import Surface, k_grid
+from terminal_models.core.quant.surface import build_expiries, label, solve_iv
 
 IV = unit("implied_vol", "decimal")
 VOL_SPREAD = unit("vol_spread", "decimal")
@@ -30,14 +29,6 @@ USD = unit("price_usd")
 COUNT = unit("count")
 K = unit("moneyness_log")
 TENOR = unit("tenor_days")
-
-
-def parse_utc(value: str) -> datetime:
-    return datetime.fromisoformat(value).astimezone(UTC)
-
-
-def label(expiry: datetime) -> str:
-    return expiry.strftime("%d %b %y").upper()
 
 
 class BsPricerBlack76(Model):
@@ -82,75 +73,6 @@ class BsPricerBlack76(Model):
 
 
 IMPLEMENTATION = BsPricerBlack76
-
-
-# ---- §3.1 node selection ------------------------------------------------------------------
-
-
-def _solve(
-    price: float | None,
-    F: float,
-    K_: float,
-    T: float,
-    r: float,
-    call: bool,  # noqa: N803
-    S: float,
-) -> float | None:  # noqa: N803
-    if price is None:
-        return None
-    iv, _ = implied_vol(F, K_, T, price, r, call, S)
-    return iv
-
-
-def build_expiries(rows: list[dict], ctx: RunContext, spot: float, r: float):
-    p, u = ctx.params, ctx.scope["underlying"]
-    min_t = p["min_tte_hours"] / 8760
-    min_nodes = p["min_nodes_per_expiry"][u]
-    max_spread = p["max_node_spread_vp"] / 100
-
-    grouped: dict[str, list[dict]] = defaultdict(list)
-    for row in rows:
-        grouped[row["expiry_ts"]].append(row)
-
-    expiries: list[Expiry] = []
-    by_expiry: dict[str, tuple[Expiry, list[dict], dict[str, Node]]] = {}
-    for expiry_ts in sorted(grouped):
-        when = parse_utc(expiry_ts)
-        T = year_fraction(ctx.as_of, when)  # noqa: N806
-        if T < min_t:
-            continue
-        group = grouped[expiry_ts]
-        F = statistics.median(row["forward"] for row in group)  # noqa: N806
-        nodes: dict[str, Node] = {}
-        for row in group:
-            call = row["option_type"] == "call"
-            otm = row["strike"] >= F if call else row["strike"] < F
-            if not otm or row["mark_iv"] is None:
-                continue
-            bid = _solve(row["bid_usd"], F, row["strike"], T, r, call, spot)
-            ask = _solve(row["ask_usd"], F, row["strike"], T, r, call, spot)
-            if bid is not None and ask is not None:
-                quality = "good" if ask - bid <= max_spread else "wide"
-            elif bid is not None or ask is not None:
-                quality = "one_sided"
-            else:
-                quality = "no_quote"
-            nodes[row["instrument_name"]] = Node(
-                math.log(row["strike"] / F), row["strike"], row["mark_iv"], bid, ask, quality
-            )
-        if len(nodes) < min_nodes:
-            ctx.warn(
-                "expiry_dropped_insufficient_nodes",
-                f"{label(when)}: {len(nodes)} nodes, need {min_nodes}",
-            )
-            continue
-        expiry = Expiry(when, T, F, list(nodes.values()))
-        expiries.append(expiry)
-        by_expiry[expiry_ts] = (expiry, group, nodes)
-
-    if not expiries:
-        raise ModelError("insufficient_market_data", f"no {u} expiry has enough nodes")
-    return expiries, by_expiry
 
 
 # ---- sections (§4.3) ----------------------------------------------------------------------
@@ -356,8 +278,8 @@ def chain_section(surface: Surface, by_expiry, ctx: RunContext, r: float) -> dic
             if node is None and not lo <= abs(g["delta"]) <= hi:
                 continue
             fair, dte = g["price"], T * 365
-            bid = node.iv_bid if node else _solve(row["bid_usd"], F, row["strike"], T, r, call, S)
-            ask = node.iv_ask if node else _solve(row["ask_usd"], F, row["strike"], T, r, call, S)
+            bid = node.iv_bid if node else solve_iv(row["bid_usd"], F, row["strike"], T, r, call, S)
+            ask = node.iv_ask if node else solve_iv(row["ask_usd"], F, row["strike"], T, r, call, S)
             rows.append(
                 [
                     row["instrument_name"],

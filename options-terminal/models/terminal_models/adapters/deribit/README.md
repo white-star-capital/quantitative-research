@@ -29,12 +29,18 @@ Public, keyless JSON-RPC over HTTPS (`https://www.deribit.com/api/v2/public/*`).
 - Option rows also carry native `bid_native`/`ask_native` (coin or USDC), `expiration_ms` and `underlying_index`, because parity runs on native prices.
 - Tick cache (`snapshot_cache.py`, D-11): one cache per `run-due` pass. Books and tickers are reused for at most 20 s; metadata for 1 h.
 
+## vrp_signal inputs (RV_FORECAST_IMPLEMENTATION_GUIDE.md VRP-A-8, §12)
+
+- `rv_daily`: `get_tradingview_chart_data` on `params.instrument`, or the discovered perpetual, at `params.resolution` (minutes). Paged in whole UTC days of at most `CHART_ROWS_PER_CALL` bars, reduced to completed days by `core/quant/rv.daily_rv`; days below `min_coverage` are null. Shared with Hyperliquid in `adapters/rv_daily.py`, including the completed-day cache under `SNAPSHOT_DIR/rv_daily/` (runner only; recordings and replay don't use it). `snapshot_at` is the last page's `usOut`, or `get_time` when every day was cached.
+- `dvol_history`: `get_volatility_index_data` at resolution `1D`, paged back via `continuation`. Each completed day's close, in vol points ÷ 100 (decimal). BTC/ETH only; other assets are `bad_input_spec`.
+
 ## To confirm on first live access (guide §2, M1)
 
 - [x] `btc_usd` / `eth_usd` / `sol_usdc` / `hype_usdc` spot index names (confirmed live 2026-10-13).
 - [x] `btcdvol_usdc` / `ethdvol_usdc` index names (confirmed live 2026-10-13).
 - [ ] Whether Deribit lists a SOL/HYPE perpetual. Until one is listed, SOL/HYPE runs fail with `no_perpetual`; the first recording will show it.
 - [ ] parity: `funding_8h` semantics; order-book `amount` units (inverse futures USD, options in contracts, linear futures coin); same-expiry option and future delivery prices match (else `locked_future` → `basis_risk`).
+- [ ] vrp_signal: the `get_tradingview_chart_data` row cap (assumed 5,000) and 5-min history depth; that `1D` DVOL candles open at 00:00 UTC (otherwise `dvol_history` fails) and how `continuation` pages.
 - [ ] Depth of the inverse BTC/ETH books vs linear `BTC_USDC`/`ETH_USDC`; record the choice here (both books' summaries are in the first recording).
 
 ## Recording snapshots (fixtures, golden tests, parity vectors)

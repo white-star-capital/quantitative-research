@@ -23,12 +23,13 @@ from terminal_models.adapters.base import AdapterError
 from terminal_models.adapters.deribit.client import DeribitClient, Response, parse
 
 # Candle/DVOL windows depend on the replay's as_of; the recording holds one window per series.
+# Paged series (rv_daily, dvol_history) are answered by their exact window first.
 TIME_PARAMS = {"start_timestamp", "end_timestamp"}
 
 
-def request_key(method: str, params: dict[str, Any]) -> str:
-    kept = {k: str(v) for k, v in params.items() if k not in TIME_PARAMS}
-    return json.dumps([method, kept], sort_keys=True)
+def request_key(method: str, params: dict[str, Any], exact: bool = False) -> str:
+    kept = {k: str(v) for k, v in params.items() if exact or k not in TIME_PARAMS}
+    return json.dumps([method, kept, exact], sort_keys=True)
 
 
 class RecordingError(Exception):
@@ -47,6 +48,7 @@ def load_bodies(root: Path) -> tuple[dict[str, Any], dict[str, str]]:
         if hashlib.sha256(raw).hexdigest() != entry["body_sha256"]:
             raise RecordingError(f"{entry['body']}: sha256 mismatch; the recording was modified")
         bodies[request_key(meta["method"], meta["params"])] = raw.decode()
+        bodies[request_key(meta["method"], meta["params"], exact=True)] = raw.decode()
     return manifest, bodies
 
 
@@ -57,7 +59,9 @@ class RecordedClient(DeribitClient):
         self.manifest, self._bodies = load_bodies(root)
 
     def call(self, method: str, ttl_s: float = 0, **params: Any) -> Response:
-        body = self._bodies.get(request_key(method, params))
+        body = self._bodies.get(request_key(method, params, exact=True))
+        if body is None:
+            body = self._bodies.get(request_key(method, params))
         if body is None:
             raise AdapterError("venue_unavailable", f"{method} {params} is not in the recording")
         return parse(method, body)

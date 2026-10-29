@@ -353,6 +353,29 @@ def implied_vs_venue_forward(payload: dict[str, Any], params: dict[str, Any]) ->
     ]
 
 
+VRP_BAND_TOLERANCE = 1e-12
+
+
+def vrp_band_ordering(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
+    """rv_low <= rv_forecast <= rv_high on every tenor (RV guide §12.3). The cone comes from
+    ordered residual quantiles, so a crossed band is a model bug: hard failure."""
+    crossed = [
+        row
+        for row in records(_need(payload, "signal"))
+        if None in (row["rv_low"], row["rv_forecast"], row["rv_high"])
+        or row["rv_low"] > row["rv_forecast"] * (1 + VRP_BAND_TOLERANCE)
+        or row["rv_forecast"] > row["rv_high"] * (1 + VRP_BAND_TOLERANCE)
+    ]
+    if crossed:
+        r = crossed[0]
+        raise ValidationFailure(
+            "vrp_band_ordering",
+            f"{len(crossed)} tenors with rv_low <= rv_forecast <= rv_high broken (first "
+            f"{r['tenor_days']}d: {r['rv_low']}, {r['rv_forecast']}, {r['rv_high']})",
+        )
+    return []
+
+
 def _pending(name: str) -> SanityCheck:
     def check(payload: dict[str, Any], params: dict[str, Any]) -> Warnings:
         raise NotImplementedError(f"sanity check '{name}' is not implemented yet")
@@ -368,6 +391,7 @@ SANITY_CHECKS: dict[str, SanityCheck] = {
     "spot_vs_perp": spot_vs_perp,
     "parity_band_ordering": parity_band_ordering,
     "implied_vs_venue_forward": implied_vs_venue_forward,
+    "vrp_band_ordering": vrp_band_ordering,
     "butterfly_arbitrage": _pending("butterfly_arbitrage"),
     "monotonic_tenor": _pending("monotonic_tenor"),
     "greeks_signs": _pending("greeks_signs"),

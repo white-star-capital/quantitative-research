@@ -2,8 +2,9 @@
 
 Responses are Deribit-shaped bodies built by inverting `chains.normalize` over the TEST-ONLY
 synthetic chain (library/bs_pricer_black76/tests/synthetic.py): BTC as an inverse coin book, HYPE
-as a linear USDC book. They exercise the plumbing a real recording goes through; nothing here is
-written to contracts/fixtures (D-10).
+as a linear USDC book. rv_har's paged candles (Deribit and Hyperliquid) and DVOL history come from
+the TEST-ONLY `rv_close` / `dvol_close` paths below. They exercise the plumbing a real recording
+goes through; nothing here is written to contracts/fixtures (D-10).
 """
 
 import json
@@ -11,7 +12,7 @@ import math
 import os
 import shutil
 import subprocess
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -19,6 +20,7 @@ import pytest
 
 from terminal_models.adapters.deribit.client import DeribitClient
 from terminal_models.adapters.http import HttpSource
+from terminal_models.adapters.hyperliquid.client import HyperliquidClient
 from terminal_models.core.paths import contracts_dir
 from terminal_models.core.validation import (
     ValidationFailure,
@@ -33,6 +35,19 @@ from terminal_models.tools import build_fixtures, gen_eval_vectors
 from terminal_models.tools.record_deribit import record
 
 SERVER_TIME = syn.AS_OF - timedelta(seconds=5)
+# The recording starts 150 s before the venues' clock reads SERVER_TIME: the time BTC's inputs
+# take before later assets are fetched, past rv_har's 120 s max input age.
+RECORDING_STARTED = SERVER_TIME - timedelta(seconds=150)
+
+
+class RecorderClock(datetime):
+    """TEST-ONLY: record_deribit's `datetime`, with now() pinned to RECORDING_STARTED."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return RECORDING_STARTED.astimezone(tz)
+
+
 US_OUT = int(SERVER_TIME.timestamp() * 1_000_000) + 123_456
 BOOK = {"BTC": ("BTC", "reversed"), "HYPE": ("USDC", "linear")}
 
@@ -141,15 +156,67 @@ def result_for(method: str, p: httpx.QueryParams):
         return [s for a in assets for s in options(a)[1]]
     if method == "get_index_price":
         return {"index_price": INDEX[p["index_name"]]}
+    if method == "get_tradingview_chart_data" and int(p["end_timestamp"]) % DAY_MS == DAY_MS - 1:
+        assert p["instrument_name"] in PERPS  # an rv_daily page: whole UTC days (rv_har)
+        step = int(p["resolution"]) * 60_000
+        ticks = list(range(-(-int(p["start_timestamp"]) // step) * step,
+                           int(p["end_timestamp"]) + 1, step))  # fmt: skip
+        return {"status": "ok", "ticks": ticks, "close": [rv_close(t) for t in ticks]}
     if method == "get_tradingview_chart_data":
         assert p["instrument_name"] in PERPS
         closes = syn.closes()
         end = int(p["end_timestamp"]) // 3_600_000 * 3_600_000
         ticks = [end - 3_600_000 * (len(closes) - 1 - i) for i in range(len(closes))]
         return {"status": "ok", "ticks": ticks, "close": closes}
+    if method == "get_volatility_index_data" and p["resolution"] == "1D":
+        days = range(-(-int(p["start_timestamp"]) // DAY_MS) * DAY_MS,
+                     int(p["end_timestamp"]) + 1, DAY_MS)  # fmt: skip
+        return {"data": [[d, 60, 62, 58, dvol_close(d)] for d in days], "continuation": None}
     if method == "get_volatility_index_data":
         return {"data": [[ms(syn.AS_OF.strftime("%Y-%m-%dT%H:%M:%SZ")), 61, 63, 60, 62]]}
     raise AssertionError(method)
+
+
+DAY_MS = 86_400_000
+
+
+def rv_close(t_ms: int) -> float:
+    """TEST-ONLY bar close at open time t (ms): a deterministic path whose daily variance moves
+    from day to day, so rv_har has something to fit. Not a price series."""
+    hour = t_ms // 3_600_000
+    day = hour // 24
+    amp = 0.006 * (2.0 + math.sin(day * 0.37) + 0.5 * math.sin(day * 1.91))
+    return syn.SPOT * math.exp(amp * math.sin(hour * 1.3))
+
+
+def dvol_close(day_ms: int) -> float:
+    """TEST-ONLY DVOL close in vol points."""
+    return 60 + 8 * math.sin(day_ms // DAY_MS * 0.21)
+
+
+def hl_client_factory(capture=None):
+    """Hyperliquid `POST /info` candleSnapshot: rv_close bars, and 1-minute clock candles in the
+    request window up to the one in progress at SERVER_TIME, the Deribit mock's clock."""
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.content)
+        assert body["type"] == "candleSnapshot"
+        req = body["req"]
+        if req["interval"] == "1m":
+            now = int(SERVER_TIME.timestamp()) // 60 * 60_000
+            ticks = range(-(-req["startTime"] // 60_000) * 60_000, min(req["endTime"], now) + 1,
+                          60_000)  # fmt: skip
+            candles = [{"t": t, "s": req["coin"], "i": "1m", "c": str(syn.SPOT)} for t in ticks]
+        else:
+            step = {"1h": 3_600_000, "5m": 300_000}[req["interval"]]
+            ticks = range(-(-req["startTime"] // step) * step, req["endTime"] + 1, step)
+            candles = [{"t": t, "s": req["coin"], "i": req["interval"], "c": str(rv_close(t))}
+                       for t in ticks]  # fmt: skip
+        return httpx.Response(200, text=json.dumps(candles))
+
+    http = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://x.test")
+    source = HttpSource("https://x.test", max_attempts=1, backoff_seconds=0, client=http)
+    return HyperliquidClient(source, capture=capture)
 
 
 def client_factory(capture=None):
@@ -167,7 +234,18 @@ def client_factory(capture=None):
 def recording(tmp_path_factory):
     out = tmp_path_factory.mktemp("pipeline") / "deribit_20261013T165955Z"
     os.environ.setdefault("TERMINAL_GIT_SHA", "a1b2c3d")
-    assert record(out, ["BTC", "HYPE"], False, client_factory=client_factory) == 0
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("terminal_models.tools.record_deribit.datetime", RecorderClock)
+        assert (
+            record(
+                out,
+                ["BTC", "HYPE"],
+                False,
+                client_factory=client_factory,
+                hl_client_factory=hl_client_factory,
+            )
+            == 0
+        )
     return out
 
 
@@ -332,9 +410,19 @@ def parity_built(tmp_path_factory):
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("TERMINAL_GIT_SHA", "a1b2c3d")
         mp.setattr(record_deribit, "load_manifest", with_test_fees)
+        mp.setattr(record_deribit, "datetime", RecorderClock)
         mp.setattr(build_fixtures, "load_manifest", with_test_fees)
         out = tmp_path_factory.mktemp("parity") / "deribit_20261013T165955Z"
-        assert record(out, ["BTC", "HYPE"], False, client_factory=client_factory) == 0
+        assert (
+            record(
+                out,
+                ["BTC", "HYPE"],
+                False,
+                client_factory=client_factory,
+                hl_client_factory=hl_client_factory,
+            )
+            == 0
+        )
         files, notes = build_fixtures.build(out)
         again, _ = build_fixtures.build(out)
     manifest = json.loads((out / "manifest.json").read_text())
@@ -375,7 +463,16 @@ def test_null_fees_skip_parity_and_say_so(tmp_path):
         mp.setenv("TERMINAL_GIT_SHA", "a1b2c3d")
         mp.setattr(record_deribit, "load_manifest", with_null_fees)
         mp.setattr(build_fixtures, "load_manifest", with_null_fees)
-        assert record(out, ["BTC"], False, client_factory=client_factory) == 0
+        assert (
+            record(
+                out,
+                ["BTC"],
+                False,
+                client_factory=client_factory,
+                hl_client_factory=hl_client_factory,
+            )
+            == 0
+        )
         files, notes = build_fixtures.build(out)
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["notes"] == [
@@ -412,3 +509,69 @@ def test_parity_fixtures_from_a_recording(parity_built):
         with pytest.raises(ValidationFailure):
             check_fixture(text)
     assert {p.name: t for p, t in again.items()} == {n: t for n, (_, t) in files.items()}
+
+
+# ---- rv_har leg: paged RV candles, DVOL history and Hyperliquid → vrp fixtures --------------
+
+
+def test_recorder_records_rv_inputs(recording):
+    manifest = json.loads((recording / "manifest.json").read_text())
+    assert "rv_har" in manifest["implementations"]
+    methods = [c["method"] for c in manifest["calls"]]
+    assert "candleSnapshot" in methods  # HYPE's RV comes from Hyperliquid
+    inputs = manifest["assets"]["BTC"]["inputs"]
+    assert {"rv_har.rv_daily", "rv_har.dvol_history"} <= set(inputs)
+    assert "rv_har.rv_daily" in manifest["assets"]["HYPE"]["inputs"]
+
+
+def test_vrp_fixtures_from_a_recording(built):
+    from terminal_models.core.payloads import get_section, records
+
+    files, notes = built
+    for asset in ("btc", "hype"):
+        path, text = files[f"vrp_{asset}.json"]
+        assert path.parent == contracts_dir() / "fixtures" / "valid" / "composite"
+        env = json.loads(text)
+        assert env["status"] == "success", (env.get("error"), notes)
+        assert env["as_of"] == SERVER_TIME.strftime("%Y-%m-%dT%H:%M:%SZ")
+        check_fixture(text)
+    btc = records(get_section(json.loads(files["vrp_btc.json"][1])["payload"], "signal"))
+    assert [r["vrp_z"] is not None for r in btc] == [False, False, True, False]
+    hype = records(get_section(json.loads(files["vrp_hype.json"][1])["payload"], "signal"))
+    assert all(r["vrp_z"] is None and "z_unavailable" in r["flags"] for r in hype)
+    invalid = {n: t for n, (_, t) in files.items() if n.startswith("vrp_btc__")}
+    assert set(invalid) == {
+        "vrp_btc__nan_rv_forecast.json",
+        "vrp_btc__signal_row_missing_vrp_z.json",
+        "vrp_btc__cone_series_wrong_length.json",
+    }
+    for text in invalid.values():
+        with pytest.raises(ValidationFailure):
+            check_fixture(text)
+
+
+def test_validate_rv_on_a_recording(recording, tmp_path):
+    """tools/validate_rv.py replays rv_daily and DVOL from the recording (§9). The series are the
+    TEST-ONLY mock paths, so only the plumbing is checked, not the gate outcomes."""
+    from terminal_models.tools import validate_rv
+
+    out = tmp_path / "rv_validation.json"
+    args = ["--recording", str(recording), "--out", str(out), "--folds", "4"]
+    assert validate_rv.main(args) in (0, 1)
+    report = json.loads(out.read_text())
+    assert report["git_sha"] == os.environ["TERMINAL_GIT_SHA"]
+    assert report["recording"]["name"] == recording.name
+    assert report["params_hash"].startswith("sha256:")
+    assert set(report["assets"]) == {"BTC", "HYPE"}
+    btc, hype = report["assets"]["BTC"], report["assets"]["HYPE"]
+    assert btc["status"] == hype["status"] == "ok", (btc.get("error"), hype.get("error"))
+    assert btc["inputs"]["rv_daily"]["hash"].startswith("sha256:")
+    assert btc["inputs"]["dvol_history"]["n_days"] > 0
+    assert hype["inputs"]["dvol_history"] is None
+    assert hype["inputs"]["rv_daily"]["venue"] == "hyperliquid"
+    assert btc["gates"]["pnl_sharpe_vs_naive"]["status"] != "not_applicable"
+    assert hype["gates"]["pnl_sharpe_vs_naive"]["status"] == "not_applicable"
+    assert len(btc["backtest"]["folds"]) == 4
+    again = tmp_path / "again.json"
+    validate_rv.main(["--recording", str(recording), "--out", str(again), "--folds", "4"])
+    assert again.read_text() == out.read_text()

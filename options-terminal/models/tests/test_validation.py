@@ -104,6 +104,7 @@ def test_sanity_checks_registered():
         "greeks_signs",
         "parity_band_ordering",
         "implied_vs_venue_forward",
+        "vrp_band_ordering",
     }
 
 

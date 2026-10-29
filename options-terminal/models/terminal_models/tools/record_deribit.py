@@ -9,6 +9,11 @@ production DeribitAdapter and runner fetch path), plus BTC/ETH DVOL history, and
 response body byte-for-byte with its request and local receive time. Nothing is parsed into new
 numbers here; tools/build_fixtures.py replays the recording.
 
+rv_har (vrp_signal) is recorded the same way once its manifest exists: its `rv_daily` and
+`dvol_history` pages, and the Hyperliquid `candleSnapshot` calls of any asset whose RV input uses
+venue hyperliquid (api.hyperliquid.xyz must be reachable too). The completed-day RV cache is not
+used, so the recording holds every page a cold run fetches.
+
 parity_deribit chooses which order books to confirm from net edges after fees, so its follow-up
 order books are recorded only when its manifest's fee table is filled; otherwise the manifest
 notes it and replay leaves those rows unconfirmed.
@@ -34,6 +39,9 @@ from terminal_models.adapters.base import AdapterError
 from terminal_models.adapters.deribit import DeribitAdapter
 from terminal_models.adapters.deribit.chains import BOOKS
 from terminal_models.adapters.deribit.client import BASE_URL, DeribitClient
+from terminal_models.adapters.hyperliquid import HyperliquidAdapter
+from terminal_models.adapters.hyperliquid.client import BASE_URL as HL_BASE_URL
+from terminal_models.adapters.hyperliquid.client import HyperliquidClient
 from terminal_models.core.manifest import load_manifest
 from terminal_models.core.paths import library_dir
 from terminal_models.core.registry import null_fees
@@ -41,6 +49,7 @@ from terminal_models.core.slots import load_slots
 from terminal_models.runner.execute import RunFailed, RunSpec, fetch_inputs, git_sha
 
 IMPLEMENTATIONS = ("bs_pricer_black76", "parity_deribit")
+OPTIONAL_IMPLEMENTATIONS = ("rv_har",)  # recorded once its manifest exists (RV guide §11, P3)
 DVOL_HISTORY = {"BTC": "BTC", "ETH": "ETH"}
 CANDLE_MANIFEST = "bs_pricer_black76"  # DVOL history uses its candle lookback
 
@@ -56,7 +65,13 @@ class Recorder:
         self.calls_dir.mkdir(parents=True)
         self.entries: list[dict[str, Any]] = []
 
-    def capture(self, method: str, params: dict[str, Any], text: str) -> None:
+    def capture_hyperliquid(self, method: str, req: dict[str, Any], text: str) -> None:
+        """POST /info {"type": method, "req": req}; `params` holds `req`."""
+        self.capture(method, req, text, url=f"{HL_BASE_URL}/info")
+
+    def capture(
+        self, method: str, params: dict[str, Any], text: str, url: str | None = None
+    ) -> None:
         seq = len(self.entries) + 1
         stem = f"{seq:03d}_{method}"
         raw = text.encode()
@@ -66,7 +81,7 @@ class Recorder:
             "seq": seq,
             "method": method,
             "params": {k: v for k, v in params.items()},
-            "url": f"{BASE_URL}/api/v2/public/{method}?{urlencode(params)}",
+            "url": url or f"{BASE_URL}/api/v2/public/{method}?{urlencode(params)}",
             "received_at_local": utc(datetime.now(UTC)),
             "body_bytes": len(raw),
         }
@@ -82,15 +97,27 @@ class Recorder:
         )
 
 
-def record(out: Path, assets: list[str], allow_partial: bool, client_factory=DeribitClient) -> int:
+def record(
+    out: Path,
+    assets: list[str],
+    allow_partial: bool,
+    client_factory=DeribitClient,
+    hl_client_factory=HyperliquidClient,
+) -> int:
     if out.exists() and any(out.iterdir()):
         print(f"{out} is not empty; record into a new directory", file=sys.stderr)
         return 2
     rec = Recorder(out)
     client = client_factory(capture=rec.capture)
-    adapters = {"deribit": DeribitAdapter(client)}
+    adapters = {
+        "deribit": DeribitAdapter(client),
+        "hyperliquid": HyperliquidAdapter(hl_client_factory(capture=rec.capture_hyperliquid)),
+    }
     slots = load_slots()
-    manifests = {i: load_manifest(library_dir() / i / "manifest.yaml") for i in IMPLEMENTATIONS}
+    implementations = list(IMPLEMENTATIONS) + [
+        i for i in OPTIONAL_IMPLEMENTATIONS if (library_dir() / i / "manifest.yaml").exists()
+    ]
+    manifests = {i: load_manifest(library_dir() / i / "manifest.yaml") for i in implementations}
     notes = [
         f"{i}: follow-up inputs not recorded (params.fees null: {', '.join(null_fees(m))})"
         for i, m in manifests.items()
@@ -142,7 +169,7 @@ def record(out: Path, assets: list[str], allow_partial: bool, client_factory=Der
         "base_url": BASE_URL,
         "started_at": utc(started),
         "finished_at": utc(datetime.now(UTC)),
-        "implementations": list(IMPLEMENTATIONS),
+        "implementations": implementations,
         "notes": notes,
         "complete": not failed,
         "assets": results,

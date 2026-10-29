@@ -4,7 +4,7 @@ slots:
   bs_pricer:
     production: null                   # first model: shadow until validated (guide §9 step 6)
     shadow:
-      - { implementation: bs_pricer_black76, version: 1.0.0 }
+      - { implementation: bs_pricer_black76, version: 1.0.1 }
     scopes:
       - { underlying: BTC }
       - { underlying: ETH }
@@ -14,6 +14,15 @@ slots:
     production: null                   # shadow until validated against live Deribit (guide §9)
     shadow:
       - { implementation: parity_deribit, version: 1.0.0 }
+    scopes:
+      - { underlying: BTC }
+      - { underlying: ETH }
+      - { underlying: SOL }
+      - { underlying: HYPE }
+  vrp_signal:
+    production: null                   # shadow until the RV guide §9 gates pass (P6 report)
+    shadow:
+      - { implementation: rv_har, version: 1.0.0 }
     scopes:
       - { underlying: BTC }
       - { underlying: ETH }

@@ -1,5 +1,5 @@
 implementation_id: bs_pricer_black76
-version: 1.0.0
+version: 1.0.1
 fills_slot: bs_pricer
 owner: alejandro
 description: Black-76 on Deribit marks; piecewise-linear total-variance surface.

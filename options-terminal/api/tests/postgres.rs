@@ -291,7 +291,7 @@ async fn evaluate_against_a_stored_shadow_run(pool: PgPool) {
         "INSERT INTO slots (slot_id, title, description, payload_kind, payload_version, scope_dimensions,
             max_age_seconds, definition, shadow_implementations, status)
          VALUES ('bs_pricer', 'Pricer', '', 'composite', '1', ARRAY['underlying'], 900, $1,
-            '[{\"implementation\":\"bs_pricer_black76\",\"version\":\"1.0.0\"}]', 'active')",
+            '[{\"implementation\":\"bs_pricer_black76\",\"version\":\"1.0.1\"}]', 'active')",
     )
     .bind(definition)
     .execute(&pool)
@@ -300,7 +300,7 @@ async fn evaluate_against_a_stored_shadow_run(pool: PgPool) {
     sqlx::query(
         "INSERT INTO model_runs (run_id, slot_id, implementation_id, implementation_version, role, scope_key,
             scope, status, as_of, started_at, finished_at, input_hash, git_sha, envelope)
-         VALUES ($1::uuid, 'bs_pricer', 'bs_pricer_black76', '1.0.0', 'shadow', 'underlying=BTC',
+         VALUES ($1::uuid, 'bs_pricer', 'bs_pricer_black76', '1.0.1', 'shadow', 'underlying=BTC',
             '{\"underlying\":\"BTC\"}', 'success', $2::timestamptz, $2::timestamptz, $2::timestamptz,
             'sha256:0', 'a1b2c3d', $3)",
     )

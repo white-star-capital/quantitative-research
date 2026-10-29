@@ -574,7 +574,7 @@ mod evaluate {
         s.production = None;
         s.shadows = vec![ImplementationRef {
             implementation: "bs_pricer_black76".into(),
-            version: "1.0.0".into(),
+            version: "1.0.1".into(),
         }];
         s.definition = serde_json::json!({ "evaluation": doc["config"].clone() });
         s

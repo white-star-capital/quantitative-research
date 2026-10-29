@@ -2,13 +2,14 @@
 
     uv run python -m terminal_models.tools.build_fixtures --recording <dir> [--check]
 
-For each recorded asset and each implementation (bs_pricer_black76, parity_deribit): replay the
-raw bodies through the production DeribitAdapter and the runner's fetch path (declared and
-follow-up inputs), run the model via the runner pipeline (full validation, sanity checks), freeze
-the parts that vary per execution (run_id, started/finished, git SHA), and write
-contracts/fixtures/valid/composite/<prefix>_<asset>.json. A run that fails on real data is
-written as the failed envelope and reported: real-data failures are findings, not things to tune
-away. Invalid fixtures are derived from the BTC fixture, one broken rule each.
+For each recorded asset and each implementation in the recording (bs_pricer_black76,
+parity_deribit, rv_har): replay the raw bodies through the production Deribit and Hyperliquid
+adapters and the runner's fetch path (declared and follow-up inputs), run the model via the runner
+pipeline (full validation, sanity checks), freeze the parts that vary per execution (run_id,
+started/finished, git SHA), and write contracts/fixtures/valid/composite/<prefix>_<asset>.json.
+A run that fails on real data is written as the failed envelope and reported: real-data failures
+are findings, not things to tune away. Invalid fixtures are derived from the BTC fixture, one
+broken rule each.
 
 parity_deribit is skipped while its manifest's fee table is null (it can't run without fees).
 """
@@ -26,16 +27,22 @@ from typing import Any
 
 from terminal_models.adapters.deribit import DeribitAdapter
 from terminal_models.adapters.deribit.replay import RecordedClient
+from terminal_models.adapters.hyperliquid import HyperliquidAdapter
+from terminal_models.adapters.hyperliquid.replay import RecordedHyperliquidClient
 from terminal_models.core.base import InputData
 from terminal_models.core.manifest import load_manifest
 from terminal_models.core.paths import contracts_dir, library_dir
-from terminal_models.core.payloads import get_section, records
+from terminal_models.core.payloads import get_section, records, scalars
 from terminal_models.core.registry import null_fees
 from terminal_models.core.slots import load_slots
 from terminal_models.runner.execute import RunSpec, execute, fetch_inputs
 
 IMPLEMENTATION = "bs_pricer_black76"
-PREFIX = {"bs_pricer_black76": "bs_pricer", "parity_deribit": "parity"}  # fixture file prefix
+PREFIX = {  # fixture file prefix
+    "bs_pricer_black76": "bs_pricer",
+    "parity_deribit": "parity",
+    "rv_har": "vrp",
+}
 FIXTURE_SHA = "0" * 40  # fixtures are code-version independent; the producer is in the report
 
 
@@ -60,7 +67,11 @@ def replay_inputs(
     spec = RunSpec(
         load_slots()[manifest.fills_slot], manifest, "shadow", {"underlying": asset}, started
     )
-    inputs = fetch_inputs(spec, {"deribit": DeribitAdapter(client)})
+    adapters = {
+        "deribit": DeribitAdapter(client),
+        "hyperliquid": HyperliquidAdapter(RecordedHyperliquidClient(recording)),
+    }
+    inputs = fetch_inputs(spec, adapters)
     latest = max(d.snapshot_at for d in inputs.values())
     return inputs, latest.replace(microsecond=0)
 
@@ -83,6 +94,8 @@ def invalid_variants(env: dict[str, Any], implementation: str = IMPLEMENTATION) 
     """One broken rule each (CONTRACTS §1: the filename says which)."""
     if implementation == "parity_deribit":
         return parity_invalid_variants(env)
+    if implementation == "rv_har":
+        return vrp_invalid_variants(env)
     out: dict[str, str] = {}
 
     nan = copy.deepcopy(env)
@@ -123,6 +136,44 @@ def parity_invalid_variants(env: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def vrp_invalid_variants(env: dict[str, Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    nan = copy.deepcopy(env)
+    signal = get_section(nan["payload"], "signal")
+    col = [c["key"] for c in signal["columns"]].index("rv_forecast")
+    signal["rows"][0][col] = float("nan")
+    out["nan_rv_forecast"] = json.dumps(nan, indent=1, allow_nan=True) + "\n"
+
+    short = copy.deepcopy(env)
+    signal = get_section(short["payload"], "signal")
+    col = [c["key"] for c in signal["columns"]].index("vrp_z")
+    del signal["rows"][0][col]
+    out["signal_row_missing_vrp_z"] = json.dumps(short, indent=1) + "\n"
+
+    cone = copy.deepcopy(env)
+    get_section(cone["payload"], "cone")["series"][0]["values"].pop()
+    out["cone_series_wrong_length"] = json.dumps(cone, indent=1) + "\n"
+    return out
+
+
+def vrp_report(asset: str, env: dict[str, Any]) -> list[str]:
+    lines = [f"{asset}: {env['status']} as_of {env['as_of']}"]
+    if env["status"] == "failed":
+        return lines + [f"  FAILED {env['error']['code']}: {env['error']['message']}"]
+    lines += [f"  warning {w['code']}: {w['message']}" for w in env["warnings"]]
+    context = scalars(get_section(env["payload"], "context"))
+    lines.append(
+        f"  days {context['n_days']} (missing {context['n_days_missing']}), "
+        f"signal_enabled {context['signal_enabled']}, dvol {context['dvol']}"
+    )
+    for r in records(get_section(env["payload"], "signal")):
+        lines.append(
+            f"  {r['tenor_days']}d iv {r['iv_impl']} rv {r['rv_forecast']} z {r['vrp_z']} "
+            f"flags {r['flags'] or '-'}"
+        )
+    return lines
+
+
 def parity_report(asset: str, env: dict[str, Any]) -> list[str]:
     lines = [f"{asset}: {env['status']} as_of {env['as_of']}"]
     if env["status"] == "failed":
@@ -159,6 +210,9 @@ def report(asset: str, env: dict[str, Any]) -> list[str]:
     return lines
 
 
+REPORTS = {"bs_pricer": report, "parity": parity_report, "vrp": vrp_report}
+
+
 def build(recording: Path) -> tuple[dict[Path, str], list[str]]:
     manifest = json.loads((recording / "manifest.json").read_text())
     assets = [a for a, s in manifest["assets"].items() if s["ok"]]
@@ -169,6 +223,9 @@ def build(recording: Path) -> tuple[dict[Path, str], list[str]]:
         f"recorder {manifest['git_sha'][:12]})"
     ]
     for implementation, prefix in PREFIX.items():
+        if implementation not in manifest["implementations"]:
+            notes.append(f"{implementation}: skipped, not in this recording")
+            continue
         impl_manifest = load_manifest(library_dir() / implementation / "manifest.yaml")
         if null_fees(impl_manifest):
             notes.append(f"{implementation}: skipped, params.fees is null")
@@ -181,7 +238,7 @@ def build(recording: Path) -> tuple[dict[Path, str], list[str]]:
             files[root / "valid" / "composite" / f"{prefix}_{asset.lower()}.json"] = (
                 json.dumps(env, indent=1, allow_nan=False) + "\n"
             )
-            notes += (parity_report if prefix == "parity" else report)(asset, env)
+            notes += REPORTS[prefix](asset, env)
         btc = envs.get("BTC")
         if btc and btc["status"] == "success":
             for name, text in invalid_variants(btc, implementation).items():

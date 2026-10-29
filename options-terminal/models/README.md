@@ -13,6 +13,9 @@ uv run python -m terminal_models.tools.gen_pricing_vectors --check   # parity ve
 # Deribit recordings → fixtures → evaluate vectors → golden tests: adapters/deribit/README.md
 uv run python -m terminal_models.tools.build_fixtures --check --recording <dir>
 
+# rv_har §9 promotion gates on a recording: terminal_models/library/rv_har/README.md
+uv run python -m terminal_models.tools.validate_rv --recording <dir> --out <report.json>
+
 # Postgres-backed tests (writer, registry sync, run → replay)
 TEST_DATABASE_URL=postgresql://postgres@localhost:5432/postgres uv run pytest tests/test_writer_postgres.py
 ```
