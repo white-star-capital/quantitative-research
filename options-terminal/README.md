@@ -12,6 +12,7 @@
 | `FRONTEND.md` | `frontend/` — terminal UI, rendering, staleness, security |
 | `BS_PRICER_IMPLEMENTATION_GUIDE.md` | First model: `bs_pricer` (Black-76 on Deribit for BTC/ETH/SOL/HYPE) across all four components |
 | `PARITY_MONITOR_IMPLEMENTATION_GUIDE.md` | Second model: `parity_monitor` (put-call parity, implied carry, executable conversion/reversal edges, inventory lock rate) |
+| `RV_FORECAST_IMPLEMENTATION_GUIDE.md` | Third model: `vrp_signal` (event-aware realized-vol forecast per tenor vs ATM implied, VRP z-score and decomposition; advisory only) |
 
 Requirement keywords: **MUST** = required for acceptance, **SHOULD** = expected unless there's a documented reason not to, **MAY** = optional.
 

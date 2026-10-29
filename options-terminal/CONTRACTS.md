@@ -86,7 +86,7 @@ Common building blocks:
 "unit": { "quantity": "implied_vol", "scale": "decimal" }
 ```
 
-`quantity` is from a controlled vocabulary (`implied_vol`, `realized_vol`, `vol_spread`, `price`, `price_usd`, `delta`, `gamma`, `vega`, `theta`, `rate`, `ratio`, `probability`, `yield_annualized`, `bps`, `strike`, `moneyness_log`, `moneyness_simple`, `delta_bucket`, `tenor_days`, `expiry_date`, `timestamp`, `count`, `other`). `vol_spread` is a difference of vols, sent as a decimal and shown in vol points. `scale` is one of `decimal`, `percent`, `bps`, `absolute`. Adding a vocabulary term is a contract PR.
+`quantity` is from a controlled vocabulary (`implied_vol`, `realized_vol`, `vol_spread`, `price`, `price_usd`, `delta`, `gamma`, `vega`, `theta`, `rate`, `ratio`, `probability`, `yield_annualized`, `zscore`, `bps`, `strike`, `moneyness_log`, `moneyness_simple`, `delta_bucket`, `tenor_days`, `expiry_date`, `timestamp`, `count`, `other`). `vol_spread` is a difference of vols, sent as a decimal and shown in vol points. `zscore` is a standardized score in standard deviations, sent with scale `absolute`; the population it is scored against is stated in the slot's `conventions`. `scale` is one of `decimal`, `percent`, `bps`, `absolute`. Adding a vocabulary term is a contract PR.
 
 Greeks MUST state their bump convention in `unit.convention` (e.g. vega `"per_1vol_point"`, theta `"per_calendar_day"`).
 

@@ -6,6 +6,8 @@
 
 > **v0.2 changes from v0.1.** (1) Evaluation uses the generic route `GET /v1/slots/{slot_id}/evaluate`, dispatched by the slot YAML's `evaluation.evaluator`, so the API still hard-codes no slot (API A-27). The URL for this slot is unchanged. (2) Removed the go-live item "network restriction in place": README §8 Q1 is decided (research use, no restriction). (3) §5.3 uses the real `InputSpec(name, source, params)` signature. (4) The base-document amendments listed below are now made in those documents.
 
+> **Amendment (2026-10-29): v1.0.1.** `build_expiries` moved from `bs_pricer_black76/model.py` to `core/quant/surface.py` so the vrp_signal slot shares it (RV_FORECAST_IMPLEMENTATION_GUIDE.md VRP-A-6), and the implementation is bumped to 1.0.1. Its output is unchanged. The version below is 1.0.1 wherever it names the registered implementation, including the promotion step.
+
 ---
 
 ## 0. Summary
@@ -13,7 +15,7 @@
 | | |
 |---|---|
 | **Slot** | `bs_pricer` |
-| **First implementation** | `bs_pricer_black76` v1.0.0 |
+| **First implementation** | `bs_pricer_black76` v1.0.1 (shipped as 1.0.0) |
 | **Assets (scope `underlying`)** | `BTC`, `ETH`, `SOL`, `HYPE` |
 | **Market data** | Deribit public API for all four. **No Volmex dependency.** |
 | **Cadence** | Every 5 minutes per asset; stale after 15 minutes |
@@ -392,7 +394,7 @@ models/terminal_models/
 
 ```yaml
 implementation_id: bs_pricer_black76
-version: 1.0.0
+version: 1.0.1
 fills_slot: bs_pricer
 owner: alejandro
 description: Black-76 on Deribit marks; piecewise-linear total-variance surface.
@@ -475,7 +477,7 @@ slots:
   bs_pricer:
     production: null                   # first model: start as shadow, see §9
     shadow:
-      - { implementation: bs_pricer_black76, version: 1.0.0 }
+      - { implementation: bs_pricer_black76, version: 1.0.1 }
     scopes:
       - { underlying: BTC }
       - { underlying: ETH }
@@ -734,7 +736,7 @@ Signs and colours are **side-aware**: "good for us" is positive and green whethe
 |   | • ATM 30d tracks DVOL direction for BTC/ETH (level gap expected) | | |
 |   | • UAT: re-price the draft's sample quote (ETH 6 Nov 2660C, 100 ETH, $6,059 total, spot ref 2,473.59) and explain any difference from `eth_quoter_v1.py` (forward vs spot, expiry time) | | |
 |   | • PM, trader and quant each complete a task on staging and sign off | | |
-| 7 | **Promote:** registry PR `production: bs_pricer_black76 1.0.0`, link the validation notes | Alejandro | Merged and deployed |
+| 7 | **Promote:** registry PR `production: bs_pricer_black76 1.0.1`, link the validation notes | Alejandro | Merged and deployed |
 | 8 | **Monitoring live:** alerts on (a) any scope stale > 15 min, (b) failed-run rate > 5%/h per asset, (c) `mark_reproduction` failure, (d) `/evaluate` 5xx, (e) API p95 above targets | Platform | Alerts fire in a staged test |
 | 9 | **Retire the draft:** archive `eth_quoter_v1.py`; open backlog item for `covered_call_screen` (§1, Move out) | Alejandro | Done |
 

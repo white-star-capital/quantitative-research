@@ -39,7 +39,8 @@ These came out of mapping the guide onto the terminal. Where they conflict with 
 - **VRP-A-6 IV source.** A slot cannot read another slot's output.
   - `build_expiries` moves from `bs_pricer_black76/model.py` to `core/quant/surface.py`, and bs_pricer is bumped to 1.0.1. Its output is unchanged.
   - `vrp_signal` reads the same `chain` kind and takes ATM IV at 7, 14, 30 and 60 days with the same interpolation, passing extrapolation flags through.
-  - It runs at minute 5 of each hour, so the per-tick snapshot cache (Parity A-3) gives it the same chain as bs_pricer.
+  - It runs at minute 5 of each hour, in the same `run-due` pass as bs_pricer and parity_monitor and after them (registry order). The per-tick snapshot cache (Parity A-3) reuses a chain only for `TICK_MAX_REUSE_S` (20 s), so vrp usually fetches its own chain a few seconds to a minute after bs_pricer's. The monitor's "ATM 30d" (bs_pricer) and "VRP fcst 30d" (this slot's `iv_impl`) can therefore come from chains up to about a minute apart; each envelope's `inputs` records which.
+  - Run cost: the expanding-origin history (§12.6) refits every `history_refit_every` origins, so a run at the shipped params takes a few seconds and the four scopes don't push the pass past the next minute's parity run (tested at shipped params).
 - **VRP-A-7 Assets: BTC, ETH, SOL and HYPE.**
   - RV history comes from Deribit perpetual candles when Deribit lists a perpetual, otherwise from Hyperliquid candles (`adapters/hyperliquid`).
   - No placeholder prices: a scope with too little history fails with `insufficient_history`.
@@ -47,8 +48,9 @@ These came out of mapping the guide onto the terminal. Where they conflict with 
 - **VRP-A-8 Data: the `rv_daily` input kind.**
   - Takes `venue`, `instrument`, `resolution` and `lookback_days`.
   - Pages through candles and returns completed UTC days only (day boundary 00:00), as `{day[], rv[], n_bars[]}` with `RV_d = Σ r²` over log close-to-close returns.
-  - A day below `min_coverage` of its expected bars is `null`, never filled.
-  - Completed days are immutable, so the adapter caches them per (venue, instrument, resolution, day) under `SNAPSHOT_DIR/rv_daily/` and only fetches new days.
+  - A day below `min_coverage` of its expected bars is `null`, never filled. A return that reaches back past more than one bar into an earlier day (the first return after a missing day) is dropped, so a missing day's variance never lands on the next day.
+  - Completed days are immutable, so the adapter caches them per (venue, instrument, resolution, day) under `SNAPSHOT_DIR/rv_daily/` and only fetches new days. Only a day with at least `min_coverage` of its bars is cached; an empty or short day (outage, transient `no_data`, a page cut short by a lower row cap than assumed) is fetched again on the next run.
+  - A HAR lag mean averages the non-null days in its window and needs 80% of them (4 of 5, 18 of 22; the 1-day lag needs its day), so one null day no longer blocks the forecast origin for 22 days.
   - Hyperliquid serves only about the latest 5,000 candles per interval (unverified; check live). That is roughly 17 days at 5-min bars and 208 days at hourly bars, so `resolution` is set per asset in the manifest. The cache grows the history over time.
   - Deribit's 5-min depth and row cap must be checked live before BTC/ETH move from hourly to 5-min bars.
 - **VRP-A-9 Event calendar.**
@@ -56,6 +58,7 @@ These came out of mapping the guide onto the terminal. Where they conflict with 
   - **Rule-derived events:** monthly and quarterly opex are derived (Deribit expiry: last Friday of the month, 08:00 UTC; quarterly in Mar/Jun/Sep/Dec) by `core/quant/calendar.py`.
   - **Windows:** `params.event_windows` is the per-type config map.
   - **Edits:** every calendar edit is reviewed in a PR and bumps the version (M-11), because it changes output.
+  - **Coverage:** `params.events_listed_through` gives, per listed scheduled type (FOMC, CPI), the date through which its list is complete. When the horizon plus the widest window reaches past it, recent fit days and the horizon would read "no event" where there may be one, so the run sets `signal_enabled` false with `event_calendar_incomplete` and flags every signal row (§12.3, §12.4). `tools/validate_rv.py` fails its `event_calendar_complete` gate on the same test over the sample.
   - This is reference data, not market data, so D-10 doesn't apply. Each entry carries a `source`.
 - **VRP-A-10 Signal P&L gate (§9) on a proxy.** There are no historical option prices. The P&L backtest is a variance-swap proxy, BTC/ETH only:
   - short 30-day variance struck at DVOL²;
@@ -320,6 +323,36 @@ If it can't at least match HAR ex-event **and** beat it inside event windows, pl
 
 **Signal P&L backtest.** A good RV forecast is not a profitable signal. Backtest the actual rule, "sell vol when `vrp_z` > threshold, gated by the band and event rules", **including the jump days**. If the edge evaporates once the tails are in, the signal is timing noise. This test, not the accuracy test, decides whether it touches the book. `tools/validate_rv.py` runs these on recorded data and writes a report. Promotion from shadow is a PR that cites the report.
 
+**`tools/validate_rv.py` (as implemented, P6).** It runs only on a recording that includes rv_har:
+
+```sh
+uv run python -m terminal_models.tools.validate_rv --recording <dir> --out <report.json> \
+  [--assets BTC,ETH] [--folds 8] [--z-threshold 1.0] [--bias-tolerance 0.10]
+```
+
+- **Inputs.** Each asset's `rv_daily` and, for BTC/ETH, `dvol_history` are replayed through the production adapters with the run's own InputSpecs. Nothing is fetched live and nothing is filled.
+- **Backtest.** It uses every origin with `min_history_days[asset]` of prior RV, split into `--folds` contiguous folds. Each fold refits on days ≤ its first origin and holds the fit through the fold.
+- **Forecasters.** All three use the `core/quant/rv.py` functions and the rv_har manifest params:
+  - rv_har (HAR + day-of-week + events, median path as in `signal`);
+  - plain HAR;
+  - EWMA(0.94).
+- **Accuracy.** MASE and RMSSE are computed on two bases, each split all / ex-event / in-event:
+  - per horizon 1..60 on log daily variance, then averaged over horizons; the scale is the in-sample one-step naive before the first origin;
+  - per tenor 7/14/30/60 on annualized RV over days t+1..t+T, with the previous T-day window as naive.
+  - A horizon pair is in-event when its target day is in an in-scope event window; a tenor window is in-event when any of its days is.
+- **Bias.** Mean forecast − actual in annualized daily vol, on ex-event target days, pooled over horizons.
+- **P&L proxy (BTC/ETH, 30d).**
+  - The rule is short when `vrp_z` > `--z-threshold`, DVOL > RV^0.9(30) (band) and `comp_event(30)` ≤ `event_hump_share`. Naive is always short. `vrp_z` is scored as in §12.6 on the backtest's 30d forecasts.
+  - P&L = DVOL² − realized RV² over the next 30 days, jump days included.
+  - Entries are non-overlapping, every 30 days back from the last matured window. Sharpe = mean/sd(ddof = 1) · √(365/30); a flat period counts as 0 for the rule.
+- **Gates.** Evaluated per asset as `pass`, `fail`, `unavailable` (too little data, which counts as a fail) or `not_applicable` (no DVOL basis):
+  - RMSSE(rv_har) ≤ 1.05 × RMSSE(HAR) ex-event;
+  - RMSSE(rv_har) < RMSSE(HAR) in event windows;
+  - |bias| / mean actual ≤ `--bias-tolerance` (0.10 by default: the table above gives no number);
+  - rule Sharpe > 0 **and** > naive Sharpe.
+- **Report.** The JSON report holds the recording's manifest sha256, per-input hashes (the runner's `input_hash`), the params hash, the git SHA, the config, per-asset metrics and the gates.
+- **Exit code.** 0 when every asset passes, 1 otherwise, 2 when the recording is unusable.
+
 ## 10. Risk guardrails & integration
 
 The single rule that governs everything here: **this is a central estimate.** You get paid on the mean of realized vol and you die on the tail, and the model smooths the tail. It will *systematically under-forecast* tail realized vol.
@@ -360,3 +393,213 @@ The single rule that governs everything here: **this is a central estimate.** Yo
   - Deribit's 5-min candle depth and row cap;
   - Hyperliquid's candle cap;
   - whether Deribit lists SOL and HYPE perpetuals.
+
+## 12. Payload (v1)
+
+The exact composite payload `rv_har` emits and `views/vrp_signal` reads. It is legal under `contracts/schemas/payloads/composite/v1.json` and the C-4 shape checks in `core/validation.py` (`validate_payload_full`). Keys are stable (C-5); labels may change. Every section is always present, in this order, and every column, item and series listed is always present, even when all its values are `null`. A value that can't be computed is `null` with a flag, never 0 (C-3).
+
+### 12.1 Time conventions
+
+- **Day close.** A UTC day d runs `[00:00, 24:00)`. Its close is the 00:00 UTC that ends it. Every day timestamp in this payload is a **close**.
+- **`C`**, the forecast origin, is the close of the last completed UTC day in the `rv_daily` input. At run time `C` is normally the most recent 00:00 UTC before `as_of`.
+- **Forecast day k** (k = 1..60) is `[C + (k−1)·1d, C + k·1d)`. Day 1 is the UTC day in progress at `as_of`. This is the "next 00:00" of VRP-A-14.
+- **Tenor T** covers forecast days 1..T.
+
+### 12.2 Forecast definitions
+
+- `ŷ_k`: the direct h = k HAR+events forecast of log daily variance from origin `C` (VRP-A-1).
+- `q_k(p)`: the empirical p-quantile of the h = k in-sample residuals, for p ∈ `params.quantiles` = [0.1, 0.5, 0.9].
+- `v̂_k^p = exp(ŷ_k + q_k(p))`.
+- `RV^p(T) = sqrt(365 / T · Σ_{k=1..T} v̂_k^p)`.
+- `rv_forecast = RV^0.5`, `rv_low = RV^0.1` and `rv_high = RV^0.9`. Summing per-day quantiles gives a crude, comonotone cone, which is what §6's band rule asks for.
+- **Decomposition**, all on the 0.5 path, in variance:
+  - `V(T) = Σ_{k≤T} v̂_k^0.5`;
+  - `V_noevt` uses the same fit with the event dummies zeroed over days 1..T;
+  - `V_nodow` uses the same fit with every forecast day at the average day of the week: each day-of-week dummy at 1/7 (`core/quant/rv.py:counterfactuals`). Not the Monday reference level, which would make the share depend on the reference day and, with low-vol weekends, pin it at 0. Over whole weeks the share is therefore near 0; it is positive when the horizon is weighted toward high-vol days.
+  - `s_evt = max(0, 1 − V_noevt/V)` and `s_sea = max(0, 1 − V_nodow/V)`.
+  - If `s_evt + s_sea > 1`, both are divided by their sum.
+  - `comp_event = s_evt`, `comp_seasonal = s_sea` and `comp_baseline = 1 − s_evt − s_sea`.
+  - The three sum to 1 within 1e-12. "Seasonal" is day of week only in v1.
+- **Event window overlap.** An in-scope event (GLOBAL, or this underlying) with UTC day `D`, `window_before` b and `window_after` a covers days `D−b .. D+a`.
+
+### 12.3 Section `signal` (`table`)
+
+One row per tenor in `params.tenors` ([7, 14, 30, 60] in v1), ascending.
+
+| key | type | unit (quantity, scale) | null? | definition |
+|---|---|---|---|---|
+| `tenor_days` | number | `tenor_days`, `absolute` | no | T |
+| `iv_impl` | number | `implied_vol`, `decimal` | yes, with `iv_unavailable` | `core/quant/metrics.py:atm_iv` at T days from `as_of` on the chain surface (VRP-A-6) |
+| `rv_forecast` | number | `realized_vol`, `decimal` | no | `RV^0.5(T)` |
+| `rv_low` | number | `realized_vol`, `decimal` | no | `RV^0.1(T)` |
+| `rv_high` | number | `realized_vol`, `decimal` | no | `RV^0.9(T)` |
+| `vrp` | number | `vol_spread`, `decimal` | iff `iv_impl` is null | `iv_impl − rv_forecast` |
+| `vrp_z` | number | `zscore`, `absolute` | yes, with `z_unavailable` or `z_insufficient_history` | the 30d row for BTC/ETH only, on the DVOL basis: equals the last value of `history.vrp_z_30d` (VRP-A-5) |
+| `comp_baseline` | number | `ratio`, `decimal` | no | §12.2 |
+| `comp_seasonal` | number | `ratio`, `decimal` | no | §12.2 |
+| `comp_event` | number | `ratio`, `decimal` | no | §12.2 |
+| `event_in_horizon` | boolean | none | no | some in-scope event's window overlaps days 1..T |
+| `rich` | boolean | none | iff `iv_impl` is null | `iv_impl > rv_high` (band discipline) |
+| `event_hump` | boolean | none | no | `comp_event > params.event_hump_share` |
+| `signal_ok` | boolean | none | no | `vrp_z` and `iv_impl` are non-null, `event_hump` is false, and `context.signal_enabled` is true |
+| `flags` | string | none | no | Comma-joined codes, `""` when none (the parity `opportunities.flags` precedent). Codes are listed below. |
+
+Row flag codes:
+- `iv_unavailable`: no ATM IV at T, so `iv_impl`, `vrp` and `rich` are null.
+- `tenor_extrapolated_short` / `tenor_extrapolated_long`: passed through from `atm_iv`.
+- `z_unavailable`: no z basis for this cell. That is every tenor ≠ 30, and every SOL/HYPE row.
+- `z_insufficient_history`: a basis exists (BTC/ETH 30d), but the trailing window has fewer than `params.z_min_obs` values, its standard deviation is 0, or DVOL at `C` is missing.
+- `z_basis_dvol`: `vrp_z` is non-null and was scored on `DVOL − rv_forecast`, not on this row's `vrp` (VRP-A-5).
+- `event_calendar_incomplete`: a listed event type's calendar stops before the horizon (VRP-A-9), so `event_in_horizon` and `comp_event` may miss an event; `signal_ok` is false.
+
+### 12.4 Section `context` (`scalar_set`)
+
+| key | value | unit (quantity, scale, convention) | null? | definition |
+|---|---|---|---|---|
+| `last_complete_day` | number | `timestamp`, `absolute`, `unix_seconds` | no | `C` as Unix epoch seconds |
+| `n_days` | number | `count`, `absolute` | no | non-null RV days in the fit sample |
+| `n_days_missing` | number | `count`, `absolute` | no | days in the lookback that are null (below `min_coverage`, VRP-A-8) |
+| `fit_r2` | number | `ratio`, `decimal` | no | in-sample R² of the h = 1 HAR+events regression, in log variance |
+| `resid_sd` | number | `other`, `absolute`, `log_variance` | no | standard deviation of the h = 1 residuals, in log daily variance |
+| `rv_trailing_30d` | number | `realized_vol`, `decimal` | yes, with `insufficient_days` | backward-looking: `sqrt(365 · mean(RV_d))` over the non-null days among the 30 ending at `C`. Null if fewer than `params.window_min_days` are non-null. |
+| `rv_ewma_30d` | number | `realized_vol`, `decimal` | no | EWMA(λ = 0.94) baseline 30d forecast: `sqrt(365 · σ²_EWMA,C)`, flat |
+| `rv_har_30d` | number | `realized_vol`, `decimal` | no | plain-HAR baseline (no day-of-week or event terms) `RV^0.5(30)` |
+| `dvol` | number | `implied_vol`, `decimal` | yes, with `dvol_unavailable` | Deribit DVOL daily close at `C` (BTC/ETH). SOL/HYPE are always null. |
+| `vrp_30d_dvol` | number | `vol_spread`, `decimal` | iff `dvol` is null | `dvol − signal[30].rv_forecast`. Equals the last value of `history.vrp_30d`. |
+| `vrp_z_mean` | number | `vol_spread`, `decimal` | iff `signal[30].vrp_z` is null | the trailing-window mean behind `vrp_z` |
+| `vrp_z_sd` | number | `vol_spread`, `decimal` | iff `signal[30].vrp_z` is null | the trailing-window sample standard deviation (ddof = 1) |
+| `vrp_z_n` | number | `count`, `absolute` | no | non-null values in that window; 0 off-basis |
+| `event_hump_share` | number | `ratio`, `decimal` | no | the threshold in use, `params.event_hump_share` |
+| `signal_enabled` | boolean | `other`, `absolute` | no | false when the RV input lags (`C` is earlier than the latest 00:00 UTC ≤ `as_of`; flag `rv_input_lagging`) or a listed event type's calendar stops before the horizon (flag `event_calendar_incomplete`, VRP-A-9). The item carries one flag per reason. |
+
+**The view's gate.** The signal shows only when `signal_enabled` is true, the run is not `meta.stale` and the row's `signal_ok` is true (§10 staleness).
+
+Strings never appear in `context` (VRP-A-12). The RV venue and instrument are in `envelope.inputs.sources`, and the model version is on the envelope.
+
+### 12.5 Section `cone` (`curve`)
+
+- `x`: label "Horizon (days)", unit `tenor_days`/`absolute`, values `1, 2, …, 60` (no nulls; the schema forbids them on an axis).
+- Series, each with 60 values:
+
+| key | unit | null? | value at x = T |
+|---|---|---|---|
+| `rv_forecast` | `realized_vol`, `decimal` | no | `RV^0.5(T)`, cumulative over days 1..T. At 7/14/30/60 it equals `signal.rv_forecast`. |
+| `rv_low` | `realized_vol`, `decimal` | no | `RV^0.1(T)` |
+| `rv_high` | `realized_vol`, `decimal` | no | `RV^0.9(T)` |
+| `atm_iv` | `implied_vol`, `decimal` | sparse | `signal.iv_impl` at x ∈ `params.tenors`; null at every other x, and where `iv_impl` is null |
+| `rv_path` | `realized_vol`, `decimal` | no | `sqrt(365 · v̂_T^0.5)`: forecast day T on its own, not cumulative (the plan's "path") |
+| `rv_path_ex_event` | `realized_vol`, `decimal` | no | `rv_path` with the event dummies zeroed. The gap to `rv_path` is the event hump. |
+
+### 12.6 Section `history` (`timeseries`)
+
+- `t`: daily closes at 00:00 UTC (`YYYY-MM-DDT00:00:00Z`), strictly increasing and gap-free.
+  - The last value is `C`; there are `min(params.history_days, available)` values, 365 in v1.
+  - A day with no data keeps its `t` and gets nulls.
+- **Expanding-origin forecast.** At each origin `t`, the HAR+events forecast uses a fit on days ≤ `t` only: no look-ahead. The model is refit every `params.history_refit_every` (5) origins, counted back from `C`, and held in between, so `C` is always fit fresh and the last value equals `signal[30].rv_forecast`.
+  - The forecasts are computed for `history_days + z_window_days` origins so that z exists from the first emitted point. Only the last `history_days` are emitted.
+  - An origin with fewer than `params.min_history_days` of prior data gets nulls.
+
+| key | unit | null? | value at `t` |
+|---|---|---|---|
+| `rv_realized_30d` | `realized_vol`, `decimal` | yes | backward-looking realized: `sqrt(365 · mean(RV_d))` over the non-null days among the 30 ending at `t`; null below `window_min_days` |
+| `rv_forecast_30d` | `realized_vol`, `decimal` | yes | the as-of forecast made at origin `t` for days `(t, t+30d]`, `RV^0.5(30)`. Its last value equals `signal[30].rv_forecast`. |
+| `rv_forecast_30d_matured` | `realized_vol`, `decimal` | yes | `rv_forecast_30d` at `t − 30d`, i.e. the forecast for the window that ends at `t`. Compare it to `rv_realized_30d` (forecast against outcome). |
+| `dvol` | `implied_vol`, `decimal` | yes | DVOL daily close at `t`; all null for SOL/HYPE |
+| `vrp_30d` | `vol_spread`, `decimal` | yes | `dvol − rv_forecast_30d` |
+| `vrp_z_30d` | `zscore`, `absolute` | yes | `(vrp_30d_t − mean) / sd` over the non-null `vrp_30d` in the `params.z_window_days` (90) days **before** `t` (exclusive of `t`, ddof = 1). Null below `z_min_obs` values or when sd = 0. |
+
+### 12.7 Section `events` (`table`)
+
+Every in-scope event, from the manifest plus rule-derived opex, whose window overlaps forecast days 1..max(tenors). Rows are sorted by `ts`, then `type`. The table may have zero rows.
+
+| key | type | unit | null? | definition |
+|---|---|---|---|---|
+| `ts` | timestamp | none | no | event time, ISO UTC |
+| `type` | string | none | no | one of `fomc`, `cpi`, `opex_monthly`, `opex_quarterly`, `token_unlock`, `halving`, `custom` |
+| `scope` | string | none | no | `GLOBAL` or the underlying |
+| `window_before` | number | `count`, `absolute` | no | days b, from `params.event_windows[type]` |
+| `window_after` | number | `count`, `absolute` | no | days a |
+| `horizon_day` | number | `count`, `absolute` | no | the forecast day k that contains `ts`. It is ≤ 0 for a past event whose window still overlaps day 1. |
+| `source` | string | none | no | the manifest entry's `source`, or `rule` for derived opex |
+
+### 12.8 Params referenced
+
+These are `params.*` in the `rv_har` manifest, with v1 defaults:
+- `tenors` [7, 14, 30, 60]
+- `quantiles` [0.1, 0.5, 0.9]
+- `event_hump_share` 0.35
+- `z_window_days` 90
+- `z_min_obs` 60
+- `window_min_days` 24
+- `history_days` 365
+- `history_refit_every` 5
+- `min_history_days` (per asset)
+- `events`
+- `events_listed_through`
+- `event_windows`
+
+### 12.9 Shape example (ILLUSTRATIVE values, not market data)
+
+Arrays are truncated with `…`; a real payload has 4 signal rows, 60 cone points and up to 365 history points.
+
+```json
+{
+  "sections": [
+    {"key": "signal", "label": "Signal by tenor", "payload_kind": "table", "payload_version": "1", "payload": {
+      "columns": [
+        {"key": "tenor_days", "label": "Tenor", "type": "number", "unit": {"quantity": "tenor_days", "scale": "absolute"}},
+        {"key": "iv_impl", "label": "ATM IV", "type": "number", "unit": {"quantity": "implied_vol", "scale": "decimal"}},
+        {"key": "rv_forecast", "label": "RV forecast", "type": "number", "unit": {"quantity": "realized_vol", "scale": "decimal"}},
+        {"key": "rv_low", "label": "RV low (q0.1)", "type": "number", "unit": {"quantity": "realized_vol", "scale": "decimal"}},
+        {"key": "rv_high", "label": "RV high (q0.9)", "type": "number", "unit": {"quantity": "realized_vol", "scale": "decimal"}},
+        {"key": "vrp", "label": "VRP", "type": "number", "unit": {"quantity": "vol_spread", "scale": "decimal"}},
+        {"key": "vrp_z", "label": "VRP z", "type": "number", "unit": {"quantity": "zscore", "scale": "absolute"}},
+        {"key": "comp_baseline", "label": "Baseline share", "type": "number", "unit": {"quantity": "ratio", "scale": "decimal"}},
+        {"key": "comp_seasonal", "label": "Seasonal share", "type": "number", "unit": {"quantity": "ratio", "scale": "decimal"}},
+        {"key": "comp_event", "label": "Event share", "type": "number", "unit": {"quantity": "ratio", "scale": "decimal"}},
+        {"key": "event_in_horizon", "label": "Event in horizon", "type": "boolean"},
+        {"key": "rich", "label": "Rich (IV > RV high)", "type": "boolean"},
+        {"key": "event_hump", "label": "Event hump", "type": "boolean"},
+        {"key": "signal_ok", "label": "Signal OK", "type": "boolean"},
+        {"key": "flags", "label": "Flags", "type": "string"}
+      ],
+      "rows": [
+        [7, 0.5, 0.4, 0.3, 0.6, 0.1, null, 0.8, 0.1, 0.1, false, false, false, false, "z_unavailable"],
+        [30, 0.5, 0.4, 0.3, 0.6, 0.1, 1.0, 0.5, 0.1, 0.4, true, false, true, false, "z_basis_dvol"],
+        "…"
+      ]}},
+    {"key": "context", "label": "Context", "payload_kind": "scalar_set", "payload_version": "1", "payload": {
+      "items": [
+        {"key": "last_complete_day", "label": "Last complete day", "value": 1800000000, "unit": {"quantity": "timestamp", "scale": "absolute", "convention": "unix_seconds"}},
+        {"key": "dvol", "label": "DVOL", "value": null, "unit": {"quantity": "implied_vol", "scale": "decimal"}, "flags": ["dvol_unavailable"]},
+        {"key": "signal_enabled", "label": "Signal enabled", "value": true, "unit": {"quantity": "other", "scale": "absolute"}},
+        "…"
+      ]}},
+    {"key": "cone", "label": "RV cone vs ATM IV", "payload_kind": "curve", "payload_version": "1", "payload": {
+      "x": {"label": "Horizon (days)", "unit": {"quantity": "tenor_days", "scale": "absolute"}, "values": [1, 2, "…", 60]},
+      "series": [
+        {"key": "rv_forecast", "label": "RV forecast", "unit": {"quantity": "realized_vol", "scale": "decimal"}, "values": [0.4, 0.4, "…"]},
+        {"key": "atm_iv", "label": "ATM IV", "unit": {"quantity": "implied_vol", "scale": "decimal"}, "values": [null, null, "…"]},
+        "…"
+      ]}},
+    {"key": "history", "label": "History (30d)", "payload_kind": "timeseries", "payload_version": "1", "payload": {
+      "t": ["2000-01-01T00:00:00Z", "2000-01-02T00:00:00Z", "…"],
+      "series": [
+        {"key": "rv_realized_30d", "label": "Realized 30d", "unit": {"quantity": "realized_vol", "scale": "decimal"}, "values": [0.4, null, "…"]},
+        {"key": "vrp_z_30d", "label": "VRP z (30d, DVOL)", "unit": {"quantity": "zscore", "scale": "absolute"}, "values": [null, null, "…"]},
+        "…"
+      ]}},
+    {"key": "events", "label": "Events in horizon", "payload_kind": "table", "payload_version": "1", "payload": {
+      "columns": [
+        {"key": "ts", "label": "Time", "type": "timestamp"},
+        {"key": "type", "label": "Type", "type": "string"},
+        {"key": "scope", "label": "Scope", "type": "string"},
+        {"key": "window_before", "label": "Days before", "type": "number", "unit": {"quantity": "count", "scale": "absolute"}},
+        {"key": "window_after", "label": "Days after", "type": "number", "unit": {"quantity": "count", "scale": "absolute"}},
+        {"key": "horizon_day", "label": "Forecast day", "type": "number", "unit": {"quantity": "count", "scale": "absolute"}},
+        {"key": "source", "label": "Source", "type": "string"}
+      ],
+      "rows": [["2000-01-28T08:00:00Z", "opex_monthly", "GLOBAL", 1, 1, 27, "rule"]]}}
+  ]
+}
+```
