@@ -6,6 +6,8 @@ import type { SlotSummary } from "../../api/types.ts";
 import {
   type Gate,
   type SignalRow,
+  CALENDAR_WARN_DAYS,
+  calendarChip,
   chips,
   cone,
   contextItems,
@@ -160,6 +162,32 @@ describe("staleness gate (§10, §12.4)", () => {
   });
 });
 
+describe("event calendar countdown (§12.4)", () => {
+  const ctx = (items: Partial<ScalarItem>[]) => contextItems(synthetic([], items));
+  const left = (n: number | null) => ctx([ENABLED, { key: "calendar_days_left", value: n, unit: { quantity: "count", scale: "absolute" } }]);
+  it("warns below 21 days, counting down to the longest tenor's last covered day", () => {
+    assert.equal(CALENDAR_WARN_DAYS, 21);
+    assert.equal(calendarChip(left(21)), null);
+    assert.equal(calendarChip(left(20))?.label, "CALENDAR ENDS IN 20d (LONGEST TENOR)");
+    assert.equal(calendarChip(left(14))?.tone, "mid");
+    assert.equal(calendarChip(left(0))?.label, "CALENDAR ENDS IN 0d (LONGEST TENOR)");
+  });
+  it("negative with the gate open: long tenors are off, shorter ones live", () => {
+    const open = left(-5);
+    assert.equal(calendarChip(open, gate(false, open))?.label, "LONG TENORS: CALENDAR INCOMPLETE");
+  });
+  it("once negative the gate's EVENT CALENDAR INCOMPLETE takes over; a missing item shows nothing", () => {
+    const shut = ctx([
+      { key: "signal_enabled", value: false, flags: ["event_calendar_incomplete"] },
+      { key: "calendar_days_left", value: -1, unit: { quantity: "count", scale: "absolute" } },
+    ]);
+    assert.equal(calendarChip(shut, gate(false, shut)), null);
+    assert.equal(gate(false, shut).reason, "EVENT CALENDAR INCOMPLETE");
+    assert.equal(calendarChip(left(null)), null);
+    assert.equal(calendarChip(ctx([ENABLED])), null);
+  });
+});
+
 describe("chips and status (band discipline, event hump)", () => {
   const open: Gate = { open: true, reason: null };
   const shut: Gate = { open: false, reason: "RUN IS STALE" };
@@ -185,6 +213,8 @@ describe("chips and status (band discipline, event hump)", () => {
     const no = signalStatus(row(), open);
     assert.equal(no.label, "NO SIGNAL");
     assert.equal(no.title, "no ATM IV, no z-score");
+    const uncovered = signalStatus(row({ iv_impl: 0.5, vrp_z: 1.2, flags: ["event_calendar_incomplete"] }), open);
+    assert.equal(uncovered.title, "event calendar does not cover this tenor");
   });
 });
 

@@ -49,16 +49,20 @@ These came out of mapping the guide onto the terminal. Where they conflict with 
   - Takes `venue`, `instrument`, `resolution` and `lookback_days`.
   - Pages through candles and returns completed UTC days only (day boundary 00:00), as `{day[], rv[], n_bars[]}` with `RV_d = Σ r²` over log close-to-close returns.
   - A day below `min_coverage` of its expected bars is `null`, never filled. A return that reaches back past more than one bar into an earlier day (the first return after a missing day) is dropped, so a missing day's variance never lands on the next day.
-  - Completed days are immutable, so the adapter caches them per (venue, instrument, resolution, day) under `SNAPSHOT_DIR/rv_daily/` and only fetches new days. Only a day with at least `min_coverage` of its bars is cached; an empty or short day (outage, transient `no_data`, a page cut short by a lower row cap than assumed) is fetched again on the next run.
+  - Completed days are immutable, so the adapter caches them per (venue, instrument, resolution, day) under `SNAPSHOT_DIR/rv_daily/` and only fetches new days. Only a day with at least `min_coverage` of its bars is cached; an empty or short day (outage, transient `no_data`, history the venue doesn't serve) is fetched again on the next run.
+  - `rows_per_call` is an upper bound, not the venue's cap. A page that comes back with short days is halved and the halves holding them asked again in the same run (at most `MAX_SPLIT_DEPTH` deep), so a lower cap costs calls, not coverage. Splitting stops where it can't help: a response with fewer bars than one covered day, or a half that adds no bar to a short day and returns fewer bars than its parent (a real shortfall, not a cap).
   - A HAR lag mean averages the non-null days in its window and needs 80% of them (4 of 5, 18 of 22; the 1-day lag needs its day), so one null day no longer blocks the forecast origin for 22 days.
   - Hyperliquid serves only about the latest 5,000 candles per interval (unverified; check live). That is roughly 17 days at 5-min bars and 208 days at hourly bars, so `resolution` is set per asset in the manifest. The cache grows the history over time.
-  - Deribit's 5-min depth and row cap must be checked live before BTC/ETH move from hourly to 5-min bars.
+  - BTC/ETH stay on hourly bars in v1. Moving to 5-min bars is a later, versioned change, gated on Deribit's 5-min depth (`make probe`) and a `validate_rv` comparison.
+  - Hyperliquid's clock request asks for an `endTime` 10 min ahead; if the venue refuses it or returns nothing, it is asked once more with `endTime = as_of`.
+  - Deribit's `1D` DVOL candles are keyed to the UTC day they close in. `dvol_history` carries `close_offset_h` (the UTC hour they close at, 0 when aligned); a non-zero offset raises the `dvol_offset` run warning.
 - **VRP-A-9 Event calendar.**
   - **Where it lives:** the manifest's `params.events`, not a database table. Each entry is `{type, scope, ts, source}`.
   - **Rule-derived events:** monthly and quarterly opex are derived (Deribit expiry: last Friday of the month, 08:00 UTC; quarterly in Mar/Jun/Sep/Dec) by `core/quant/calendar.py`.
   - **Windows:** `params.event_windows` is the per-type config map.
   - **Edits:** every calendar edit is reviewed in a PR and bumps the version (M-11), because it changes output.
-  - **Coverage:** `params.events_listed_through` gives, per listed scheduled type (FOMC, CPI), the date through which its list is complete. When the horizon plus the widest window reaches past it, recent fit days and the horizon would read "no event" where there may be one, so the run sets `signal_enabled` false with `event_calendar_incomplete` and flags every signal row (§12.3, §12.4). `tools/validate_rv.py` fails its `event_calendar_complete` gate on the same test over the sample.
+  - **Coverage:** `params.events_listed_through` gives, per listed scheduled type (FOMC, CPI), the date through which its list is complete. Coverage is checked per tenor. A tenor whose last forecast day plus the widest window reaches past a list's date would read "no event" where there may be one, so its row gets `event_calendar_incomplete` and is not `signal_ok` (§12.3). The fit itself uses past days only, which the lists cover, so shorter tenors stay live. Tenors drop out longest first, and the run sets `signal_enabled` false with the same flag only once even the shortest tenor is uncovered (§12.4). `tools/validate_rv.py` fails its `event_calendar_complete` gate on the same test over the sample.
+  - **Countdown:** `context.calendar_days_left` is the longest tenor's margin in days, so it warns first. The view shows "CALENDAR ENDS IN Nd (LONGEST TENOR)" once it is under 21, and "LONG TENORS: CALENDAR INCOMPLETE" once it is negative while shorter tenors are still live, so nobody has to remember to add the next year's dates (§12.4).
   - This is reference data, not market data, so D-10 doesn't apply. Each entry carries a `source`.
 - **VRP-A-10 Signal P&L gate (§9) on a proxy.** There are no historical option prices. The P&L backtest is a variance-swap proxy, BTC/ETH only:
   - short 30-day variance struck at DVOL²;
@@ -78,6 +82,12 @@ These came out of mapping the guide onto the terminal. Where they conflict with 
   - The API keeps serving the last good run with `meta.stale`, and the view disables the signal when stale.
   - "Alert" means a failed run in `/runs?status=failed`; paging-style alerting is out of scope.
 - **VRP-A-14 Horizon alignment.** The forecast covers whole UTC days starting at the next 00:00; an option runs to its 08:00 UTC expiry. The mismatch is under a day and is accepted for v1.
+- **VRP-A-15 Central forecast is the mean, not the median (2026-10-29, rv_har 1.1.0).**
+  - **Why:** `exp(ŷ_k + q_k(0.5))` is the median of daily variance. Option-implied variance (DVOL², ATM IV²) prices the *mean*, and for a log-variance model the mean is `exp(ŷ_k) · E[exp(ε_k)]`, above the median for any residual spread. Comparing IV with summed medians biases VRP toward "rich", which is the sell-vol side and the dangerous one (§10). The §9 bias gate would then fail for a structural reason, not a modelling one.
+  - **How:** Duan (1983) smearing, which assumes no residual distribution: `s_k = mean(exp(e_k))` over horizon k's in-sample residuals, and `v̂_k = exp(ŷ_k) · s_k` (`core/quant/rv.py:smearing_factors`, `mean_path`).
+  - **Where:** `rv_forecast` (signal, cone, `rv_path`), the decomposition and its counterfactual paths, the plain-HAR baseline `rv_har_30d`, the expanding-origin history behind z, and all central forecasts in `tools/validate_rv.py`. `rv_low` and `rv_high` stay the 0.1 / 0.9 quantile paths.
+  - **Ordering:** the mean of a right-skewed residual sits above its median but is not bounded by q0.9. `vrp_band_ordering` still applies: if the mean ever crosses `rv_high`, the run fails rather than emitting a broken cone.
+  - **Bias metric:** §9's bias is measured in RMS vol (`√(365 · mean variance)`), the scale the mean forecast is unbiased on. A mean of per-day vols sits below it by Jensen's inequality and would read as bias that isn't there.
 
 ---
 
@@ -100,6 +110,8 @@ This module adds one thing to the terminal: a calendar- and event-aware realized
 - Not a price or returns forecaster. The target is realized variance, never the underlying's direction.
 
 **One line for the dev team:** this forecasts the *realized* side of the VRP trade and shows *why* it's rich or cheap. It never decides how much risk goes on.
+
+**Calendar status (2026-10-29, rv_har 1.1.0).** FOMC is listed through 2027 and CPI through the December 2026 release on 2027-01-13; BLS has not yet published its 2027 schedule. Unless the 2027 CPI dates are added, each tenor's last covered day is: 60d 2026-11-12, 30d 2026-12-12, 14d 2026-12-28, 7d 2027-01-04. The signal is disabled from 2027-01-05 (§4).
 
 ## 2. Architecture & data flow
 
@@ -180,6 +192,12 @@ Event columns are not added here. They are injected via the events dataframe (ne
 
 Known catalysts are the one thing a HAR-style model can't handle and this one can. Each event type gets its own regressor with a window, so the model learns a distinct realized-vol hump for FOMC vs a token unlock rather than lumping them into one "event" bump. *(VRP-A-1: the HAR in v1 carries the same per-type event-window dummies.)*
 
+**Status (2026-10-29, rv_har 1.1.0).** Every FOMC and CPI date in `params.events` was checked via web search against federalreserve.gov and bls.gov on 2026-10-29; the sandbox could not fetch those sites directly. Each entry's `source` names the page.
+- FOMC: 2024 through 2027. The 2027 dates are from the Fed's press release of 2025-09-05. `events_listed_through.fomc` is 2027-12-31.
+- CPI: 2024 through the December 2026 release on 2027-01-13. The October 2025 CPI was cancelled in the 2025 lapse in appropriations and has no entry; the January 2026 CPI moved to 2026-02-13 in the 2026 lapse. `events_listed_through.cpi` is 2027-01-13.
+- Times are 14:00 ET (FOMC statement) and 08:30 ET (CPI) converted to UTC with US daylight time (2026: Mar 8 to Nov 1; 2027: Mar 14 to Nov 7).
+- **Maintenance:** with a 3-day widest window, the CPI list covers the 60-day tenor through 2026-11-12 and the 7-day tenor through 2027-01-04. Add the 2027 CPI dates when BLS publishes them, move `events_listed_through.cpi`, and bump the version (M-11). `context.calendar_days_left` and the view's chip count down to that day.
+
 **Table `event_calendar`** *(VRP-A-9: manifest `params.events`)*:
 
 | column | type | meaning |
@@ -223,7 +241,7 @@ One daily model per asset. Start linear (no hidden layers): it's interpretable a
 | `weekly_seasonality` | 6 | Fourier terms; day-of-week + weekend effect |
 | `yearly_seasonality` | auto | on if ≥ 2y data, else off |
 | `daily_seasonality` | False | no intraday structure at daily freq |
-| `quantiles` | [0.1, 0.5, 0.9] | median path + a crude cone for the band rule |
+| `quantiles` | [0.1, 0.5, 0.9] | median path + a crude cone for the band rule *(VRP-A-15: the central path is the smeared mean; 0.1 / 0.9 make the cone)* |
 | `normalize` | "standardize" | log target is already variance-stabilized |
 | `loss_func` | "Huber" | robust to RV spikes |
 
@@ -265,7 +283,7 @@ If `comp_event` is a large share, the "richness" may just be the market correctl
 | --- | --- | --- |
 | `tenor_days` | int | 7, 14, 30, 60 |
 | `iv_impl` | float | ATM implied, annualized |
-| `rv_forecast` | float | median forecast RV, annualized |
+| `rv_forecast` | float | median forecast RV, annualized *(VRP-A-15: mean)* |
 | `rv_low` / `rv_high` | float | 0.1 / 0.9 cone, annualized |
 | `vrp` | float | iv_impl − rv_forecast |
 | `vrp_z` | float, nullable | trailing-90d z-score (VRP-A-5) |
@@ -318,7 +336,7 @@ If it can't at least match HAR ex-event **and** beat it inside event windows, pl
 | --- | --- |
 | RMSSE vs plain HAR, ex-event days | within 5% |
 | RMSSE vs plain HAR, event windows | lower (beat) |
-| Forecast RV bias | near zero on ordinary days (expect downward bias around tails; see §10) |
+| Forecast RV bias | near zero on ordinary days (expect downward bias around tails; see §10). Tolerance 0.10, in RMS vol (VRP-A-15) |
 | Signal P&L Sharpe vs naive-sell | positive, net of tails (VRP-A-10 proxy) |
 
 **Signal P&L backtest.** A good RV forecast is not a profitable signal. Backtest the actual rule, "sell vol when `vrp_z` > threshold, gated by the band and event rules", **including the jump days**. If the edge evaporates once the tails are in, the signal is timing noise. This test, not the accuracy test, decides whether it touches the book. `tools/validate_rv.py` runs these on recorded data and writes a report. Promotion from shadow is a PR that cites the report.
@@ -333,14 +351,14 @@ uv run python -m terminal_models.tools.validate_rv --recording <dir> --out <repo
 - **Inputs.** Each asset's `rv_daily` and, for BTC/ETH, `dvol_history` are replayed through the production adapters with the run's own InputSpecs. Nothing is fetched live and nothing is filled.
 - **Backtest.** It uses every origin with `min_history_days[asset]` of prior RV, split into `--folds` contiguous folds. Each fold refits on days ≤ its first origin and holds the fit through the fold.
 - **Forecasters.** All three use the `core/quant/rv.py` functions and the rv_har manifest params:
-  - rv_har (HAR + day-of-week + events, median path as in `signal`);
-  - plain HAR;
+  - rv_har (HAR + day-of-week + events, smeared mean path as in `signal`, VRP-A-15);
+  - plain HAR, also on its smeared mean path;
   - EWMA(0.94).
 - **Accuracy.** MASE and RMSSE are computed on two bases, each split all / ex-event / in-event:
   - per horizon 1..60 on log daily variance, then averaged over horizons; the scale is the in-sample one-step naive before the first origin;
   - per tenor 7/14/30/60 on annualized RV over days t+1..t+T, with the previous T-day window as naive.
   - A horizon pair is in-event when its target day is in an in-scope event window; a tenor window is in-event when any of its days is.
-- **Bias.** Mean forecast − actual in annualized daily vol, on ex-event target days, pooled over horizons.
+- **Bias.** On ex-event target days, pooled over horizons, in RMS vol: `√(365 · mean forecast variance) − √(365 · mean actual variance)`, relative to the second term (VRP-A-15).
 - **P&L proxy (BTC/ETH, 30d).**
   - The rule is short when `vrp_z` > `--z-threshold`, DVOL > RV^0.9(30) (band) and `comp_event(30)` ≤ `event_hump_share`. Naive is always short. `vrp_z` is scored as in §12.6 on the backtest's 30d forecasts.
   - P&L = DVOL² − realized RV² over the next 30 days, jump days included.
@@ -348,10 +366,15 @@ uv run python -m terminal_models.tools.validate_rv --recording <dir> --out <repo
 - **Gates.** Evaluated per asset as `pass`, `fail`, `unavailable` (too little data, which counts as a fail) or `not_applicable` (no DVOL basis):
   - RMSSE(rv_har) ≤ 1.05 × RMSSE(HAR) ex-event;
   - RMSSE(rv_har) < RMSSE(HAR) in event windows;
-  - |bias| / mean actual ≤ `--bias-tolerance` (0.10 by default: the table above gives no number);
+  - |bias| / actual ≤ `--bias-tolerance` (0.10; rationale below);
   - rule Sharpe > 0 **and** > naive Sharpe.
 - **Report.** The JSON report holds the recording's manifest sha256, per-input hashes (the runner's `input_hash`), the params hash, the git SHA, the config, per-asset metrics and the gates.
 - **Exit code.** 0 when every asset passes, 1 otherwise, 2 when the recording is unusable.
+- **z sweep (informational).** The report's `pnl_proxy.z_sweep` gives the rule's Sharpe and `n_short` at z ∈ {0.5, 1.0, 1.5, 2.0}, each marked `informational`. It never gates.
+
+**Thresholds (pre-declared 2026-10-29, before any recording was scored).** The table above gives no numbers; these are fixed here so the backtest can't choose them.
+- **Bias tolerance 0.10.** 10% of RMS vol is about 5 vol points at 50% vol. That is tight enough to catch a structural bias such as the mean/median gap (VRP-A-15: `E[exp ε]` is 10–20% or more in variance at crypto residual spreads), and loose enough for sampling noise over roughly 20 non-overlapping 30-day windows.
+- **z entry threshold 1.0.** One standard deviation above the trailing 90-day mean, declared before the backtest. Picking the threshold on the same backtest that judges it would overfit it, so the gate uses 1.0 only and the sweep is reported for context. Changing either number is a reviewed change made before the next recording is scored, never after.
 
 ## 10. Risk guardrails & integration
 
@@ -389,10 +412,12 @@ The single rule that governs everything here: **this is a central estimate.** Yo
   - a VRP tab on asset pages;
   - VRP monitor columns.
 - **P6 Validation:** `tools/validate_rv.py` runs the §9 gates on recordings. Phase 6 risk wiring is out of scope.
-- **Live checks** before trusting VRP-A-8:
-  - Deribit's 5-min candle depth and row cap;
-  - Hyperliquid's candle cap;
-  - whether Deribit lists SOL and HYPE perpetuals.
+- **Live checks** before trusting VRP-A-8. `make probe` (`tools/probe_venues.py`, read-only) answers the first four and writes `models/terminal_models/library/rv_har/validation/venue_probe.json`, committed with the promotion PR next to the `validate_rv` report:
+  - Deribit's 5-min candle depth and row cap (decides a later 5-min switch, not v1);
+  - Hyperliquid's candle cap per interval;
+  - whether Hyperliquid accepts a future `endTime` (the clock falls back to `as_of` if not);
+  - the UTC hour Deribit's `1D` DVOL candles open at (non-zero: `close_offset_h`, `dvol_offset` warning);
+  - whether Deribit lists SOL and HYPE perpetuals (by hand).
 
 ## 12. Payload (v1)
 
@@ -410,10 +435,11 @@ The exact composite payload `rv_har` emits and `views/vrp_signal` reads. It is l
 - `ŷ_k`: the direct h = k HAR+events forecast of log daily variance from origin `C` (VRP-A-1).
 - `q_k(p)`: the empirical p-quantile of the h = k in-sample residuals, for p ∈ `params.quantiles` = [0.1, 0.5, 0.9].
 - `v̂_k^p = exp(ŷ_k + q_k(p))`.
-- `RV^p(T) = sqrt(365 / T · Σ_{k=1..T} v̂_k^p)`.
-- `rv_forecast = RV^0.5`, `rv_low = RV^0.1` and `rv_high = RV^0.9`. Summing per-day quantiles gives a crude, comonotone cone, which is what §6's band rule asks for.
-- **Decomposition**, all on the 0.5 path, in variance:
-  - `V(T) = Σ_{k≤T} v̂_k^0.5`;
+- `s_k = mean(exp(e_k))` over the h = k in-sample residuals (Duan smearing, VRP-A-15), and the mean path `v̂_k^mean = exp(ŷ_k) · s_k`.
+- `RV^p(T) = sqrt(365 / T · Σ_{k=1..T} v̂_k^p)`, for p a quantile or `mean`.
+- `rv_forecast = RV^mean`, `rv_low = RV^0.1` and `rv_high = RV^0.9`. Summing per-day quantiles gives a crude, comonotone cone, which is what §6's band rule asks for. The central forecast is the mean because implied variance prices the mean (VRP-A-15).
+- **Decomposition**, all on the mean path, in variance:
+  - `V(T) = Σ_{k≤T} v̂_k^mean`;
   - `V_noevt` uses the same fit with the event dummies zeroed over days 1..T;
   - `V_nodow` uses the same fit with every forecast day at the average day of the week: each day-of-week dummy at 1/7 (`core/quant/rv.py:counterfactuals`). Not the Monday reference level, which would make the share depend on the reference day and, with low-vol weekends, pin it at 0. Over whole weeks the share is therefore near 0; it is positive when the horizon is weighted toward high-vol days.
   - `s_evt = max(0, 1 − V_noevt/V)` and `s_sea = max(0, 1 − V_nodow/V)`.
@@ -430,7 +456,7 @@ One row per tenor in `params.tenors` ([7, 14, 30, 60] in v1), ascending.
 |---|---|---|---|---|
 | `tenor_days` | number | `tenor_days`, `absolute` | no | T |
 | `iv_impl` | number | `implied_vol`, `decimal` | yes, with `iv_unavailable` | `core/quant/metrics.py:atm_iv` at T days from `as_of` on the chain surface (VRP-A-6) |
-| `rv_forecast` | number | `realized_vol`, `decimal` | no | `RV^0.5(T)` |
+| `rv_forecast` | number | `realized_vol`, `decimal` | no | `RV^mean(T)` |
 | `rv_low` | number | `realized_vol`, `decimal` | no | `RV^0.1(T)` |
 | `rv_high` | number | `realized_vol`, `decimal` | no | `RV^0.9(T)` |
 | `vrp` | number | `vol_spread`, `decimal` | iff `iv_impl` is null | `iv_impl − rv_forecast` |
@@ -450,7 +476,7 @@ Row flag codes:
 - `z_unavailable`: no z basis for this cell. That is every tenor ≠ 30, and every SOL/HYPE row.
 - `z_insufficient_history`: a basis exists (BTC/ETH 30d), but the trailing window has fewer than `params.z_min_obs` values, its standard deviation is 0, or DVOL at `C` is missing.
 - `z_basis_dvol`: `vrp_z` is non-null and was scored on `DVOL − rv_forecast`, not on this row's `vrp` (VRP-A-5).
-- `event_calendar_incomplete`: a listed event type's calendar stops before the horizon (VRP-A-9), so `event_in_horizon` and `comp_event` may miss an event; `signal_ok` is false.
+- `event_calendar_incomplete`: a listed event type's calendar stops before this tenor's last forecast day plus the widest window (VRP-A-9), so `event_in_horizon` and `comp_event` may miss an event; `signal_ok` is false. Set per row: shorter tenors can be covered while longer ones aren't.
 
 ### 12.4 Section `context` (`scalar_set`)
 
@@ -463,14 +489,15 @@ Row flag codes:
 | `resid_sd` | number | `other`, `absolute`, `log_variance` | no | standard deviation of the h = 1 residuals, in log daily variance |
 | `rv_trailing_30d` | number | `realized_vol`, `decimal` | yes, with `insufficient_days` | backward-looking: `sqrt(365 · mean(RV_d))` over the non-null days among the 30 ending at `C`. Null if fewer than `params.window_min_days` are non-null. |
 | `rv_ewma_30d` | number | `realized_vol`, `decimal` | no | EWMA(λ = 0.94) baseline 30d forecast: `sqrt(365 · σ²_EWMA,C)`, flat |
-| `rv_har_30d` | number | `realized_vol`, `decimal` | no | plain-HAR baseline (no day-of-week or event terms) `RV^0.5(30)` |
+| `rv_har_30d` | number | `realized_vol`, `decimal` | no | plain-HAR baseline (no day-of-week or event terms) `RV^mean(30)`, smeared with its own residuals |
 | `dvol` | number | `implied_vol`, `decimal` | yes, with `dvol_unavailable` | Deribit DVOL daily close at `C` (BTC/ETH). SOL/HYPE are always null. |
 | `vrp_30d_dvol` | number | `vol_spread`, `decimal` | iff `dvol` is null | `dvol − signal[30].rv_forecast`. Equals the last value of `history.vrp_30d`. |
 | `vrp_z_mean` | number | `vol_spread`, `decimal` | iff `signal[30].vrp_z` is null | the trailing-window mean behind `vrp_z` |
 | `vrp_z_sd` | number | `vol_spread`, `decimal` | iff `signal[30].vrp_z` is null | the trailing-window sample standard deviation (ddof = 1) |
 | `vrp_z_n` | number | `count`, `absolute` | no | non-null values in that window; 0 off-basis |
 | `event_hump_share` | number | `ratio`, `decimal` | no | the threshold in use, `params.event_hump_share` |
-| `signal_enabled` | boolean | `other`, `absolute` | no | false when the RV input lags (`C` is earlier than the latest 00:00 UTC ≤ `as_of`; flag `rv_input_lagging`) or a listed event type's calendar stops before the horizon (flag `event_calendar_incomplete`, VRP-A-9). The item carries one flag per reason. |
+| `calendar_days_left` | number | `count`, `absolute` | no | days of event-calendar margin for the longest tenor, the first to lose coverage: `min over events_listed_through of (date − L)`, where `L` = forecast day `horizon_days` plus the widest `event_windows` value of any type. Negative once that tenor's row carries `event_calendar_incomplete`; 0 is its last covered day. `signal_enabled` stays true until the shortest tenor is uncovered too. It falls by one each UTC day until the dates are extended. `null` with `no_listed_types` when `events_listed_through` names no type. |
+| `signal_enabled` | boolean | `other`, `absolute` | no | false when the RV input lags (`C` is earlier than the latest 00:00 UTC ≤ `as_of`; flag `rv_input_lagging`) or a listed event type's calendar stops before even the shortest tenor's window (flag `event_calendar_incomplete`, VRP-A-9). The item carries one flag per reason. |
 
 **The view's gate.** The signal shows only when `signal_enabled` is true, the run is not `meta.stale` and the row's `signal_ok` is true (§10 staleness).
 
@@ -483,11 +510,11 @@ Strings never appear in `context` (VRP-A-12). The RV venue and instrument are in
 
 | key | unit | null? | value at x = T |
 |---|---|---|---|
-| `rv_forecast` | `realized_vol`, `decimal` | no | `RV^0.5(T)`, cumulative over days 1..T. At 7/14/30/60 it equals `signal.rv_forecast`. |
+| `rv_forecast` | `realized_vol`, `decimal` | no | `RV^mean(T)`, cumulative over days 1..T. At 7/14/30/60 it equals `signal.rv_forecast`. |
 | `rv_low` | `realized_vol`, `decimal` | no | `RV^0.1(T)` |
 | `rv_high` | `realized_vol`, `decimal` | no | `RV^0.9(T)` |
 | `atm_iv` | `implied_vol`, `decimal` | sparse | `signal.iv_impl` at x ∈ `params.tenors`; null at every other x, and where `iv_impl` is null |
-| `rv_path` | `realized_vol`, `decimal` | no | `sqrt(365 · v̂_T^0.5)`: forecast day T on its own, not cumulative (the plan's "path") |
+| `rv_path` | `realized_vol`, `decimal` | no | `sqrt(365 · v̂_T^mean)`: forecast day T on its own, not cumulative (the plan's "path") |
 | `rv_path_ex_event` | `realized_vol`, `decimal` | no | `rv_path` with the event dummies zeroed. The gap to `rv_path` is the event hump. |
 
 ### 12.6 Section `history` (`timeseries`)
@@ -502,7 +529,7 @@ Strings never appear in `context` (VRP-A-12). The RV venue and instrument are in
 | key | unit | null? | value at `t` |
 |---|---|---|---|
 | `rv_realized_30d` | `realized_vol`, `decimal` | yes | backward-looking realized: `sqrt(365 · mean(RV_d))` over the non-null days among the 30 ending at `t`; null below `window_min_days` |
-| `rv_forecast_30d` | `realized_vol`, `decimal` | yes | the as-of forecast made at origin `t` for days `(t, t+30d]`, `RV^0.5(30)`. Its last value equals `signal[30].rv_forecast`. |
+| `rv_forecast_30d` | `realized_vol`, `decimal` | yes | the as-of forecast made at origin `t` for days `(t, t+30d]`, `RV^mean(30)`. Its last value equals `signal[30].rv_forecast`. |
 | `rv_forecast_30d_matured` | `realized_vol`, `decimal` | yes | `rv_forecast_30d` at `t − 30d`, i.e. the forecast for the window that ends at `t`. Compare it to `rv_realized_30d` (forecast against outcome). |
 | `dvol` | `implied_vol`, `decimal` | yes | DVOL daily close at `t`; all null for SOL/HYPE |
 | `vrp_30d` | `vol_spread`, `decimal` | yes | `dvol − rv_forecast_30d` |

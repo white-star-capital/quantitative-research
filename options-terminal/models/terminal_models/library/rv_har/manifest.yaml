@@ -1,5 +1,5 @@
 implementation_id: rv_har
-version: 1.0.0
+version: 1.1.0
 fills_slot: vrp_signal
 owner: alejandro
 description: HAR-RV with day-of-week and event-window dummies; forecast RV cone vs ATM IV, VRP z on DVOL.
@@ -47,12 +47,14 @@ params:
   # (plus window) reaches past it disables the signal with event_calendar_incomplete
   # (core/quant/calendar.py incomplete_types). Move a date only with the entries that fill it.
   events_listed_through:
-    fomc: "2026-12-31"
-    cpi: "2025-10-31"
-  # Opex is derived by rule (core/quant/calendar.py). VERIFY before promotion: every date below
-  # was entered from the published calendars without live access to them; check each against
-  # federalreserve.gov and bls.gov. Times are the release time in UTC (FOMC statement 14:00 ET,
-  # CPI 08:30 ET). Each edit bumps the version (M-11).
+    fomc: "2027-12-31"
+    cpi: "2027-01-13"
+  # Opex is derived by rule (core/quant/calendar.py). Sources checked via web search on
+  # 2026-10-29 (federalreserve.gov and bls.gov could not be fetched directly from the sandbox).
+  # Times are the release time in UTC: FOMC statement 14:00 ET, CPI 08:30 ET, so 19:00Z / 13:30Z
+  # under EST and 18:00Z / 12:30Z under EDT (2026: Mar 8 to Nov 1; 2027: Mar 14 to Nov 7). Each
+  # edit bumps the version (M-11). BLS has not yet published its 2027 schedule: context
+  # `calendar_days_left` counts down to the day the CPI list stops covering the horizon.
   events:
     # FOMC: second day of each scheduled meeting.
     - { type: fomc, scope: GLOBAL, ts: "2024-01-31T19:00:00Z", source: "federalreserve.gov FOMC calendar" }
@@ -79,8 +81,15 @@ params:
     - { type: fomc, scope: GLOBAL, ts: "2026-09-16T18:00:00Z", source: "federalreserve.gov FOMC calendar" }
     - { type: fomc, scope: GLOBAL, ts: "2026-10-28T18:00:00Z", source: "federalreserve.gov FOMC calendar" }
     - { type: fomc, scope: GLOBAL, ts: "2026-12-09T19:00:00Z", source: "federalreserve.gov FOMC calendar" }
-    # CPI release days. Nov/Dec 2025 (shutdown-disrupted) and all of 2026 are not listed yet:
-    # add them from the bls.gov schedule before promotion, and move cpi in events_listed_through.
+    - { type: fomc, scope: GLOBAL, ts: "2027-01-27T19:00:00Z", source: "federalreserve.gov press release 2025-09-05 (2027 FOMC schedule)" }
+    - { type: fomc, scope: GLOBAL, ts: "2027-03-17T18:00:00Z", source: "federalreserve.gov press release 2025-09-05 (2027 FOMC schedule)" }
+    - { type: fomc, scope: GLOBAL, ts: "2027-04-28T18:00:00Z", source: "federalreserve.gov press release 2025-09-05 (2027 FOMC schedule)" }
+    - { type: fomc, scope: GLOBAL, ts: "2027-06-09T18:00:00Z", source: "federalreserve.gov press release 2025-09-05 (2027 FOMC schedule)" }
+    - { type: fomc, scope: GLOBAL, ts: "2027-07-28T18:00:00Z", source: "federalreserve.gov press release 2025-09-05 (2027 FOMC schedule)" }
+    - { type: fomc, scope: GLOBAL, ts: "2027-09-15T18:00:00Z", source: "federalreserve.gov press release 2025-09-05 (2027 FOMC schedule)" }
+    - { type: fomc, scope: GLOBAL, ts: "2027-10-27T18:00:00Z", source: "federalreserve.gov press release 2025-09-05 (2027 FOMC schedule)" }
+    - { type: fomc, scope: GLOBAL, ts: "2027-12-08T19:00:00Z", source: "federalreserve.gov press release 2025-09-05 (2027 FOMC schedule)" }
+    # CPI release days. October 2025 CPI was cancelled (2025 lapse in appropriations): no entry.
     - { type: cpi, scope: GLOBAL, ts: "2024-01-11T13:30:00Z", source: "bls.gov CPI schedule" }
     - { type: cpi, scope: GLOBAL, ts: "2024-02-13T13:30:00Z", source: "bls.gov CPI schedule" }
     - { type: cpi, scope: GLOBAL, ts: "2024-03-12T12:30:00Z", source: "bls.gov CPI schedule" }
@@ -103,6 +112,20 @@ params:
     - { type: cpi, scope: GLOBAL, ts: "2025-08-12T12:30:00Z", source: "bls.gov CPI schedule" }
     - { type: cpi, scope: GLOBAL, ts: "2025-09-11T12:30:00Z", source: "bls.gov CPI schedule" }
     - { type: cpi, scope: GLOBAL, ts: "2025-10-24T12:30:00Z", source: "bls.gov CPI schedule" }
+    - { type: cpi, scope: GLOBAL, ts: "2025-12-18T13:30:00Z", source: "bls.gov revised release dates following the 2025 and 2026 lapses (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-01-13T13:30:00Z", source: "bls.gov revised release dates following the 2025 and 2026 lapses (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-02-13T13:30:00Z", source: "bls.gov revised release dates following the 2025 and 2026 lapses (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-03-11T12:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-04-10T12:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-05-12T12:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-06-10T12:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-07-14T12:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-08-12T12:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-09-11T12:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-10-14T12:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-11-10T13:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2026-12-10T13:30:00Z", source: "bls.gov 2026 release schedule (CPI)" }
+    - { type: cpi, scope: GLOBAL, ts: "2027-01-13T13:30:00Z", source: "bls.gov CPI release schedule (schedule/news_release/cpi.htm)" }
     # Halving: block 840,000 (date only; the window is in whole days).
     - { type: halving, scope: BTC, ts: "2024-04-20T00:00:00Z", source: "bitcoin block 840000" }
     # Token unlocks: none listed yet. Add per asset with its source, e.g.

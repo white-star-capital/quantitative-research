@@ -11,8 +11,8 @@ Per asset, an expanding-origin backtest over every origin with `min_history_days
 RV, split into `--folds` contiguous folds. Each fold refits on days ≤ its first origin and holds
 that fit for the rest of the fold (§9: refit per fold, no refit inside one). Three forecasters,
 all from core/quant/rv.py with the rv_har manifest params:
-- `rv_har`: HAR + day-of-week + event-window dummies, median-adjusted path (as `signal`);
-- `har`: plain HAR, no calendar terms, median-adjusted path (as `context.rv_har_30d`);
+- `rv_har`: HAR + day-of-week + event-window dummies, smeared mean path (as `signal`, VRP-A-15);
+- `har`: plain HAR, no calendar terms, smeared mean path (as `context.rv_har_30d`);
 - `ewma`: EWMA(`ewma_lambda`) daily variance, flat over the horizon (as `context.rv_ewma_30d`).
 
 Scores (MASE and RMSSE, in-sample naive scale from the days before the first origin):
@@ -20,7 +20,9 @@ Scores (MASE and RMSSE, in-sample naive scale from the days before the first ori
   over horizons; a pair is in-event when its target day lies in an in-scope event window;
 - per tenor in `tenors` on annualized RV over days t+1..t+T (§12.2), naive scale = the previous
   T-day window; in-event when any of those days lies in an event window.
-- bias on ordinary (ex-event) target days, in annualized daily vol, pooled over horizons.
+- bias on ordinary (ex-event) target days, pooled over horizons, in RMS vol: √(365 · mean
+  forecast variance) against √(365 · mean realized variance). A mean-variance forecast is unbiased
+  on this basis; a mean of per-day vols would not be (Jensen), so it would fail by construction.
 
 Signal P&L (VRP-A-10, BTC/ETH at 30d): a variance-swap PROXY, not tradeable P&L. At origin t, short
 30-day variance struck at DVOL_t², P&L = DVOL_t² − RV_realized(t+1..t+30)² per unit variance
@@ -28,7 +30,9 @@ notional, jump days included. Entries are non-overlapping, every 30 days back fr
 whose window has matured, so each period's P&L is independent of the next; Sharpe =
 mean/sd(ddof=1) · √(365/30). The rule is short when vrp_z > threshold, DVOL > RV^0.9(30) (band)
 and comp_event(30) ≤ `event_hump_share`, else flat (0); naive is always short. vrp_z is scored as
-in the model (§12.6) on this backtest's 30d forecasts.
+in the model (§12.6) on this backtest's 30d forecasts. The gate uses the pre-declared threshold
+only; `z_sweep` reports the rule at Z_SWEEP thresholds as `informational` and never gates
+(choosing a threshold on the backtest it is judged on would overfit it, §9).
 
 Gates (§9 table): rv_har RMSSE ≤ (1 + 5%) × har ex-event; rv_har RMSSE < har in event windows;
 |relative bias| ≤ `--bias-tolerance` on ordinary days (the guide sets no number); rule Sharpe > 0
@@ -78,10 +82,12 @@ from terminal_models.core.quant.rv import (
     ewma_var,
     fit_direct,
     mase,
+    mean_path,
     predict_path,
     residual_quantiles,
     rmsse,
     rv_term,
+    smearing_factors,
     trailing_rv,
     trailing_zscore,
 )
@@ -94,6 +100,7 @@ SERIES = ("rv_daily", "dvol_history")  # the only inputs the backtest reads
 MODELS = ("rv_har", "har", "ewma")
 SPLITS = ("all", "ex_event", "in_event")
 RMSSE_EX_EVENT_TOLERANCE = 0.05  # §9: within 5% of plain HAR ex-event
+Z_SWEEP = (0.5, 1.0, 1.5, 2.0)  # informational only; the gate uses Config.z_threshold (§9)
 REPORT_VERSION = 1
 
 
@@ -173,7 +180,7 @@ def run_backtest(
     H = int(params["horizon_days"])  # noqa: N806
     lags = tuple(int(x) for x in params["har_lags"])
     q = [float(x) for x in params["quantiles"]]
-    i_mid, i_hi = q.index(0.5), q.index(max(q))
+    i_hi = q.index(max(q))
     paths = {m: np.full((len(origins), H), np.nan) for m in MODELS}
     hi30, evt30 = np.full(len(origins), np.nan), np.full(len(origins), np.nan)
     s2 = ewma_var(rv, float(params["ewma_lambda"]))
@@ -191,19 +198,20 @@ def run_backtest(
             continue
         info.append({"fit_at": t0, "n_origins": len(chunk), "error": None})
         rq = residual_quantiles(fit, q)
-        plain_rq = residual_quantiles(plain, [0.5])[0]
+        smear, plain_smear = smearing_factors(fit), smearing_factors(plain)
         for r, t in zip(rows, chunk, strict=True):
             hist, cal = y[: t + 1], calendar[t + 1 : t + 1 + H]
             no_evt, no_dow = counterfactuals(cal, n_dow)
-            cone = cone_paths(predict_path(fit, hist, cal), rq)
-            paths["rv_har"][r] = cone[i_mid]
-            paths["har"][r] = np.exp(predict_path(plain, hist, None) + plain_rq)
-            if not np.isfinite(cone).all():
+            y_hat = predict_path(fit, hist, cal)
+            mid = mean_path(y_hat, smear)
+            paths["rv_har"][r] = mid
+            paths["har"][r] = mean_path(predict_path(plain, hist, None), plain_smear)
+            if not np.isfinite(mid).all():
                 continue  # an origin lag lacks RV (har_design)
-            hi30[r] = rv_term(cone[i_hi])[Z_TENOR - 1]
-            path_noevt = np.exp(predict_path(fit, hist, no_evt) + rq[i_mid])
-            path_nodow = np.exp(predict_path(fit, hist, no_dow) + rq[i_mid])
-            evt30[r] = decompose(cone[i_mid], path_noevt, path_nodow, Z_TENOR)[2]
+            hi30[r] = rv_term(cone_paths(y_hat, rq)[i_hi])[Z_TENOR - 1]
+            path_noevt = mean_path(predict_path(fit, hist, no_evt), smear)
+            path_nodow = mean_path(predict_path(fit, hist, no_dow), smear)
+            evt30[r] = decompose(mid, path_noevt, path_nodow, Z_TENOR)[2]
     return Backtest(origins, paths, hi30, evt30, info)
 
 
@@ -275,27 +283,32 @@ def tenor_scores(
 def ordinary_bias(
     origins: np.ndarray, var_paths: np.ndarray, rv: np.ndarray, event_day: np.ndarray
 ) -> dict[str, Any]:
-    """Mean forecast − actual on ex-event target days, pooled over horizons, in annualized daily
-    vol √(365·v); `relative` divides by the mean actual. Also in log daily variance."""
-    errs, actual, log_errs = [], [], []
+    """Forecast against actual on ex-event target days, pooled over horizons, in RMS vol:
+    √(365 · mean forecast variance) − √(365 · mean actual variance); `relative` divides by the
+    actual. The mean of log errors is reported too. RMS vol, not a mean of per-day vols: the
+    central path forecasts mean variance (VRP-A-15), and a per-day vol mean sits below it by
+    Jensen's inequality, so it would read as bias that isn't there."""
+    fs, actual, log_errs = [], [], []
     for h in range(1, var_paths.shape[1] + 1):
         target = origins + h
         keep = target < len(rv)
         a, f = rv[target[keep]], var_paths[keep, h - 1]
         ok = np.isfinite(a) & (a > 0) & np.isfinite(f) & ~event_day[target[keep]]
-        errs.append(np.sqrt(ANNUAL_DAYS * f[ok]) - np.sqrt(ANNUAL_DAYS * a[ok]))
-        actual.append(np.sqrt(ANNUAL_DAYS * a[ok]))
+        fs.append(f[ok])
+        actual.append(a[ok])
         log_errs.append(np.log(f[ok]) - np.log(a[ok]))
-    e, a, le = np.concatenate(errs), np.concatenate(actual), np.concatenate(log_errs)
-    if not len(e):
+    f, a, le = np.concatenate(fs), np.concatenate(actual), np.concatenate(log_errs)
+    if not len(f):
         return {"mean_error_vol": None, "mean_actual_vol": None, "relative": None,
-                "mean_error_log_var": None, "n_pairs": 0}  # fmt: skip
+                "mean_error_log_var": None, "n_pairs": 0, "basis": "rms_vol"}  # fmt: skip
+    vol_f, vol_a = math.sqrt(ANNUAL_DAYS * f.mean()), math.sqrt(ANNUAL_DAYS * a.mean())
     return {
-        "mean_error_vol": float(e.mean()),
-        "mean_actual_vol": float(a.mean()),
-        "relative": float(e.mean() / a.mean()),
+        "mean_error_vol": vol_f - vol_a,
+        "mean_actual_vol": vol_a,
+        "relative": (vol_f - vol_a) / vol_a,
         "mean_error_log_var": float(le.mean()),
-        "n_pairs": len(e),
+        "n_pairs": len(f),
+        "basis": "rms_vol",
     }
 
 
@@ -465,14 +478,21 @@ def validate_series(
         hi30[origins], evt30[origins] = bt.rv_high_30, bt.event_share_30
         z = trailing_zscore(dvol - fc30, int(params["z_window_days"]), int(params["z_min_obs"]))[0]
         with np.errstate(invalid="ignore"):
-            signal = (
-                (z > cfg.z_threshold)
-                & (dvol > hi30)
-                & np.isfinite(evt30)
-                & (evt30 <= float(params["event_hump_share"]))
-            )
+            gated = (
+                (dvol > hi30) & np.isfinite(evt30) & (evt30 <= float(params["event_hump_share"]))
+            )  # band and event rules; the z test is added per threshold
+        z_or_never = np.where(np.isfinite(z), z, -np.inf)  # a null z never enters
+
+        def rule(threshold: float) -> np.ndarray:
+            return (z_or_never > threshold) & gated
+
         realized30 = trailing_rv(rv, Z_TENOR, min_days)
-        pnl = pnl_proxy(t0, dvol, realized30, signal)
+        pnl = pnl_proxy(t0, dvol, realized30, rule(cfg.z_threshold))
+        sweep = []
+        for thr in Z_SWEEP:
+            r = pnl_proxy(t0, dvol, realized30, rule(thr))["rule"]
+            sweep.append({"z_threshold": thr, "sharpe": r["sharpe"], "n_short": r["n_short"],
+                          "status": "informational"})  # fmt: skip
         pnl["entries"] = [_close(days, t) for t in pnl["entries"]]
         pnl |= {
             "unit": "annualized variance (decimal²) per unit variance notional",
@@ -480,6 +500,7 @@ def validate_series(
             "tenor_days": Z_TENOR,
             "z_threshold": cfg.z_threshold,
             "z_scored": int(np.isfinite(z).sum()),
+            "z_sweep": sweep,
             "sharpe_basis": f"non-overlapping {Z_TENOR}-day periods, x sqrt(365/{Z_TENOR})",
         }
 

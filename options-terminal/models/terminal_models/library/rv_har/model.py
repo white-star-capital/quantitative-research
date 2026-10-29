@@ -21,6 +21,7 @@ from terminal_models.core.base import InputSpec, Model, ModelError, RunContext, 
 from terminal_models.core.payloads import axis, column, item, section, series, unit
 from terminal_models.core.quant.calendar import (
     Event,
+    days_left,
     events_for,
     incomplete_types,
     weekdays,
@@ -40,9 +41,11 @@ from terminal_models.core.quant.rv import (
     ewma_var,
     expanding_forecasts,
     fit_direct,
+    mean_path,
     predict_path,
     residual_quantiles,
     rv_term,
+    smearing_factors,
     to_optional,
     trailing_rv,
     trailing_zscore,
@@ -167,10 +170,19 @@ class Forecast:
         start = datetime.combine(date.fromisoformat(self.days[0]), time(), UTC) - pad
         end = datetime.combine(self.day1 + timedelta(days=self.H), time(), UTC) + pad
         self.events: list[Event] = events_for(u, p["events"], start, end)
-        # Types whose list stops before the horizon's last window: recent fit days and the
-        # horizon read "no event" where there may be one, so the signal is disabled (§12.4).
-        last_needed = self.day1 + timedelta(days=self.H - 1) + pad
-        self.calendar_gaps = incomplete_types(p["events_listed_through"], last_needed)
+        # Per tenor, the listed types whose list stops before that tenor's last window: its days
+        # read "no event" where there may be one, so that row is not signal_ok (§12.4). The fit
+        # itself uses past days only, which the lists cover, so the shorter tenors stay live.
+        listed = p["events_listed_through"]
+        self.tenor_gaps = {
+            t: incomplete_types(listed, self.day1 + timedelta(days=t - 1) + pad)
+            for t in self.tenors
+        }
+        # The whole signal is disabled only once even the shortest tenor is uncovered.
+        self.calendar_gaps = self.tenor_gaps[min(self.tenors)]
+        # Margin of the longest tenor, the first to lose coverage; negative once it has, None
+        # when no listed type is configured (nothing to run out).
+        self.calendar_days_left = days_left(listed, self.day1 + timedelta(days=self.H - 1) + pad)
         dow = dow_dummies(weekdays(self.closes + future))
         _, evt = window_dummies(self.closes + future, self.events, self.windows)
         self.calendar = np.hstack([dow, evt])
@@ -193,20 +205,20 @@ class Forecast:
                 "days with RV; no forecast origin",
             )
         q = [float(x) for x in p["quantiles"]]
-        rq = residual_quantiles(fit, q)
-        paths = cone_paths(y_hat, rq)
-        rq_mid = rq[q.index(0.5)]
+        paths = cone_paths(y_hat, residual_quantiles(fit, q))
+        smear = smearing_factors(fit)  # central path is the mean, the band quantiles (VRP-A-15)
         no_evt, no_dow = counterfactuals(cal_f, self.n_dow)
-        self.mid, self.lo, self.hi = (paths[q.index(x)] for x in (0.5, min(q), max(q)))
+        self.mid = mean_path(y_hat, smear)
+        self.lo, self.hi = (paths[q.index(x)] for x in (min(q), max(q)))
         self.terms = {"mid": rv_term(self.mid), "lo": rv_term(self.lo), "hi": rv_term(self.hi)}
-        self.no_evt = np.exp(predict_path(fit, y, no_evt) + rq_mid)
-        self.no_dow = np.exp(predict_path(fit, y, no_dow) + rq_mid)
+        self.no_evt = mean_path(predict_path(fit, y, no_evt), smear)
+        self.no_dow = mean_path(predict_path(fit, y, no_dow), smear)
         self.fit_r2 = float(fit.r2[0])
         self.resid_sd = float(np.std(fit.resid[0], ddof=1))
 
         plain = fit_direct(y, None, Z_TENOR, self.lags)  # plain-HAR baseline (VRP-A-1)
-        plain_rq = residual_quantiles(plain, [0.5])[0]
-        self.rv_har_30d = aggregate_rv(np.exp(predict_path(plain, y, None) + plain_rq), Z_TENOR)
+        plain_path = mean_path(predict_path(plain, y, None), smearing_factors(plain))
+        self.rv_har_30d = aggregate_rv(plain_path, Z_TENOR)
         s2 = ewma_var(self.rv, float(p["ewma_lambda"]))[-1]
         self.rv_ewma_30d = math.sqrt(ANNUAL_DAYS * s2) if math.isfinite(s2) else math.nan
 
@@ -248,7 +260,7 @@ class Forecast:
             self.calendar,
             origins,
             Z_TENOR,
-            0.5,
+            "mean",
             self.lags,
             refit_every=int(p["history_refit_every"]),
         )
@@ -263,6 +275,13 @@ class Forecast:
         if "dvol_history" in self.ctx.inputs:
             d = self.ctx.inputs["dvol_history"].data
             by_day = dict(zip(d["day"], d["dvol"], strict=True))
+            # Non-zero when Deribit's 1D candles don't close at 00:00 UTC: the adapter keys each
+            # to the day it closes in, so the z basis is offset from the RV day close.
+            if d.get("close_offset_h"):
+                self.ctx.warn(
+                    "dvol_offset",
+                    f"DVOL 1D candles close at {d['close_offset_h']:g}h UTC, not 00:00",
+                )
             self.dvol = as_array([by_day.get(day) for day in self.days])
         self.vrp30 = self.dvol - self.fc30
         self.z, self.z_mean, self.z_sd, self.z_n = trailing_zscore(
@@ -289,7 +308,7 @@ class Forecast:
     @property
     def disabled_by(self) -> tuple[str, ...]:
         """Why the signal is off (§12.4): the RV input lags (C is before the latest 00:00 UTC
-        ≤ as_of), or a listed event type's calendar stops before the horizon."""
+        ≤ as_of), or a listed event type's calendar stops before even the shortest tenor."""
         floor = datetime.combine(self.ctx.as_of.astimezone(UTC).date(), time(), UTC)
         lagging = self.C < int(floor.timestamp() * 1000)
         return (("rv_input_lagging",) if lagging else ()) + (
@@ -332,7 +351,8 @@ def signal_section(f: Forecast) -> dict:
         z, z_flag = f.z_cell(t)
         hump = evt > share
         flags = (["iv_unavailable"] if iv is None else []) + list(f.atm[t].flags) + [z_flag]
-        if f.calendar_gaps:
+        covered = not f.tenor_gaps[t]
+        if not covered:
             flags.append("event_calendar_incomplete")  # event_in_horizon may miss an event
         rows.append(
             [
@@ -349,7 +369,7 @@ def signal_section(f: Forecast) -> dict:
                 any(f.overlaps(e, t) for e in f.events),
                 None if iv is None else iv > hi,
                 hump,
-                z is not None and iv is not None and not hump and f.signal_enabled,
+                z is not None and iv is not None and not hump and covered and f.signal_enabled,
                 ",".join(flags),
             ]
         )
@@ -392,6 +412,8 @@ def context_section(f: Forecast) -> dict:
              z_flags),
         item("vrp_z_n", "VRP z window", int(f.z_n[-1]), COUNT),
         item("event_hump_share", "Event hump threshold", float(p["event_hump_share"]), RATIO),
+        item("calendar_days_left", "Event calendar days left", f.calendar_days_left, COUNT,
+             () if f.calendar_days_left is not None else ("no_listed_types",)),
         item(
             "signal_enabled",
             "Signal enabled",

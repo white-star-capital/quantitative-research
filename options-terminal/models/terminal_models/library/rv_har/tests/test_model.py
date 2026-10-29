@@ -3,15 +3,13 @@
 
 Most tests run a FAST manifest (shorter history and z window) so the expanding-origin loop stays
 cheap; the payload shape and every identity in §12 are the same at the shipped values, and
-test_shipped_params_run_within_budget runs those. FAST also checks only the FOMC list's coverage:
-the shipped CPI list stops before the synthetic as_of, which test_incomplete_event_calendar_*
-covers.
+test_shipped_params_run_within_budget runs those. FAST keeps the shipped event calendar.
 """
 
 import json
 import math
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import yaml
@@ -36,7 +34,6 @@ FAST = SHIPPED.model_copy(
             "z_window_days": 40,
             "z_min_obs": 20,
             "min_history_days": {a: 200 for a in syn.SPOT},
-            "events_listed_through": {"fomc": SHIPPED.params["events_listed_through"]["fomc"]},
         }
     }
 )
@@ -230,6 +227,64 @@ def test_incomplete_event_calendar_disables_the_signal():
     assert item["value"] is False and item["flags"] == ["event_calendar_incomplete"]
     for r in signal(env).values():
         assert not r["signal_ok"] and "event_calendar_incomplete" in r["flags"].split(",")
+    assert ctx_items(env)["calendar_days_left"]["value"] < 0
+
+
+def test_no_listed_event_types_leaves_the_gate_open():
+    no_lists = FAST.model_copy(update={"params": FAST.params | {"events_listed_through": {}}})
+    env = run(syn.inputs("BTC", n_days=N_DAYS), manifest=no_lists)
+    assert env["status"] == "success", env.get("error")
+    items = ctx_items(env)
+    assert items["calendar_days_left"]["value"] is None
+    assert items["calendar_days_left"]["flags"] == ["no_listed_types"]
+    assert items["signal_enabled"]["value"] is True
+
+
+@pytest.mark.parametrize(("offset", "warns"), [(8.0, True), (0.0, False), (None, False)])
+def test_dvol_close_offset_warns(offset, warns):
+    """TEST-ONLY: the synthetic DVOL series tagged as the adapter tags 1D candles that close at
+    `offset` h UTC (plan §3c); only a non-zero offset warns."""
+    inputs = syn.inputs("BTC", n_days=N_DAYS)
+    inputs["dvol_history"].data["close_offset_h"] = offset
+    env = run(inputs)
+    assert env["status"] == "success", env.get("error")
+    codes = [w["code"] for w in env["warnings"]]
+    assert codes == (["dvol_offset"] if warns else [])
+    if warns:
+        assert env["warnings"][0]["message"] == "DVOL 1D candles close at 8h UTC, not 00:00"
+
+
+@pytest.mark.parametrize(
+    ("as_of", "left", "live_tenors", "enabled"),
+    [
+        # C = 2026-10-29 00:00; horizon days 1..60 end 2026-12-27, plus the widest window (3)
+        # → 2026-12-30; CPI is listed through 2027-01-13, so 14 days of margin.
+        (datetime(2026, 10, 29, 12, tzinfo=UTC), 14, {7, 14, 30, 60}, True),
+        (datetime(2026, 11, 12, 12, tzinfo=UTC), 0, {7, 14, 30, 60}, True),  # last day for 60d
+        (datetime(2026, 11, 13, 12, tzinfo=UTC), -1, {7, 14, 30}, True),  # 60d drops first
+        (datetime(2027, 1, 4, 12, tzinfo=UTC), -53, {7}, True),  # last day for 7d
+        (datetime(2027, 1, 5, 12, tzinfo=UTC), -54, set(), False),  # needs the 2027 CPI dates
+    ],
+)
+def test_shipped_calendar_gate_and_days_left(monkeypatch, as_of, left, live_tenors, enabled):
+    """The shipped events_listed_through at real dates: each tenor loses calendar coverage on
+    its own, longest first; the signal is disabled only once the shortest has. The countdown
+    tracks the longest tenor."""
+    monkeypatch.setattr(syn, "AS_OF", as_of)
+    monkeypatch.setattr(syn, "LAST_DAY", (as_of - timedelta(days=1)).date())
+    env = run(syn.inputs("BTC", n_days=N_DAYS))
+    assert env["status"] == "success", env.get("error")
+    items = ctx_items(env)
+    assert items["calendar_days_left"]["value"] == left
+    assert items["calendar_days_left"]["unit"]["quantity"] == "count"
+    item = items["signal_enabled"]
+    assert item["value"] is enabled
+    assert ("event_calendar_incomplete" in item.get("flags", [])) is (not enabled)
+    for t, r in signal(env).items():
+        incomplete = "event_calendar_incomplete" in r["flags"].split(",")
+        assert incomplete is (t not in live_tenors), t
+        if incomplete:
+            assert not r["signal_ok"]
 
 
 def test_shipped_params_run_within_budget():

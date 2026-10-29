@@ -6,7 +6,8 @@ Target: y_d = ln RV_d, RV_d = Σ r² of log close-to-close bar returns over UTC 
     y_{t+h} = b0 + Σ_l b_l · mean(y_{t−l+1..t}) + c · cal_{t+h} + ε_h,   l ∈ (1, 5, 22)
 
 where cal holds the calendar columns of the *target* day (day-of-week and event-window dummies,
-known in advance). The cone uses empirical quantiles of each horizon's in-sample residuals (§12.2).
+known in advance). The cone uses empirical quantiles of each horizon's in-sample residuals; the
+central forecast is the smeared mean exp(ŷ) · mean(exp ε) (§12.2, VRP-A-15).
 
 Missing days are NaN and are never filled. A lag mean averages the non-null days in its window and
 is NaN below LAG_MIN_COVERAGE of them (so 4 of 5 and 18 of 22 days); a row with a NaN lag or target
@@ -223,6 +224,18 @@ def cone_paths(y_hat: np.ndarray, rq: np.ndarray) -> np.ndarray:
     return np.exp(y_hat[None, :] + rq)
 
 
+def smearing_factors(fit: HarFit) -> np.ndarray:
+    """Duan (1983) smearing per horizon: s_k = mean(exp(e_k)) over horizon k's in-sample
+    residuals. exp(ŷ_k) forecasts the log-scale centre of daily variance; s_k · exp(ŷ_k) forecasts
+    its mean, which is what option-implied variance prices (VRP-A-15). No normality assumption."""
+    return np.array([float(np.mean(np.exp(e))) for e in fit.resid])
+
+
+def mean_path(y_hat: np.ndarray, smear: np.ndarray) -> np.ndarray:
+    """v̂_k = exp(ŷ_k) · s_k: the central (mean) daily-variance path (§12.2)."""
+    return np.exp(y_hat) * smear
+
+
 def aggregate_rv(path_var: np.ndarray, T: int) -> float:  # noqa: N803
     """RV(T) = √(365/T · Σ_{k≤T} v̂_k), annualized (§3)."""
     if T < 1 or T > len(path_var):
@@ -288,7 +301,7 @@ def expanding_forecasts(
     calendar: np.ndarray | None,
     origins: Sequence[int],
     horizons: int,
-    quantile: float | None = 0.5,
+    quantile: float | str | None = 0.5,
     lags: Sequence[int] = HAR_LAGS,
     min_obs: int | None = None,
     refit_every: int = 1,
@@ -297,13 +310,15 @@ def expanding_forecasts(
 
     The model is fit on days 0..t (targets ≤ t, so no look-ahead) every `refit_every` origins,
     counted back from the last one (so the last origin is always fit fresh), and held in between.
-    `calendar` must have rows up to max(origins) + horizons. With `quantile`, the path is
-    exp(ŷ + q_k(quantile)); with None, exp(ŷ). A row is NaN where the fit lacks data
+    `calendar` must have rows up to max(origins) + horizons. With `quantile` "mean", the path is
+    the smeared mean `mean_path` (as rv_forecast); with a number p,
+    exp(ŷ + q_k(p)); with None, exp(ŷ). A row is NaN where the fit lacks data
     (`insufficient_history`) or an origin lag is NaN (`har_design`).
     """
     out = np.full((len(origins), horizons), np.nan)
     fit: HarFit | None = None
     rq: np.ndarray | None = None
+    smear: np.ndarray | None = None
     for i, t in enumerate(origins):
         if fit is None or (len(origins) - 1 - i) % refit_every == 0:
             try:
@@ -311,10 +326,15 @@ def expanding_forecasts(
             except ModelError:
                 fit = None
                 continue
-            rq = None if quantile is None else residual_quantiles(fit, [quantile])[0]
+            mean = quantile == "mean"
+            smear = smearing_factors(fit) if mean else None
+            rq = None if mean or quantile is None else residual_quantiles(fit, [quantile])[0]
         cal = None if calendar is None else calendar[t + 1 : t + 1 + horizons]
         y_hat = predict_path(fit, y_log[: t + 1], cal)
-        out[i] = np.exp(y_hat if rq is None else y_hat + rq)
+        if smear is not None:
+            out[i] = mean_path(y_hat, smear)  # same arithmetic as the model's rv_forecast
+        else:
+            out[i] = np.exp(y_hat if rq is None else y_hat + rq)
     return out
 
 

@@ -14,6 +14,7 @@ import {
   type Gate,
   type SignalRow,
   type Tone,
+  calendarChip,
   chips,
   cone,
   contextItems,
@@ -39,6 +40,16 @@ export function ChipList({ list }: { list: Chip[] }) {
 export function StatusWord({ row, g }: { row: SignalRow; g: Gate }) {
   const s = signalStatus(row, g);
   return <span className={s.tone === "good" ? "status ok" : "status dim"} title={s.title}>{s.label}</span>;
+}
+
+/** Event-calendar countdown: warns before the calendar gate shuts (§12.4). */
+export function CalendarNotice({ chip }: { chip: Chip | null }) {
+  if (!chip) return null;
+  return (
+    <div className="notice">
+      <ChipList list={[chip]} /> {chip.title}
+    </div>
+  );
 }
 
 /** Staleness gate notice: the signal is disabled, not shown green (§10). */
@@ -75,6 +86,7 @@ export function VrpPanels({ payload, stale }: { payload: Composite; stale: boole
   return (
     <div className="panel">
       <GateNotice g={g} />
+      <CalendarNotice chip={calendarChip(ctx, g)} />
       <div className="panel-body">
         <div className="tiles">
           {tiles.map(([label, value, sub, title]) => (
@@ -116,7 +128,7 @@ function ConePanel({ payload }: { payload: Composite }) {
         points={ivPoints(c.x, c.s("atm_iv")).map((p) => ({ ...p, color: CYAN }))}
         formatX={tenor}
         formatY={(v) => fmtIv(v)}
-        footer="Solid: median forecast RV annualized over days 1..T; shaded: the 0.1–0.9 cone; cyan dots: ATM IV at each tenor. Dashed: forecast RV of day T on its own, dotted: the same with event terms zeroed (the gap is the event hump). Rich only when ATM IV clears the upper cone."
+        footer="Solid: mean forecast RV annualized over days 1..T; shaded: the 0.1–0.9 cone; cyan dots: ATM IV at each tenor. Dashed: forecast RV of day T on its own, dotted: the same with event terms zeroed (the gap is the event hump). Rich only when ATM IV clears the upper cone."
       />
     </section>
   );
@@ -177,7 +189,7 @@ function SignalPanel({ rows, g, humpShare }: { rows: SignalRow[]; g: Gate; humpS
         </div>
       )}
       <div className="chart-footer dim">
-        VRP = ATM IV − median forecast RV. RICH needs ATM IV above the 0.9 cone and no event hump. The z-score exists for BTC and ETH at
+        VRP = ATM IV − mean forecast RV. RICH needs ATM IV above the 0.9 cone and no event hump. The z-score exists for BTC and ETH at
         30d only, scored on DVOL − RV forecast against its trailing 90 days (VRP-A-5). A central estimate: it under-forecasts tail realized
         vol, so it gates direction and never sizes.
       </div>

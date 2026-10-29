@@ -8,9 +8,9 @@ import { formatAge, formatUtc } from "../../format/units.ts";
 import { assetHref, latestPath, payloadOf } from "../bs_pricer/shared.ts";
 import { registerView, type BespokeProps } from "../registry.ts";
 import { ErrorIndicator, FreshnessBadge, Loading, NoOutputYet, SlotRetired, Unsupported } from "../states.tsx";
-import { contextItems, ctxNum, rowAt, signalRows, VIEW_ID, VRP_COLUMNS } from "./logic.ts";
+import { calendarChip, contextItems, ctxNum, gate, rowAt, signalRows, VIEW_ID, VRP_COLUMNS } from "./logic.ts";
 import { VrpCells, whyMissing } from "./parts.tsx";
-import { VrpPanels } from "./VrpPanels.tsx";
+import { ChipList, VrpPanels } from "./VrpPanels.tsx";
 
 const COLUMNS = ["Asset", "ATM IV 30d", "RV forecast 30d", ...VRP_COLUMNS, "Updated"];
 
@@ -20,9 +20,12 @@ function MonitorRow({ slotId, underlying, selection }: { slotId: string; underly
   const payload = payloadOf(latest.data);
   const meta = latest.data?.meta;
   const r30 = rowAt(signalRows(payload), 30);
+  // The calendar countdown here too, so the monitor warns before the gate shuts (§12.4).
+  const ctx = contextItems(payload);
+  const cal = calendarChip(ctx, gate(meta?.stale ?? true, ctx));
   return (
     <tr className="clickable" onClick={() => (window.location.hash = href)}>
-      <td data-label="Asset" className="row-code"><a href={href}>{underlying}</a></td>
+      <td data-label="Asset" className="row-code"><a href={href}>{underlying}</a>{cal && <> <ChipList list={[cal]} /></>}</td>
       <td data-label="ATM IV 30d" className="num">{fmtIv(r30?.iv_impl)}</td>
       <td data-label="RV forecast 30d" className="num">{fmtIv(r30?.rv_forecast)}</td>
       <VrpCells payload={payload} stale={meta?.stale ?? true} why={whyMissing(latest)} />
@@ -49,7 +52,7 @@ function VrpMonitor({ slot, selection }: BespokeProps) {
         </table>
       </div>
       <div className="chart-footer dim">
-        RV forecast is a calendar- and event-aware HAR median over the next 30 UTC days; VRP = ATM IV − RV forecast. RICH only when ATM IV
+        RV forecast is a calendar- and event-aware HAR mean over the next 30 UTC days; VRP = ATM IV − RV forecast. RICH only when ATM IV
         clears the 0.9 cone without an event hump. z exists for BTC and ETH only (DVOL basis). Stale runs or a lagging RV input disable the
         signal. Advisory only; never sizes.
       </div>

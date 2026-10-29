@@ -120,6 +120,20 @@ def incomplete_types(listed_through: Mapping[str, str | date], until: date) -> l
     return [t for t in EVENT_TYPES if t in late]
 
 
+def days_left(listed_through: Mapping[str, str | date], until: date) -> int | None:
+    """Days from `until` to the earliest date in `listed_through`: negative exactly when
+    `incomplete_types(listed_through, until)` is non-empty; None when it names no type.
+    Same validation."""
+    incomplete_types(listed_through, until)
+    return min(
+        (
+            ((t if isinstance(t, date) else date.fromisoformat(str(t))) - until).days
+            for t in listed_through.values()
+        ),
+        default=None,
+    )
+
+
 def window(event: Event, windows_by_type: Mapping[str, Sequence[int]]) -> tuple[date, date]:
     """First and last UTC date the event's window covers: D − before … D + after."""
     if event.type not in windows_by_type:

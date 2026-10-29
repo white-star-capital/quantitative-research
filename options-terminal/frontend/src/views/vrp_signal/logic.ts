@@ -176,6 +176,32 @@ export interface Chip {
   title: string;
 }
 
+/** Below this many days of event-calendar margin the view warns before the gate shuts (§12.4). */
+export const CALENDAR_WARN_DAYS = 21;
+
+/** The model's `calendar_days_left` is the longest tenor's margin; tenors lose coverage longest
+ *  first, and the signal is disabled only once the shortest has (§12.4). 0..20 warns
+ *  "CALENDAR ENDS IN Nd (LONGEST TENOR)"; negative with the gate still open says long tenors are
+ *  off (their rows carry the flag); once the gate shuts, EVENT CALENDAR INCOMPLETE takes over, and
+ *  a missing item (an older run) or a comfortable margin shows nothing. */
+export function calendarChip(ctx: Record<string, ScalarItem>, g?: Gate): Chip | null {
+  const left = ctxNum(ctx, "calendar_days_left");
+  if (left === null || left >= CALENDAR_WARN_DAYS) return null;
+  if (left < 0) {
+    if (g !== undefined && !g.open) return null;
+    return {
+      label: "LONG TENORS: CALENDAR INCOMPLETE",
+      tone: "mid",
+      title: "The listed FOMC/CPI dates no longer cover the longest tenors; those rows are not signal_ok. Shorter tenors stay live until they lose coverage too. Add the next dates to the rv_har manifest.",
+    };
+  }
+  return {
+    label: `CALENDAR ENDS IN ${left}d (LONGEST TENOR)`,
+    tone: "mid",
+    title: `The listed FOMC/CPI dates cover the longest tenor for ${left} more day${left === 1 ? "" : "s"}; then tenors drop out longest first, and the signal is disabled once the shortest has. Add the next dates to the rv_har manifest.`,
+  };
+}
+
 /** Band discipline and the event-hump rule (§10): RICH only when IV clears the upper cone and
  *  the event share is under the threshold; a hump replaces RICH and is never read as premium.
  *  With the gate shut every chip is dim, never green. */
@@ -198,6 +224,7 @@ const NOT_OK_REASONS: [(r: SignalRow) => boolean, string][] = [
   [(r) => r.iv_impl === null, "no ATM IV"],
   [(r) => r.vrp_z === null, "no z-score"],
   [(r) => r.event_hump, "event hump"],
+  [(r) => r.flags.includes("event_calendar_incomplete"), "event calendar does not cover this tenor"],
 ];
 
 /** Per-row signal status: live only when the gate is open and the model's `signal_ok` holds. */

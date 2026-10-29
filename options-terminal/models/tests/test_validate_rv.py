@@ -89,6 +89,17 @@ def test_ordinary_bias_is_ex_event_and_in_vol():
     assert out["mean_error_log_var"] == pytest.approx(math.log(0.09 / 0.0625))
 
 
+def test_ordinary_bias_is_zero_for_the_mean_variance_forecast():
+    # Actual daily vols 0.2 and 0.6 annualized; forecasting their mean variance is unbiased in
+    # RMS vol, although √(mean variance) ≈ 0.447 sits above the mean vol 0.4 (Jensen).
+    rv = np.array([0.0, 0.2**2, 0.6**2]) / 365
+    paths = np.full((2, 1), (0.2**2 + 0.6**2) / 2 / 365)
+    out = v.ordinary_bias(np.array([0, 1]), paths, rv, np.zeros(3, bool))
+    assert out["n_pairs"] == 2 and out["basis"] == "rms_vol"
+    assert out["relative"] == pytest.approx(0.0, abs=1e-12)
+    assert out["mean_actual_vol"] == pytest.approx(math.sqrt(0.2))
+
+
 # ---- P&L proxy -----------------------------------------------------------------------------
 
 
@@ -219,19 +230,33 @@ def test_validate_series_report_shape():
         "pnl_sharpe_vs_naive",
         "event_calendar_complete",
     }
-    # The shipped CPI list stops at 2025-10-31; the synthetic days run to 2026-10-13.
-    assert out["gates"]["event_calendar_complete"]["status"] == "fail"
-    assert out["gates"]["event_calendar_complete"]["value"] == ["cpi"]
+    # The shipped lists cover the synthetic days (to 2026-10-13) plus the widest window.
+    assert out["gates"]["event_calendar_complete"]["status"] == "pass"
     assert out["pnl_proxy"]["n_periods"] >= 2
+    assert out["bias_ordinary_days"]["rv_har"]["basis"] == "rms_vol"
+
+
+def test_z_sweep_is_informational_and_never_gates():
+    days, rv, dvol = series()
+    out = v.validate_series("BTC", days, rv, dvol, FAST, CFG)
+    sweep = out["pnl_proxy"]["z_sweep"]
+    assert [s["z_threshold"] for s in sweep] == list(v.Z_SWEEP)
+    assert all(s["status"] == "informational" for s in sweep)
+    n_short = [s["n_short"] for s in sweep]
+    assert n_short == sorted(n_short, reverse=True)  # a higher bar never adds entries
+    at_gate = next(s for s in sweep if s["z_threshold"] == CFG.z_threshold)
+    assert at_gate["n_short"] == out["pnl_proxy"]["rule"]["n_short"]
+    assert at_gate["sharpe"] == out["pnl_proxy"]["rule"]["sharpe"]
+    assert "z_sweep" not in out["gates"]
     assert out["result"] == v.verdict(out["gates"])
 
 
-def test_event_calendar_gate_passes_when_the_lists_cover_the_sample():
+def test_event_calendar_gate_fails_when_a_list_stops_inside_the_sample():
     days, rv, dvol = series()
-    covered = FAST | {"events_listed_through": {"fomc": "2026-12-31"}}
-    out = v.validate_series("BTC", days, rv, dvol, covered, CFG)
-    assert out["gates"]["event_calendar_complete"]["status"] == "pass"
-    assert out["gates"]["event_calendar_complete"]["value"] == []
+    short = FAST | {"events_listed_through": {"fomc": "2026-12-31", "cpi": "2025-10-31"}}
+    out = v.validate_series("BTC", days, rv, dvol, short, CFG)
+    assert out["gates"]["event_calendar_complete"]["status"] == "fail"
+    assert out["gates"]["event_calendar_complete"]["value"] == ["cpi"]
 
 
 def test_backtest_has_no_look_ahead():

@@ -22,7 +22,7 @@ slots:
   vrp_signal:
     production: null                   # shadow until the RV guide §9 gates pass (P6 report)
     shadow:
-      - { implementation: rv_har, version: 1.0.0 }
+      - { implementation: rv_har, version: 1.1.0 }
     scopes:
       - { underlying: BTC }
       - { underlying: ETH }

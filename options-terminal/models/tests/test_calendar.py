@@ -10,6 +10,7 @@ from terminal_models.core.quant.calendar import (
     DAY_MS,
     Event,
     day_of,
+    days_left,
     deribit_opex,
     events_for,
     incomplete_types,
@@ -123,3 +124,16 @@ def test_incomplete_types_names_lists_that_stop_too_early():
     for bad in ("opex_monthly", "earnings"):
         with pytest.raises(ValueError, match="not a listed event type"):
             incomplete_types({bad: "2026-01-01"}, date(2026, 1, 1))
+
+
+def test_days_left_is_the_margin_of_incomplete_types():
+    through = {"cpi": "2027-01-13", "fomc": date(2027, 12, 31)}
+    assert days_left(through, date(2026, 12, 30)) == 14  # the earliest list decides
+    assert days_left(through, date(2027, 1, 13)) == 0
+    assert incomplete_types(through, date(2027, 1, 13)) == []
+    assert days_left(through, date(2027, 1, 14)) == -1
+    assert incomplete_types(through, date(2027, 1, 14)) == ["cpi"]
+    with pytest.raises(ValueError, match="not a listed event type"):
+        days_left({"opex_monthly": "2026-01-01"}, date(2026, 1, 1))
+    assert days_left({}, date(2026, 1, 1)) is None  # no listed type, nothing runs out
+    assert incomplete_types({}, date(2026, 1, 1)) == []

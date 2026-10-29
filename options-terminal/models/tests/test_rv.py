@@ -22,10 +22,12 @@ from terminal_models.core.quant.rv import (
     fit_direct,
     har_design,
     mase,
+    mean_path,
     predict_path,
     residual_quantiles,
     rmsse,
     rv_term,
+    smearing_factors,
     to_optional,
     trailing_rv,
     trailing_zscore,
@@ -234,6 +236,43 @@ def test_residual_quantiles_and_cone_order():
     assert (paths[0] <= paths[1]).all() and (paths[1] <= paths[2]).all()
     exact = fit_direct(ar1(0.5, 0.8, 3.0, 30), None, horizons=2, lags=(1,))
     assert residual_quantiles(exact, [0.5]) == pytest.approx(np.zeros((1, 2)), abs=1e-9)
+
+
+def test_smearing_factor_is_exact_for_constant_residuals():
+    fit = fit_direct(ar1(0.5, 0.8, 3.0, 30), None, horizons=2, lags=(1,))
+    shifted = type(fit)(fit.coef, tuple(np.full(len(e), 0.3) for e in fit.resid), fit.r2,
+                        fit.n_obs, fit.lags)  # fmt: skip
+    assert smearing_factors(shifted) == pytest.approx([math.exp(0.3)] * 2, rel=1e-12)
+    assert smearing_factors(fit) == pytest.approx([1.0, 1.0], abs=1e-9)  # exact fit: e = 0
+    y_hat = np.array([-8.0, -7.5])
+    assert mean_path(y_hat, smearing_factors(shifted)) == pytest.approx(np.exp(y_hat + 0.3))
+
+
+def test_smeared_mean_is_above_the_median_for_right_skewed_residuals():
+    rng = np.random.default_rng(1)
+    n = 600
+    y = np.empty(n)
+    y[0] = -8.0
+    shocks = rng.exponential(0.6, n) - 0.6  # mean 0, right-skewed
+    for t in range(1, n):
+        y[t] = -1.6 + 0.8 * y[t - 1] + shocks[t]
+    fit = fit_direct(y, None, horizons=3, lags=(1,))
+    smear = smearing_factors(fit)
+    median = np.exp(residual_quantiles(fit, [0.5])[0])
+    assert (smear >= median).all()
+    assert (smear > 1.0).all()  # Jensen: mean(exp e) > exp(mean e) = 1 for OLS residuals
+    rq = residual_quantiles(fit, [0.1, 0.9])
+    y_hat = predict_path(fit, y, None)
+    mid, lo, hi = mean_path(y_hat, smear), *cone_paths(y_hat, rq)
+    assert (lo <= mid).all() and (mid <= hi).all()
+
+
+def test_expanding_forecasts_mean_matches_mean_path():
+    y = ar1(0.5, 0.8, 3.0, 40) + np.random.default_rng(5).normal(0.0, 0.2, 40)
+    out = expanding_forecasts(y, None, origins=[39], horizons=2, quantile="mean", lags=(1,))
+    fit = fit_direct(y, None, horizons=2, lags=(1,))
+    expect = mean_path(predict_path(fit, y, None), smearing_factors(fit))
+    assert out[0].tolist() == expect.tolist()  # bit-identical: history's last = rv_forecast
 
 
 def test_decomposition_no_events_and_sums_to_one():
