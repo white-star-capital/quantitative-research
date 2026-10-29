@@ -42,6 +42,18 @@ describe("formatValue", () => {
     assert.equal(formatValue(-12.34, { quantity: "rate", scale: "bps" }), "−12.3 bps");
   });
 
+  it("formats z-scores signed, in standard deviations", () => {
+    const unit = { quantity: "zscore", scale: "absolute" } as const;
+    assert.equal(formatValue(1.8, unit), "+1.80σ");
+    assert.equal(formatValue(-0.456, unit), "−0.46σ");
+    assert.equal(formatValue(null, unit), MISSING);
+  });
+
+  it("formats unix-second timestamps as UTC", () => {
+    const unit = { quantity: "timestamp", scale: "absolute", convention: "unix_seconds" } as const;
+    assert.equal(formatValue(Date.parse("2026-10-28T00:00:00Z") / 1000, unit), "28 OCT, 00:00 UTC");
+  });
+
   it("does not print negative zero", () => {
     assert.equal(formatNumber(-0.0001, 2), "0.00");
   });

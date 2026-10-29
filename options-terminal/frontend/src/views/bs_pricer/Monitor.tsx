@@ -6,25 +6,36 @@ import { checkLatest } from "../../api/validate.ts";
 import { fmtIv, fmtSpot, fmtVp } from "../../format/pricer.ts";
 import { formatAge, formatNumber } from "../../format/units.ts";
 import type { BespokeProps } from "../registry.ts";
-import { loadPref, savePref } from "./logic.ts";
+import { loadPref, MONITOR_COLUMNS, savePref } from "./logic.ts";
 import { assetHref, contextOf, latestPath, num, payloadOf, storage } from "./shared.ts";
 import type { SlotSummary } from "../../api/types.ts";
 import { findParitySlot } from "../parity_monitor/logic.ts";
 import { PARITY_COLUMNS, ParityCells, useParityLatest, useParitySelection, whyMissing } from "../parity_monitor/parts.tsx";
+import { findVrpSlot, vrpCovers, VRP_COLUMNS } from "../vrp_signal/logic.ts";
+import { VrpCells, useVrpLatest, useVrpSelection, whyMissing as whyVrpMissing } from "../vrp_signal/parts.tsx";
 
-interface ParityRef {
+/** A related slot (parity, VRP) and its run selection. */
+interface SlotRef {
   slot: SlotSummary;
   selection: Record<string, string> | null;
 }
 
 /** Parity columns (parity guide §7.1) from the parity slot's own /latest, so either slot can
  *  fail without blanking the other. */
-function ParityPart({ parity, underlying }: { parity: ParityRef; underlying: string }) {
+function ParityPart({ parity, underlying }: { parity: SlotRef; underlying: string }) {
   const latest = useParityLatest(parity.slot, underlying, parity.selection);
   return <ParityCells payload={payloadOf(latest.data)} why={whyMissing(latest)} />;
 }
 
-function Row({ slotId, underlying, selection, gate, parity }: { slotId: string; underlying: string; selection: Record<string, string>; gate: number; parity: ParityRef | null }) {
+/** VRP columns from the VRP slot's own /latest; an asset the VRP slot doesn't cover gets a dim cell. */
+function VrpPart({ vrp, underlying }: { vrp: SlotRef; underlying: string }) {
+  const covered = vrpCovers(vrp.slot, underlying);
+  const latest = useVrpLatest(covered ? vrp.slot : null, underlying, vrp.selection);
+  if (!covered) return <td data-label="VRP" colSpan={VRP_COLUMNS.length} className="dim">NOT COVERED</td>;
+  return <VrpCells payload={payloadOf(latest.data)} stale={latest.data?.meta.stale ?? true} why={whyVrpMissing(latest)} />;
+}
+
+function Row({ slotId, underlying, selection, gate, parity, vrpRef }: { slotId: string; underlying: string; selection: Record<string, string>; gate: number; parity: SlotRef | null; vrpRef: SlotRef | null }) {
   const latest = usePolled(latestPath(slotId, underlying, selection), checkLatest);
   const href = assetHref(slotId, underlying);
   const payload = payloadOf(latest.data);
@@ -39,6 +50,7 @@ function Row({ slotId, underlying, selection, gate, parity }: { slotId: string; 
         <td data-label="Asset" className="row-code"><a href={href}>{underlying}</a></td>
         <td colSpan={11} className="dim">{why}</td>
         {parity && <ParityPart parity={parity} underlying={underlying} />}
+        {vrpRef && <VrpPart vrp={vrpRef} underlying={underlying} />}
       </tr>
     );
   }
@@ -74,6 +86,7 @@ function Row({ slotId, underlying, selection, gate, parity }: { slotId: string; 
         {formatAge(meta.age_seconds)} <span className={`status ${meta.stale ? "bad" : "ok"}`}>{meta.stale ? "STALE" : "FRESH"}</span>
       </td>
       {parity && <ParityPart parity={parity} underlying={underlying} />}
+      {vrpRef && <VrpPart vrp={vrpRef} underlying={underlying} />}
     </tr>
   );
 }
@@ -84,6 +97,9 @@ export function Monitor({ slot, selection, slots }: BespokeProps) {
   const paritySlot = findParitySlot(slots);
   const paritySelection = useParitySelection(paritySlot);
   const parity = paritySlot ? { slot: paritySlot, selection: paritySelection } : null;
+  const vrpSlot = findVrpSlot(slots);
+  const vrpSelection = useVrpSelection(vrpSlot);
+  const vrp = vrpSlot ? { slot: vrpSlot, selection: vrpSelection } : null;
   return (
     <div className="panel">
       <div className="panel-title">
@@ -109,13 +125,13 @@ export function Monitor({ slot, selection, slots }: BespokeProps) {
         <table className="grid">
           <thead>
             <tr>
-              {["Asset", "Spot · 24h", "ATM 7d", "ATM 30d", "ATM 90d", "RV 30d", "VRP 30d", "RR25 30d", "BF25 30d", "Term ratio", "Data", "Updated", ...(parity ? PARITY_COLUMNS : [])].map((h) => (
-                <th key={h} className={h === "Asset" ? undefined : "num"}>{h}</th>
+              {[...MONITOR_COLUMNS, ...(parity ? PARITY_COLUMNS : []), ...(vrp ? VRP_COLUMNS : [])].map((h) => (
+                <th key={h} className={h === "Asset" || h === "VRP read 30d" ? undefined : "num"}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {assets.map((u) => <Row key={u} slotId={slot.slot_id} underlying={u} selection={selection} gate={gate} parity={parity} />)}
+            {assets.map((u) => <Row key={u} slotId={slot.slot_id} underlying={u} selection={selection} gate={gate} parity={parity} vrpRef={vrp} />)}
           </tbody>
         </table>
       </div>
@@ -123,6 +139,7 @@ export function Monitor({ slot, selection, slots }: BespokeProps) {
         ATM IVs are constant-maturity from the Deribit surface; VRP = ATM 30d − RV 30d (hourly perp returns). The VRP gate is
         your display threshold, kept in this browser only. Event = 1d/30d term ratio at or above the model's threshold.
         {parity && " Parity columns come from the parity monitor: 30d values interpolate between listed expiries; \"perp only\" means no dated future."}
+        {vrp && " VRP columns come from the VRP signal: ATM IV 30d minus the event-aware RV forecast (not the trailing RV above); z on the DVOL basis, BTC and ETH only. RICH needs IV above the 0.9 cone and no event hump; stale runs disable it."}
       </div>
     </div>
   );

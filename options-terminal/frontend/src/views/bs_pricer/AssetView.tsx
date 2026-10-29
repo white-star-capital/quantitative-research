@@ -13,8 +13,10 @@ import { assetHref, contextOf, num, payloadOf } from "./shared.ts";
 import { VolTab } from "./VolTab.tsx";
 import { findParitySlot } from "../parity_monitor/logic.ts";
 import { ParityTab } from "../parity_monitor/parts.tsx";
+import { findVrpSlot, vrpCovers } from "../vrp_signal/logic.ts";
+import { VrpTab } from "../vrp_signal/parts.tsx";
 
-type Tab = "chain" | "vol" | "pricer" | "data" | "parity";
+type Tab = "chain" | "vol" | "pricer" | "data" | "parity" | "vrp";
 const TABS: [Tab, string][] = [["chain", "Chain"], ["vol", "Vol"], ["pricer", "Pricer & OTC"], ["data", "Data"]];
 
 export function AssetView(props: BespokeProps & { underlying: string }) {
@@ -22,7 +24,12 @@ export function AssetView(props: BespokeProps & { underlying: string }) {
   const [tab, setTab] = useState<Tab>("chain");
   // Parity tab only when the catalog serves a parity slot (found by view id, never hard-coded).
   const paritySlot = findParitySlot(props.slots);
-  const tabs: [Tab, string][] = paritySlot ? [...TABS, ["parity", "Parity"]] : TABS;
+  // VRP tab likewise, and only for assets the VRP slot covers.
+  const vrpSlot = findVrpSlot(props.slots);
+  const vrpShown = vrpSlot !== null && vrpCovers(vrpSlot, underlying);
+  const tabs: [Tab, string][] = [...TABS];
+  if (paritySlot) tabs.push(["parity", "Parity"]);
+  if (vrpShown) tabs.push(["vrp", "VRP"]);
   const [prefill, setPrefill] = useState<Prefill | null>(null);
   const assets = slot.scope.allowed?.underlying ?? [];
 
@@ -127,6 +134,7 @@ export function AssetView(props: BespokeProps & { underlying: string }) {
           )}
           {tab === "data" && <DataTab envelope={env} payload={payload} nodeRows={chainOf(payload).filter((r) => r.is_node === true)} />}
           {tab === "parity" && paritySlot && <ParityTab slot={paritySlot} underlying={underlying} />}
+          {tab === "vrp" && vrpShown && vrpSlot && <VrpTab slot={vrpSlot} underlying={underlying} />}
         </>
       )}
     </>

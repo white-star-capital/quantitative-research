@@ -30,7 +30,7 @@ describe("evaluate request", () => {
 
 describe("run selection", () => {
   it("prefers production, falls back to the first shadow", () => {
-    const shadow = [{ implementation: "bs_pricer_black76", version: "1.0.0" }];
+    const shadow = [{ implementation: "bs_pricer_black76", version: "1.0.1" }];
     assert.deepEqual(runSelection({ production: null, shadow }), { role: "shadow", implementation: "bs_pricer_black76" });
     assert.deepEqual(runSelection({ production: shadow[0]!, shadow: [] }), {});
   });

@@ -421,6 +421,14 @@ a {
   border-color: var(--down);
   color: var(--down);
 }
+.badge.good {
+  border-color: var(--up);
+  color: var(--up);
+}
+.badge.dim {
+  border-color: var(--dim);
+  color: var(--dim);
+}
 .subsection {
   margin-top: 6px;
 }

@@ -2,6 +2,12 @@
 import type { Cell, Composite, Table } from "../../api/payloads.ts";
 import { records, section } from "../../api/payloads.ts";
 
+/** The cross-asset monitor's own columns; the parity and VRP slots append theirs. Labels are
+ *  React keys and card-layout labels, so the combined header must not repeat one. */
+export const MONITOR_COLUMNS = [
+  "Asset", "Spot · 24h", "ATM 7d", "ATM 30d", "ATM 90d", "RV 30d", "VRP 30d", "RR25 30d", "BF25 30d", "Term ratio", "Data", "Updated",
+];
+
 // ---- run selection (shadow period) ---------------------------------------------------------
 
 export interface Implementations {

@@ -60,6 +60,12 @@ export function formatValue(
     return n.startsWith(MINUS) || n.startsWith("+") ? `${n[0]}$${n.slice(1)}` : `$${n}`;
   }
   if (unit.quantity === "count") return formatNumber(value, 0, signed);
+  // Standardized scores read in standard deviations, signed: 1.8 → "+1.80σ".
+  if (unit.quantity === "zscore") return `${formatNumber(value, opts.decimals ?? 2, opts.signed ?? true)}σ`;
+  if (unit.quantity === "timestamp" && unit.convention === "unix_seconds") {
+    const d = new Date(value * 1000);
+    return Number.isNaN(d.getTime()) ? MISSING : formatUtc(d.toISOString());
+  }
   return formatNumber(value, opts.decimals ?? 4, signed);
 }
 
