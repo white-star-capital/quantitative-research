@@ -310,6 +310,7 @@ def main() -> None:
                 feature_matrix=fm,
                 close_prices=close_prices,
                 base_eval_config=eval_cfg,
+                collect_equity=True,
                 seeds=SEEDS,
                 evo_config_kwargs=evo_kwargs,
                 pool=worker_pool,
@@ -338,6 +339,11 @@ def main() -> None:
         # ------------------------------------------------------------------
         _banner(f"5 / 6  Null control  ({N_NULL_RUNS} signal-free runs)")
         null_result = None
+        # One entry per surrogate run, each holding that run's per-window curves.
+        # Defined here, not inside the else, so skipping the null control leaves
+        # it empty rather than undefined. Collected as a side effect because
+        # run_null_control consumes only the Sharpe columns of the rows.
+        null_equity_runs: list[list[list[float]]] = []
         if N_NULL_RUNS < 1:
             print("  SKIPPED (N_NULL_RUNS = 0).")
             print("  Without it, a high DSR cannot distinguish real signal from bias")
@@ -363,7 +369,9 @@ def main() -> None:
                         seeds=NULL_SEEDS,
                         evo_config_kwargs=evo_kwargs,
                         pool=worker_pool,
+                        collect_equity=True,
                     )
+                null_equity_runs.append([r.get("oos_equity") or [] for r in rows])
                 return rows
 
             print(
@@ -408,6 +416,30 @@ def main() -> None:
     }
     universe_path.write_text(json.dumps(universe_payload, indent=2) + "\n")
     print(f"  universe.json  →  {universe_path}")
+
+    # Dashboard panels. Both are optional for the page — build_dashboard.py hides
+    # a panel whose file is absent — so a failure here must not lose the run's
+    # real output, which is already on disk by this point.
+    try:
+        from vgp.analysis.context import equity_band, market_context
+
+        (RESULTS_DIR / "market_context.json").write_text(
+            json.dumps(
+                market_context(ohlcv, list(fe.retained_assets_), fe.dates_),
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
+        if null_equity_runs:
+            (RESULTS_DIR / "equity_band.json").write_text(
+                json.dumps(
+                    equity_band(all_results, null_equity_runs, N_NULL_RUNS),
+                    separators=(",", ":"),
+                )
+                + "\n"
+            )
+    except Exception as exc:  # a missing chart beats a lost run
+        logging.getLogger(__name__).warning("dashboard panels not written: %s", exc)
 
     null_path = RESULTS_DIR / "null_control.txt"
     if null_result is not None:

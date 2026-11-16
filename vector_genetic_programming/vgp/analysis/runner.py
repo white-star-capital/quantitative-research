@@ -21,7 +21,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 
 from vgp.analysis.dsr import IS_RETURNS_KEY, TRIALS_KEY
-from vgp.backtest.runner import EVAL_OK, EvalConfig, evaluate_with_status
+from vgp.backtest.runner import EVAL_OK, EvalConfig, equity_curve, evaluate_with_status
 from vgp.data.splitter import WalkForwardSplitter
 from vgp.evolution.config import EvolutionConfig
 from vgp.evolution.loop import run_evolution
@@ -242,6 +242,7 @@ class WalkForwardRunner:
         evo_config_kwargs: dict,
         oos_min_trades: int | None = None,
         pool: object | None = None,
+        collect_equity: bool = False,
     ) -> list[dict]:
         """Run evolution for all seeds on one window. Returns one dict per seed.
 
@@ -427,6 +428,14 @@ class WalkForwardRunner:
             oos_fitness, oos_status, oos_n_trades = evaluate_with_status(
                 best_ind, test_fm, test_eval_cfg
             )
+            # Optional per-bar OOS equity, for the dashboard's null band. Taken
+            # here, from the SAME test_fm and config the Sharpe above was
+            # measured on, so the curve and the number describe one strategy.
+            oos_equity: list[float] = []
+            if collect_equity and oos_status == EVAL_OK:
+                oos_equity = [
+                    round(float(v), 6) for v in equity_curve(best_ind, test_fm, test_eval_cfg)
+                ]
             # test_fm is no longer referenced after this line
 
             if oos_status == EVAL_OK:
@@ -471,6 +480,7 @@ class WalkForwardRunner:
                     "test_end": window.test_end,
                     "is_sharpe": is_sharpe,
                     "oos_sharpe": oos_sharpe,
+                    "oos_equity": oos_equity,
                     "oos_status": oos_status,
                     "oos_n_trades": oos_n_trades,
                     "oos_min_trades": oos_min_trades,

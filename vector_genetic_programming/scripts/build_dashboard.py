@@ -125,6 +125,14 @@ def collect() -> dict:
     uni_path = RESULTS_DIR / "universe.json"
     universe = json.loads(uni_path.read_text()) if uni_path.exists() else {}
 
+    # Optional panels. Both are written by run.py, so a results/ directory from
+    # before they existed still builds — the page hides the panel rather than
+    # failing. Absence is a missing chart, never a wrong one.
+    ctx_path = RESULTS_DIR / "market_context.json"
+    context = json.loads(ctx_path.read_text()) if ctx_path.exists() else None
+    band_path = RESULTS_DIR / "equity_band.json"
+    band = json.loads(band_path.read_text()) if band_path.exists() else None
+
     # Everything in the null_control header that is not a per-run array.
     header = {
         "n_runs": _int_after(text, r"Null control: (\d+) signal-free"),
@@ -151,6 +159,8 @@ def collect() -> dict:
         "p": pvals,
         "null_header": header,
         "universe": universe,
+        "context": context,
+        "band": band,
         "n_evaluations": sum(int(r["n_evaluations"]) for r in rows),
         "fingerprint": first["universe_fingerprint"],
         "n_assets": int(first["n_assets"]),

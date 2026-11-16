@@ -154,6 +154,29 @@ def build_portfolio(signals: np.ndarray, config: EvalConfig):
 # ---------------------------------------------------------------------------
 
 
+def equity_curve(individual, feature_matrix: np.ndarray, config: EvalConfig) -> np.ndarray:
+    """Per-bar portfolio value for one individual, rebased to 1.0 at the start.
+
+    Goes through build_portfolio() — the same single definition evaluate() uses
+    — so the curve carries the identical fees, sizing and reversal handling as
+    the Sharpe it is drawn beside. A curve computed any other way would be a
+    picture of a different strategy.
+
+    Returns an empty array when the tree cannot be compiled or produces no
+    usable signal, so a caller can skip it rather than plot a flat line that
+    looks like a result.
+    """
+    try:
+        signals = compute_signals(individual, feature_matrix)
+        pf = build_portfolio(signals, config)
+        value = np.asarray(pf.value(), dtype=float).ravel()
+    except Exception:  # a failed tree is not a flat equity curve
+        return np.empty(0, dtype=float)
+    if value.size == 0 or not np.isfinite(value[0]) or value[0] == 0:
+        return np.empty(0, dtype=float)
+    return value / value[0]
+
+
 def evaluate_with_status(
     individual,
     feature_matrix: np.ndarray,
