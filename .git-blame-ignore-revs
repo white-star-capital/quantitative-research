@@ -1,0 +1,12 @@
+# Revisions to skip when running `git blame`.
+#
+# Enable locally with:
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub applies this file automatically in its blame view.
+#
+# Only whole-tree mechanical reformatting belongs here — never a commit that
+# changes behaviour, or blame will hide a real author from a real change.
+
+# style(vgp): apply black — formatting only, 39 files, no hand edits
+ddd490ba33f42476af402ab01afd83e2246ef650

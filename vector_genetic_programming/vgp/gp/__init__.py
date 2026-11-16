@@ -5,8 +5,8 @@ functions or lambdas) for multiprocessing.Pool pickling compatibility.
 All primitives accept and return np.ndarray — no pandas objects inside primitives.
 """
 
-from .primitives import Vector, Scalar
 from .gp_types import build_pset
+from .primitives import Scalar, Vector
 from .tree_evaluator import TreeEvaluator
 
 __all__ = [

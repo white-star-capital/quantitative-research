@@ -1,12 +1,12 @@
-from .universe import UNIVERSE_30, get_binance_symbols
 from .fetcher import BinanceFetcher
 from .processor import ReturnProcessor
 from .tao_subnet_loader import (
     load_subnet_candles_combined,
     load_subnet_candles_from_dir,
-    load_tao_subnet_prices,
     load_tao_subnet_market_caps,
+    load_tao_subnet_prices,
 )
+from .universe import UNIVERSE_30, get_binance_symbols
 
 __all__ = [
     "UNIVERSE_30",

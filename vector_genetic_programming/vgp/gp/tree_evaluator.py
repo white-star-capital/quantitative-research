@@ -6,6 +6,7 @@ STRUCTURAL INVARIANT (D-05):
   tree output from t-1. np.roll(..., 1) wraps the last value to index 0 —
   that wrap is zeroed out explicitly to prevent the periodic artifact.
 """
+
 from __future__ import annotations
 
 import logging
@@ -57,9 +58,9 @@ class TreeEvaluator:
         np.ndarray
             Shape [T], dtype float32, values in {-1.0, 0.0, +1.0}.
         """
-        assert feature_matrix.ndim == 2, (
-            f"feature_matrix must be 2-D [T x F], got shape {feature_matrix.shape}"
-        )
+        assert (
+            feature_matrix.ndim == 2
+        ), f"feature_matrix must be 2-D [T x F], got shape {feature_matrix.shape}"
         assert feature_matrix.shape[1] == 12, (
             f"Expected F=12 feature columns (matching FEATURE_NAMES), "
             f"got {feature_matrix.shape[1]}"

@@ -1,61 +1,172 @@
-# requirements-lock.txt — pinned transitive dependencies for reproducible installs
+# requirements-lock.txt — the exact dependency set used to produce results/
 #
-# Generated: 2026-06-08 with Python 3.12.4
-# Platform: macOS (darwin)
+# Generated: 2026-10-10 with Python 3.12.3 on linux (x86_64)
+# Method:    python -m venv .venv && pip install -e ".[dev]" && pip freeze --exclude-editable
 #
-# INCLUDED: core production deps + dev tools (deap, numpy, pandas, scipy, scikit-learn,
-#           matplotlib, plotly, seaborn, pyarrow, networkx, dill, pytest, black, ruff, mypy)
+# WHY THIS FILE WAS REGENERATED. The previous version was dated 2026-06-08, built
+# on macOS, and pinned numpy==2.2.6 — which the current pyproject.toml FORBIDS
+# (numpy>=2.4.6,<2.6, because numba 0.67 raised its ceiling). It also omitted
+# vectorbt and numba entirely, noting them as a "separate install". Anyone who
+# followed it got an environment that contradicted the package metadata, which is
+# worse than having no lock file, because it looks authoritative.
 #
-# EXCLUDED (install separately — heavy or platform-specific):
-#   vectorbt==1.0.0   — install: pip install vectorbt==1.0.0
-#   numba>=0.61.2     — install: pip install "numba>=0.61.2"
-#   jupyterlab>=4.0   — install: pip install "jupyterlab>=4.0"
+# HOW TO USE IT. For an install that matches the published numbers:
 #
-# KNOWN CONFLICT:
-#   mlflow requires pandas<3, incompatible with our pandas>=3.0.0 requirement.
-#   Install as: pip install "mlflow>=2.14" (in a separate env or against a tracking server)
-#   See pyproject.toml [tracking] optional extra.
+#     python3.12 -m venv .venv
+#     .venv/bin/pip install -r requirements-lock.txt
+#     .venv/bin/pip install -e . --no-deps
 #
-# To reproduce: python3.12 -m pip install -r requirements-lock.txt
-#               then: pip install vectorbt==1.0.0 "numba>=0.61.2"
-ast_serialize==0.5.0
-black==26.5.1
-cffi==2.0.0
-click==8.4.1
-contourpy==1.3.3
+# `pip install -e ".[dev]"` resolves fresh against pyproject.toml instead, which
+# is the right choice for development and the wrong one for reproducing a result.
+#
+# PLATFORM. A pip freeze is platform-specific. These are linux wheels; on macOS
+# or Windows the resolver may pick different builds of the compiled packages
+# (numpy, numba, pyarrow). Pure-python pins carry over unchanged.
+#
+# THIS FILE IS NOT TESTED AGAINST DRIFT. CI installs from pyproject.toml so the
+# declared ranges stay honest; this records one resolved point inside them.
+# Regenerate with the Method line above after changing dependencies.
+
+anyio==4.15.1
+anywidget==0.11.0
+argon2-cffi==25.1.0
+argon2-cffi-bindings==26.1.0
+arrow==1.4.0
+ast_serialize==0.12.1
+asttokens==3.0.2
+async-lru==2.3.0
+attrs==26.1.0
+babel==2.18.0
+beautifulsoup4==4.15.0
+black==26.10.1
+bleach==6.4.0
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.2
+click==8.5.0
+cloudpickle==3.1.2
+comm==0.2.3
+contourpy==1.4.0
 cycler==0.12.1
+dateparser==1.4.3
 deap==1.4.4
+debugpy==1.8.22
+defusedxml==0.7.1
 dill==0.4.1
-fonttools==4.63.0
-iniconfig==2.3.0
-joblib==1.5.3
-kiwisolver==1.5.0
-librt==0.11.0
-matplotlib==3.10.9
-moocore==0.3.1
-mypy==2.1.0
+executing==2.2.1
+fastjsonschema==2.22.2
+fonttools==4.66.1
+fqdn==1.6.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.20
+ImageIO==2.38.1
+iniconfig==2.3.1
+ipykernel==7.4.0
+ipython==9.17.1
+ipython_pygments_lexers==1.1.1
+ipywidgets==8.1.9
+isoduration==20.11.0
+jedi==0.20.0
+Jinja2==3.1.6
+joblib==1.6.0
+json5==0.17.3
+jsonpointer==3.2.0
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+jupyter-events==0.12.1
+jupyter-lsp==2.3.1
+jupyter_builder==1.2.3
+jupyter_client==8.10.0
+jupyter_core==5.9.1
+jupyter_server==2.21.1
+jupyter_server_terminals==0.5.4
+jupyterlab==4.6.4
+jupyterlab_pygments==0.3.0
+jupyterlab_server==2.28.1
+jupyterlab_widgets==3.0.17
+kiwisolver==1.5.1
+lark==1.3.1
+librt==0.16.0
+llvmlite==0.50.0
+MarkupSafe==3.0.4
+matplotlib==3.11.2
+matplotlib-inline==0.2.2
+mistune==3.3.4
+moocore==0.3.2
+mypy==2.4.0
 mypy_extensions==1.1.0
-narwhals==2.22.1
-networkx==3.6.1
-numpy==2.2.6
-packaging==26.2
-pandas==3.0.3
+narwhals==2.27.1
+nbclient==0.11.0
+nbconvert==7.17.1
+nbformat==5.11.1
+nbstripout==0.9.1
+nest-asyncio2==1.7.4
+networkx==3.7
+notebook_shim==0.2.4
+numba==0.68.0
+numpy==2.5.3
+packaging==26.3
+pandas==3.0.6
+pandocfilters==1.5.1
+parso==0.8.7
 pathspec==1.1.1
-pillow==12.2.0
-platformdirs==4.10.0
-plotly==6.8.0
+pexpect==4.9.0
+pillow==12.3.0
+platformdirs==4.12.4
+plotly==5.24.1
 pluggy==1.6.0
-pyarrow==24.0.0
-pycparser==3.0
-Pygments==2.20.0
-pyparsing==3.3.2
-pytest==9.0.3
+prometheus_client==0.26.0
+prompt_toolkit==3.0.53
+psutil==7.2.2
+psygnal==0.16.1
+ptyprocess==0.7.0
+pure_eval==0.2.4
+py-cpuinfo2==10.1.1
+pyarrow==26.0.0
+pycparser==3.11
+Pygments==2.21.0
+pyparsing==3.3.3
+pytest==9.1.1
+pytest-benchmark==5.3.0
 python-dateutil==2.9.0.post0
+python-json-logger==4.2.0
 pytokens==0.4.1
-ruff==0.15.16
-scikit-learn==1.9.0
-scipy==1.17.1
+pytz==2026.5
+PyYAML==6.0.3
+pyzmq==27.2.0
+referencing==0.37.0
+regex==2026.9.29
+requests==2.34.2
+rfc3339-validator==0.1.4
+rfc3986-validator==0.1.1
+rfc3987-syntax==1.1.0
+rpds-py==2026.9.1
+ruff==0.16.10
+schedule==1.2.2
+scikit-learn==1.9.1
+scipy==1.18.1
 seaborn==0.13.2
+Send2Trash==2.1.0
 six==1.17.0
-threadpoolctl==3.6.0
-typing_extensions==4.15.0
+soupsieve==3.0
+stack-data==0.6.3
+tenacity==9.2.1
+terminado==0.18.1
+threadpoolctl==3.7.0
+tinycss2==1.5.1
+tornado==6.5.10
+tqdm==4.70.1
+traitlets==5.16.1
+typing_extensions==4.16.0
+tzdata==2026.5
+tzlocal==5.4.4
+uri-template==1.3.0
+urllib3==2.8.0
+vectorbt==1.1.2
+wcwidth==0.9.2
+webcolors==25.10.0
+webencodings==0.6.1
+websocket-client==1.9.2
+widgetsnbextension==4.0.16

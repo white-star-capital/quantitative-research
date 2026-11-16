@@ -2,6 +2,7 @@
 
 All parameters match CONTEXT.md D-13 defaults. Override for experiment sweeps.
 """
+
 from __future__ import annotations
 
 import os
@@ -17,12 +18,12 @@ class EvolutionConfig:
     """
 
     # Population / generations
-    pop_size: int = 100          # D-13: 100 individuals per generation
-    n_generations: int = 10      # D-13: 10 generations for validation runs
+    pop_size: int = 100  # D-13: 100 individuals per generation
+    n_generations: int = 10  # D-13: 10 generations for validation runs
 
     # Genetic operator probabilities
-    cxpb: float = 0.7            # D-13: crossover probability
-    mutpb: float = 0.2           # D-13: mutation probability
+    cxpb: float = 0.7  # D-13: crossover probability
+    mutpb: float = 0.2  # D-13: mutation probability
 
     # Parallelism (D-06): n_jobs=1 skips Pool entirely (debugging mode)
     n_jobs: int = field(default_factory=lambda: max(1, os.cpu_count() - 1))

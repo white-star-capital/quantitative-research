@@ -1,0 +1,19 @@
+# Keep the dashboard image's build context small and its cache stable. The
+# Dockerfile copies only three paths; everything else here is belt-and-braces
+# against a stray secret or a 1 GB venv entering the context.
+.venv/
+__pycache__/
+*.py[cod]
+.git/
+.planning/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+data/
+tests/
+vgp/
+*.md
+*.toml
+*.lock
+Makefile
+runs/
